@@ -114,6 +114,12 @@ class Network11kV:
     length_includes_waste: bool = False
     waste_pct: float = 0.10
 
+    span_m: float | None = None
+    """المسافة العامة بين الأعمدة (م). None ← تُقرأ من الافتراضيات في ملف البيانات (ق-٢٠)."""
+
+    tension_span_m: float | None = None
+    """المسافة بين أعمدة الشد المشبكة (م). None ← تُقرأ من الافتراضيات (ق-٢٠)."""
+
     poles_lattice: int = 0
     poles_round: int = 0
 
@@ -136,6 +142,12 @@ class Network33kV:
     circuit: CircuitType = CircuitType.SINGLE
     length_includes_waste: bool = False
     waste_pct: float = 0.10
+
+    span_m: float | None = None
+    """المسافة بين أعمدة التعليق 14م (م). None ← تُقرأ من الافتراضيات (ق-٢٠)."""
+
+    tension_span_m: float | None = None
+    """المسافة بين الركائز الوسطية (م). None ← تُقرأ من الافتراضيات (ق-٢٠)."""
 
     poles_suspension: int = 0
     anchors_mid: int = 0

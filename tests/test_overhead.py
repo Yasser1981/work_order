@@ -17,6 +17,10 @@ from engine.overhead import (
     count_poles_11kv,
     count_poles_33kv,
     labour_33kv,
+    poles_per_tension_bay,
+    resolve_spans,
+    suggest_poles_11kv,
+    suggest_poles_33kv,
     materials_11kv,
     materials_33kv,
     wire_quantity,
@@ -65,8 +69,9 @@ def _unit_of(lines, name):
         (1000, 41, 9, 32, False),  # النهاية (41) تقع على موقع مشبك أصلاً
     ],
 )
-def test_pole_count_11kv(length, total, lattice, round_, converted):
-    result = count_poles_11kv(length)
+def test_pole_count_11kv_default_spans(length, total, lattice, round_, converted):
+    """بالمسافات الافتراضية (25 و125) — يجب أن تبقى النتائج كما اعتُمدت قبل ق-٢٠."""
+    result = count_poles_11kv(length, span=25, tension_span=125)
     assert result.total == total
     assert result.lattice == lattice
     assert result.round_ == round_
@@ -76,11 +81,11 @@ def test_pole_count_11kv(length, total, lattice, round_, converted):
 
 def test_pole_count_11kv_rounds_up():
     """510 م: يُقرَّب لأعلى — الزيادة أفضل من النقصان (ق-١٤)."""
-    assert count_poles_11kv(510).total == 22  # ceil(510/25)=21 مسافة + 1
+    assert count_poles_11kv(510, 25, 125).total == 22  # ceil(510/25)=21 مسافة + 1
 
 
 def test_pole_count_11kv_zero_length():
-    result = count_poles_11kv(0)
+    result = count_poles_11kv(0, 25, 125)
     assert (result.total, result.lattice, result.round_) == (0, 0, 0)
 
 
@@ -96,8 +101,9 @@ def test_pole_count_11kv_zero_length():
         (2000, 32, 3, 27, 37),
     ],
 )
-def test_pole_count_33kv(length, positions, mid, susp, poles_total):
-    result = count_poles_33kv(length)
+def test_pole_count_33kv_default_spans(length, positions, mid, susp, poles_total):
+    """بالمسافات الافتراضية (65 و650) — يجب أن تبقى النتائج كما اعتُمدت قبل ق-٢٠."""
+    result = count_poles_33kv(length, span=65, tension_span=650)
     assert result.positions == positions
     assert result.mid_anchors == mid
     assert result.end_anchors == 2
@@ -107,14 +113,94 @@ def test_pole_count_33kv(length, positions, mid, susp, poles_total):
 
 def test_pole_count_33kv_line_extension():
     """إكمال خط قائم: ركيزة بداية ونهاية واحدة بدل اثنتين."""
-    result = count_poles_33kv(2000, end_anchors=1)
+    result = count_poles_33kv(2000, 65, 650, end_anchors=1)
     assert result.end_anchors == 1
     assert result.suspension == 32 - 3 - 1
 
 
 def test_pole_count_33kv_no_negative_suspension():
     """خط قصير جداً: عدد أعمدة التعليق لا يصير سالباً."""
-    assert count_poles_33kv(30).suspension >= 0
+    assert count_poles_33kv(30, 65, 650).suspension >= 0
+
+
+# ═══════════════ ٢أ. المسافات مُدخلات يحدّدها المستخدم (ق-٢٠) ═══════════════
+
+
+def test_tension_bay_uses_floor_so_tension_span_is_never_exceeded():
+    """⌊مسافة الشد ÷ المسافة العامة⌋ — التقريب لأسفل يضمن ألا تتجاوز المسافة الفعلية."""
+    assert poles_per_tension_bay(25, 125) == 5    # 5 × 25 = 125 بالضبط
+    assert poles_per_tension_bay(40, 125) == 3    # 3 × 40 = 120 ≤ 125
+    assert poles_per_tension_bay(65, 650) == 10   # 10 × 65 = 650 بالضبط
+    assert poles_per_tension_bay(30, 100) == 3    # 3 × 30 =  90 ≤ 100
+
+
+def test_tension_bay_never_zero():
+    """لو كانت مسافة الشد أقصر من المسافة العامة ← كل عمود عمود شد."""
+    assert poles_per_tension_bay(50, 20) == 1
+
+
+@pytest.mark.parametrize(
+    "span,tension_span,total,lattice,round_",
+    [
+        (25, 125, 41, 9, 32),   # الافتراضي
+        (40, 125, 26, 10, 16),  # مسافة أوسع، مسافة الشد ثابتة ← أعمدة شد أكثر نسبياً
+        (25, 250, 41, 5, 36),   # مسافة الشد أوسع ← أعمدة شد أقل
+        (50, 200, 21, 6, 15),
+    ],
+)
+def test_user_spans_change_pole_mix(span, tension_span, total, lattice, round_):
+    """خط 1000 م بمسافات مختلفة يحدّدها المستخدم."""
+    result = count_poles_11kv(1000, span, tension_span)
+    assert (result.total, result.lattice, result.round_) == (total, lattice, round_)
+
+
+def test_actual_tension_spacing_never_exceeds_requested():
+    """تحقّق شامل: المسافة الفعلية بين أعمدة الشد ≤ ما طلبه المستخدم."""
+    for span in (20, 25, 30, 35, 40, 50, 65):
+        for tension_span in (100, 125, 150, 200, 250, 650):
+            if tension_span < span:
+                continue
+            step = poles_per_tension_bay(span, tension_span)
+            assert step * span <= tension_span + 1e-9
+
+
+def test_ends_are_always_tension_regardless_of_spans():
+    """القاعدة الثابتة: طرفا الخط عمودا شد مهما كانت المسافات (ق-٢٠)."""
+    for span in (20, 25, 33, 40, 60):
+        for tension_span in (100, 125, 175, 300):
+            r = count_poles_11kv(777, span, tension_span)
+            # الطرفان مشبكان ⇒ لا يمكن أن يقلّ عدد المشبك عن 2 في خط فيه أكثر من عمود
+            assert r.lattice >= 2
+            assert r.lattice + r.round_ == r.total
+
+
+def test_spans_resolve_from_catalog_when_not_given(catalog):
+    """المسافة غير المُدخلة تُقرأ من ملف البيانات — مصدر واحد لا يُكرَّر (ق-٢٠)."""
+    net = Network11kV(route_length_m=1000)
+    assert resolve_spans(net, catalog) == (25.0, 125.0)
+    assert suggest_poles_11kv(net, catalog).lattice == 9
+
+
+def test_user_spans_override_catalog_defaults(catalog):
+    net = Network11kV(route_length_m=1000, span_m=40, tension_span_m=125)
+    assert resolve_spans(net, catalog) == (40.0, 125.0)
+    assert suggest_poles_11kv(net, catalog).lattice == 10
+
+
+def test_33kv_spans_resolve_and_override(catalog):
+    net = Network33kV(route_length_m=2000)
+    assert resolve_spans(net, catalog) == (65.0, 650.0)
+    assert suggest_poles_33kv(net, catalog).mid_anchors == 3
+
+    net.tension_span_m = 400
+    assert suggest_poles_33kv(net, catalog).mid_anchors == 5
+
+
+def test_invalid_span_is_rejected_not_silently_accepted(catalog):
+    """المسافة صفر أو سالبة تُرفض صراحةً بدل أن تنتج قسمة على صفر."""
+    for bad in (0, -25):
+        with pytest.raises(ValueError):
+            resolve_spans(Network11kV(route_length_m=500, span_m=bad), catalog)
 
 
 # ═══════════════════════════ ٣. كمية السلك ═══════════════════════════

@@ -33,17 +33,14 @@ from .types import (
 
 PHASES = 3
 
-SPAN_11KV = 25
-"""المسافة بين أعمدة 11 ك.ف (م)."""
-
-LATTICE_EVERY = 5
-"""كل خامس عمود مشبك في شبكة 11 ك.ف."""
-
-SPAN_33KV = 65
-"""المسافة بين أعمدة التعليق 14م (م)."""
-
-ANCHOR_SPAN_33KV = 650
-"""المسافة بين الركائز الوسطية (م)."""
+# المسافات مُدخلات يحدّدها المستخدم (ق-٢٠). القيم الافتراضية تُقرأ من
+# data/catalog_*.json تحت «المسافات_الافتراضية» — مصدر واحد لا يُكرَّر في الكود.
+SPAN_DEFAULT_KEYS = {
+    "11kv_span": "المسافة_بين_الأعمدة_11ك.ف",
+    "11kv_tension": "المسافة_بين_أعمدة_الشد_11ك.ف",
+    "33kv_span": "المسافة_بين_الأعمدة_33ك.ف",
+    "33kv_tension": "المسافة_بين_الركائز_الوسطية_33ك.ف",
+}
 
 STAY_WIRE_PER_SET_11M = 12
 STAY_WIRE_PER_SET_14M = 15
@@ -98,19 +95,34 @@ def _roundup(value: float) -> int:
 # ────────────────────────── حساب الأعمدة (استرشادي) ──────────────────────────
 
 
-def count_poles_11kv(route_length_m: float, span: int = SPAN_11KV) -> PoleCount11:
-    """يقترح عدد أعمدة 11 ك.ف ونوعها (ق-١٤).
+def poles_per_tension_bay(span: float, tension_span: float) -> int:
+    """عدد المسافات بين عمودَي شد متتاليين = ⌊مسافة الشد ÷ المسافة العامة⌋.
 
-    عمود كل 25 م، وكل خامس عمود مشبك، وطرفا الخط مشبكان إلزاماً. فإن لم يقع العمود
-    الأخير على موقع مشبك حُوِّل من مدور إلى مشبك.
+    يُقرَّب **لأسفل** عمداً — بعكس بقية الحسابات — لأن التقريب لأسفل هنا يعني أعمدة شد
+    **أكثر** ومسافة فعلية بينها **لا تتجاوز** ما طلبه المستخدم. أي أن الاتجاه الآمن
+    محفوظ: الزيادة أفضل من النقصان (ق-١٤).
+
+    مثال: مسافة عامة 40 م ومسافة شد 125 م ← ⌊125/40⌋ = 3، أي عمود شد كل 120 م ≤ 125.
+    """
+    return max(1, math.floor(round(tension_span / span, 9)))
+
+
+def count_poles_11kv(
+    route_length_m: float, span: float, tension_span: float
+) -> PoleCount11:
+    """يقترح عدد أعمدة 11 ك.ف ونوعها (ق-١٤، ق-٢٠).
+
+    عمود كل `span` متراً، وعمود شد (مشبك) كل `tension_span` متراً، وطرفا الخط مشبكان
+    إلزاماً. فإن لم يقع العمود الأخير على موقع شد حُوِّل من مدور إلى مشبك.
     """
     if route_length_m <= 0:
         return PoleCount11(total=0, lattice=0, round_=0, end_converted=False)
 
     total = _roundup(route_length_m / span) + 1
-    positions = set(range(1, total + 1, LATTICE_EVERY))  # 1، 6، 11، …
+    step = poles_per_tension_bay(span, tension_span)
+    positions = set(range(1, total + 1, step))  # 1، 1+step، 1+2×step، …
     end_converted = total not in positions
-    positions.add(total)  # طرف الخط مشبك إلزاماً
+    positions.add(total)  # طرف الخط عمود شد إلزاماً
 
     lattice = len(positions)
     return PoleCount11(
@@ -123,20 +135,23 @@ def count_poles_11kv(route_length_m: float, span: int = SPAN_11KV) -> PoleCount1
 
 def count_poles_33kv(
     route_length_m: float,
-    span: int = SPAN_33KV,
-    anchor_span: int = ANCHOR_SPAN_33KV,
+    span: float,
+    tension_span: float,
     end_anchors: int = 2,
 ) -> PoleCount33:
-    """يقترح أعمدة وركائز 33 ك.ف (ق-١٤).
+    """يقترح أعمدة وركائز 33 ك.ف (ق-١٤، ق-٢٠).
 
-    موقع الركيزة يستهلك موقع عمود تعليق فيُخصم من عددها. و`end_anchors` تكون 1 في
-    حالة إكمال خط قائم له ركيزة نهاية أصلاً.
+    عمود تعليق كل `span` متراً، وركيزة شد وسطية كل `tension_span` متراً. وموقع
+    الركيزة يستهلك موقع عمود تعليق فيُخصم من عددها. و`end_anchors` تكون 1 في حالة
+    إكمال خط قائم له ركيزة نهاية أصلاً.
     """
     if route_length_m <= 0:
         return PoleCount33(positions=0, suspension=0, mid_anchors=0, end_anchors=0)
 
     positions = _roundup(route_length_m / span) + 1
-    mid_anchors = max(0, _roundup(route_length_m / anchor_span) - 1)
+    step = poles_per_tension_bay(span, tension_span)
+    # الركائز الوسطية تقع بين الطرفين حصراً — الطرفان ركيزتا بداية ونهاية
+    mid_anchors = len(range(1 + step, positions, step))
     suspension = max(0, positions - mid_anchors - end_anchors)
     return PoleCount33(
         positions=positions,
@@ -147,6 +162,36 @@ def count_poles_33kv(
 
 
 # ──────────────────────────────── كمية السلك ────────────────────────────────
+
+
+def resolve_spans(net: Network11kV | Network33kV, catalog: dict) -> tuple[float, float]:
+    """يعيد (المسافة العامة، مسافة الشد) للشبكة، بحلّ القيم غير المُدخلة من الافتراضيات.
+
+    المصدر الوحيد للافتراضيات هو ملف البيانات — لا تُكرَّر في الكود (ق-٢٠).
+    """
+    defaults = catalog["المسافات_الافتراضية"]
+    if isinstance(net, Network11kV):
+        span_key, tension_key = SPAN_DEFAULT_KEYS["11kv_span"], SPAN_DEFAULT_KEYS["11kv_tension"]
+    else:
+        span_key, tension_key = SPAN_DEFAULT_KEYS["33kv_span"], SPAN_DEFAULT_KEYS["33kv_tension"]
+
+    span = net.span_m if net.span_m is not None else defaults[span_key]
+    tension = net.tension_span_m if net.tension_span_m is not None else defaults[tension_key]
+    if span <= 0 or tension <= 0:
+        raise ValueError("المسافات يجب أن تكون أكبر من صفر")
+    return float(span), float(tension)
+
+
+def suggest_poles_11kv(net: Network11kV, catalog: dict) -> PoleCount11:
+    """الاقتراح الاسترشادي لأعمدة 11 ك.ف بمسافات هذه الشبكة."""
+    span, tension = resolve_spans(net, catalog)
+    return count_poles_11kv(net.route_length_m, span, tension)
+
+
+def suggest_poles_33kv(net: Network33kV, catalog: dict, end_anchors: int = 2) -> PoleCount33:
+    """الاقتراح الاسترشادي لأعمدة وركائز 33 ك.ف بمسافات هذه الشبكة."""
+    span, tension = resolve_spans(net, catalog)
+    return count_poles_33kv(net.route_length_m, span, tension, end_anchors)
 
 
 def wire_quantity(
