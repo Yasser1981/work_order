@@ -8,21 +8,14 @@ import pytest
 
 pytest.importorskip("PyQt6", reason="PyQt6 غير مثبَّت")
 
-from PyQt6.QtWidgets import QApplication  # noqa: E402
-
 from engine import load_catalog  # noqa: E402
 from engine.overhead import compute, suggest_poles_11kv  # noqa: E402
 from engine.types import OverheadProject  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def app():
-    return QApplication.instance() or QApplication([])
-
-
 @pytest.fixture
-def window(app):
+def window(qapp):
     return MainWindow(load_catalog())
 
 
