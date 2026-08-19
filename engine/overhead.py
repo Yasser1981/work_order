@@ -266,58 +266,71 @@ def materials_11kv(net: Network11kV) -> list[MaterialLine]:
         net.route_length_m, net.circuit, net.length_includes_waste, net.waste_pct
     )
     if qty:
-        add(MaterialLine(*M_WIRE_11, qty, "مسار 11 ك.ف"))
+        factor = 1.0 if net.length_includes_waste else 1 + net.waste_pct
+        add(MaterialLine(*M_WIRE_11, qty, f"مسار 11 ك.ف: "
+                                          f"{net.route_length_m:,.0f} × 3 أطوار × {n} دائرة"
+                                          f" × {factor:g} زيادة"))
 
     # الأعمدة
     if lat:
-        add(MaterialLine(*M_POLE_11_LATTICE, lat, "أعمدة 11 ك.ف"))
+        add(MaterialLine(*M_POLE_11_LATTICE, lat, f"أعمدة 11 ك.ف: {lat} مشبك"))
     if rnd:
-        add(MaterialLine(*M_POLE_11_ROUND, rnd, "أعمدة 11 ك.ف"))
+        add(MaterialLine(*M_POLE_11_ROUND, rnd, f"أعمدة 11 ك.ف: {rnd} مدوّر"))
 
     # العوازل — القرصي للشد فيُنصب على المشبك فقط، والدبوسي على كل الأعمدة
-    if poles:
-        add(MaterialLine(*M_PIN_INSULATOR_11, poles * 3 * n, "أعمدة 11 ك.ف"))
     if lat:
-        add(MaterialLine(*M_DISC_INSULATOR_11, lat * 6 * n, "أعمدة 11م مشبك"))
-        add(MaterialLine(*M_AL_FITTINGS_11, lat * 6 * n, "أعمدة 11م مشبك"))
+        add(MaterialLine(*M_PIN_INSULATOR_11, lat * 3 * n,
+                         f"أعمدة 11م مشبك: {lat} × 3 × {n} دائرة"))
+    if rnd:
+        add(MaterialLine(*M_PIN_INSULATOR_11, rnd * 3 * n,
+                         f"أعمدة 11م مدوّر: {rnd} × 3 × {n} دائرة"))
+    if lat:
+        add(MaterialLine(*M_DISC_INSULATOR_11, lat * 6 * n,
+                         f"أعمدة 11م مشبك (للشد): {lat} × 6 × {n} دائرة"))
+        add(MaterialLine(*M_AL_FITTINGS_11, lat * 6 * n,
+                         f"أعمدة 11م مشبك: {lat} × 6 × {n} دائرة"))
 
-    # البراكيت
-    b12 = b14 = 0
-    for pole_type, count, supply in (
-        (PoleType11.LATTICE, lat, net.lattice_supply),
-        (PoleType11.ROUND, rnd, net.round_supply),
+    # البراكيت — سطر مستقل لكل مصدر، ليبقى تفصيل الرقم النهائي ظاهراً للمدقّق
+    sizes = {"1.2": M_BRACKET_12, "1.4": M_BRACKET_14}
+    for pole_type, count, supply, label in (
+        (PoleType11.LATTICE, lat, net.lattice_supply, "أعمدة 11م مشبك"),
+        (PoleType11.ROUND, rnd, net.round_supply, "أعمدة 11م مدوّر"),
     ):
         if not count:
             continue
-        per_pole = bracket_purchase_11(net.circuit, net.bracket_pattern, pole_type, supply)
-        b12 += per_pole.get("1.2", 0) * count
-        b14 += per_pole.get("1.4", 0) * count
+        need = bracket_need_11(net.circuit, net.bracket_pattern, pole_type)
+        purchase = bracket_purchase_11(net.circuit, net.bracket_pattern, pole_type, supply)
+        for size, per_pole in purchase.items():
+            deduction = ""
+            if supply.includes_bracket and BRACKET_INCLUDED_11[pole_type] == size:
+                deduction = f" (الحاجة {need[size]} ناقص 1 مرفق مع العمود)"
+            add(MaterialLine(*sizes[size], per_pole * count,
+                             f"{label}: {count} × {per_pole}{deduction}"))
 
-    b12 += net.extra_bracket_12
-    b14 += net.extra_bracket_14
-    if b12:
-        add(MaterialLine(*M_BRACKET_12, b12, "براكيت أعمدة 11م"))
-    if b14:
-        add(MaterialLine(*M_BRACKET_14, b14, "براكيت أعمدة 11م"))
+    if net.extra_bracket_12:
+        add(MaterialLine(*M_BRACKET_12, net.extra_bracket_12, "إضافي يُدخله المستخدم"))
+    if net.extra_bracket_14:
+        add(MaterialLine(*M_BRACKET_14, net.extra_bracket_14, "إضافي يُدخله المستخدم"))
 
     # التأريض — لا يتغيّر بنوع الدائرة
     if poles:
-        add(MaterialLine(*M_EARTH_WIRE, poles * EARTH_WIRE_PER_POLE, "تأريض أعمدة 11م"))
-        add(MaterialLine(*M_EARTH_TERMINAL, poles * EARTH_TERMINAL_PER_POLE, "تأريض أعمدة 11م"))
+        add(MaterialLine(*M_EARTH_WIRE, poles * EARTH_WIRE_PER_POLE,
+                         f"تأريض أعمدة 11م: {poles} عموداً × {EARTH_WIRE_PER_POLE}"))
+        add(MaterialLine(*M_EARTH_TERMINAL, poles * EARTH_TERMINAL_PER_POLE,
+                         f"تأريض أعمدة 11م: {poles} عموداً × {EARTH_TERMINAL_PER_POLE}"))
 
     # الكونكريت — يُقرَّب لأعلى على مستوى الجهد، كما في الملف الأصلي
     concrete = lat * CONCRETE_11_LATTICE + rnd * CONCRETE_11_ROUND
     if concrete:
-        add(MaterialLine(*M_CONCRETE, _roundup(concrete), "أساسات أعمدة 11م"))
+        add(MaterialLine(*M_CONCRETE, _roundup(concrete),
+                         f"أساسات أعمدة 11م: {lat} × {CONCRETE_11_LATTICE:g}"
+                         f" + {rnd} × {CONCRETE_11_ROUND:g} = {concrete:,.3f} ← مقرَّب لأعلى"))
 
     # ستي رود — 12 م واير لكل طقم على أعمدة 11م
     if net.stay_rod_sets:
-        add(MaterialLine(*M_STAY_SET, net.stay_rod_sets, "ستي رود 11م"))
-        add(
-            MaterialLine(
-                *M_STAY_WIRE, net.stay_rod_sets * STAY_WIRE_PER_SET_11M, "ستي رود 11م"
-            )
-        )
+        add(MaterialLine(*M_STAY_SET, net.stay_rod_sets, f"ستي رود على أعمدة 11م"))
+        add(MaterialLine(*M_STAY_WIRE, net.stay_rod_sets * STAY_WIRE_PER_SET_11M,
+                         f"ستي رود 11م: {net.stay_rod_sets} × {STAY_WIRE_PER_SET_11M} م"))
 
     return lines
 
@@ -337,76 +350,93 @@ def materials_33kv(net: Network33kV) -> list[MaterialLine]:
     double = net.circuit is CircuitType.DOUBLE
     poles_total = susp + anchors * 2
 
+    circ = "مزدوجة" if double else "مفردة"
+
     # السلك
     qty = wire_quantity(
         net.route_length_m, net.circuit, net.length_includes_waste, net.waste_pct
     )
     if qty:
-        add(MaterialLine(*M_WIRE_33, qty, "مسار 33 ك.ف"))
+        factor = 1.0 if net.length_includes_waste else 1 + net.waste_pct
+        add(MaterialLine(*M_WIRE_33, qty,
+                         f"مسار 33 ك.ف: {net.route_length_m:,.0f} × 3 أطوار"
+                         f" × {net.circuit.circuits} دائرة × {factor:g} زيادة"))
 
     # الأعمدة — كل ركيزة عمودان مشبكان 14م
-    if poles_total:
-        add(MaterialLine(*M_POLE_14, poles_total, "أعمدة وركائز 33 ك.ف"))
+    if susp:
+        add(MaterialLine(*M_POLE_14, susp, f"أعمدة تعليق 14م: {susp}"))
+    if anchors:
+        add(MaterialLine(*M_POLE_14, anchors * 2,
+                         f"الركائز: {anchors} ركيزة × 2 عمود"))
 
     # البراكيت 2م: الحاجة على أعمدة التعليق، والمرفق يُجمع من كل أعمدة 14م ثم يُطرح.
     # هذا يُنتج سلوك «استخدام فائض الركائز على أعمدة التعليق» تلقائياً (ق-١٥).
-    need_b2 = susp * (3 if double else 1)
+    per_susp = 3 if double else 1
+    need_b2 = susp * per_susp
     included_b2 = poles_total if net.pole_supply.includes_bracket else 0
-    b2 = max(0, need_b2 - included_b2) + net.extra_bracket_2
+    b2 = max(0, need_b2 - included_b2)
     if b2:
-        add(MaterialLine(*M_BRACKET_2, b2, "براكيت أعمدة التعليق 14م"))
+        detail = f"أعمدة التعليق ({circ}): {susp} × {per_susp} = {need_b2}"
+        if included_b2:
+            detail += f"، ناقص {included_b2} مرفقاً مع أعمدة 14م"
+        add(MaterialLine(*M_BRACKET_2, b2, detail))
+    if net.extra_bracket_2:
+        add(MaterialLine(*M_BRACKET_2, net.extra_bracket_2, "إضافي يُدخله المستخدم"))
 
     # البراكيت 2.5م — لكل ركيزة كاملة (عمودين)
-    b25 = anchors * (6 if double else 2) + net.extra_bracket_25
-    if b25:
-        add(MaterialLine(*M_BRACKET_25, b25, "براكيت الركائز"))
+    per_anchor = 6 if double else 2
+    if anchors:
+        add(MaterialLine(*M_BRACKET_25, anchors * per_anchor,
+                         f"الركائز ({circ}): {anchors} ركيزة × {per_anchor}"))
+    if net.extra_bracket_25:
+        add(MaterialLine(*M_BRACKET_25, net.extra_bracket_25, "إضافي يُدخله المستخدم"))
 
     # العوازل — الدبوسي على أعمدة التعليق والركائز، والقرصي على الركائز فقط
-    if susp or anchors:
-        add(
-            MaterialLine(
-                *M_PIN_INSULATOR_33,
-                (susp + anchors) * (6 if double else 3),
-                "أعمدة وركائز 33 ك.ف",
-            )
-        )
+    pin = 6 if double else 3
+    if susp:
+        add(MaterialLine(*M_PIN_INSULATOR_33, susp * pin,
+                         f"أعمدة تعليق 14م ({circ}): {susp} × {pin}"))
     if anchors:
-        add(MaterialLine(*M_DISC_INSULATOR_33, anchors * (12 if double else 6), "الركائز"))
-        add(MaterialLine(*M_AL_FITTINGS_33, anchors * (24 if double else 12), "الركائز"))
+        add(MaterialLine(*M_PIN_INSULATOR_33, anchors * pin,
+                         f"الركائز ({circ}): {anchors} ركيزة × {pin}"))
+        add(MaterialLine(*M_DISC_INSULATOR_33, anchors * (12 if double else 6),
+                         f"الركائز للشد ({circ}): {anchors} × {12 if double else 6}"))
+        add(MaterialLine(*M_AL_FITTINGS_33, anchors * (24 if double else 12),
+                         f"الركائز ({circ}): {anchors} × {24 if double else 12}"))
 
     # التأريض
     if poles_total:
-        add(MaterialLine(*M_EARTH_WIRE, poles_total * EARTH_WIRE_PER_POLE, "تأريض أعمدة 14م"))
-        add(
-            MaterialLine(
-                *M_EARTH_TERMINAL, poles_total * EARTH_TERMINAL_PER_POLE, "تأريض أعمدة 14م"
-            )
-        )
+        add(MaterialLine(*M_EARTH_WIRE, poles_total * EARTH_WIRE_PER_POLE,
+                         f"تأريض أعمدة 14م: {poles_total} عموداً × {EARTH_WIRE_PER_POLE}"))
+        add(MaterialLine(*M_EARTH_TERMINAL, poles_total * EARTH_TERMINAL_PER_POLE,
+                         f"تأريض أعمدة 14م: {poles_total} عموداً × {EARTH_TERMINAL_PER_POLE}"))
 
     # الكونكريت — تقريب لأعلى مستقل عن كونكريت 11 ك.ف، كما في الملف الأصلي
-    concrete = (
-        susp * CONCRETE_14_SUSPENSION[net.circuit]
-        + net.anchors_mid * CONCRETE_14_MID_ANCHOR[net.circuit]
-        + net.anchors_end * CONCRETE_14_END_ANCHOR[net.circuit]
-    )
+    parts = [
+        (susp, CONCRETE_14_SUSPENSION[net.circuit], "تعليق"),
+        (net.anchors_mid, CONCRETE_14_MID_ANCHOR[net.circuit], "ركيزة وسطية"),
+        (net.anchors_end, CONCRETE_14_END_ANCHOR[net.circuit], "ركيزة بداية ونهاية"),
+    ]
+    concrete = sum(count * coef for count, coef, _ in parts)
     if concrete:
-        add(MaterialLine(*M_CONCRETE, _roundup(concrete), "أساسات أعمدة 33 ك.ف"))
+        terms = " + ".join(f"{c} {label} × {k:g}" for c, k, label in parts if c)
+        add(MaterialLine(*M_CONCRETE, _roundup(concrete),
+                         f"أساسات 33 ك.ف ({circ}): {terms} = {concrete:,.3f} ← مقرَّب لأعلى"))
 
     # شيش التسليح — لا يتغيّر بنوع الدائرة
     rebar = (
         net.anchors_mid * REBAR_PER_MID_ANCHOR + net.anchors_end * REBAR_PER_END_ANCHOR
     ) / REBAR_DIVISOR
     if rebar:
-        add(MaterialLine(*M_REBAR, rebar, "تسليح أسس الركائز"))
+        add(MaterialLine(*M_REBAR, rebar,
+                         f"تسليح أسس الركائز: ({net.anchors_mid} × {REBAR_PER_MID_ANCHOR}"
+                         f" + {net.anchors_end} × {REBAR_PER_END_ANCHOR}) ÷ {REBAR_DIVISOR}"))
 
     # ستي رود — 15 م واير لكل طقم على أعمدة 14م
     if net.stay_rod_sets:
-        add(MaterialLine(*M_STAY_SET, net.stay_rod_sets, "ستي رود 14م"))
-        add(
-            MaterialLine(
-                *M_STAY_WIRE, net.stay_rod_sets * STAY_WIRE_PER_SET_14M, "ستي رود 14م"
-            )
-        )
+        add(MaterialLine(*M_STAY_SET, net.stay_rod_sets, "ستي رود على أعمدة 14م"))
+        add(MaterialLine(*M_STAY_WIRE, net.stay_rod_sets * STAY_WIRE_PER_SET_14M,
+                         f"ستي رود 14م: {net.stay_rod_sets} × {STAY_WIRE_PER_SET_14M} م"))
 
     return lines
 
@@ -492,6 +522,12 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
     raw = materials_11kv(project.net11) + materials_33kv(project.net33)
     totals = aggregate(raw)
 
+    # تفصيل كل مادة: الأسطر التي ساهمت فيها ومعادلة كل سطر — ليتمكّن المدقّق من
+    # تتبّع الرقم النهائي إلى مصادره بدل قبوله كما هو.
+    breakdown: dict[tuple[str, str], list[MaterialLine]] = {}
+    for line in raw:
+        breakdown.setdefault((line.name, line.unit), []).append(line)
+
     materials = []
     materials_cost = 0.0
     for (name, unit), qty in totals.items():
@@ -500,6 +536,7 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
         quantity_only = entry.get("كمية_فقط", False)
         cost = 0.0 if (price is None or quantity_only) else qty * price
         materials_cost += cost
+        contributors = breakdown[(name, unit)]
         materials.append(
             {
                 "المادة": name,
@@ -509,6 +546,8 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
                 "الكلفة": cost,
                 "كمية_فقط": quantity_only,
                 "سعر_مفقود": price is None,
+                "تفصيل": [{"الكمية": c.qty, "المصدر": c.source} for c in contributors],
+                "مجمَّع": len(contributors) > 1,
             }
         )
 

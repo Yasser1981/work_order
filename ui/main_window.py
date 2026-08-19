@@ -41,6 +41,7 @@ class MainWindow(QMainWindow):
     def __init__(self, catalog: dict) -> None:
         super().__init__()
         self.catalog = catalog
+        self._rows: list[dict] = []
         self.setWindowTitle("نظام أوامر العمل الكهربائية — الشبكة الهوائية")
         self.resize(1500, 950)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -84,7 +85,19 @@ class MainWindow(QMainWindow):
             ["المادة", "الوحدة", "الكمية", "سعر الوحدة", "الكلفة"]
         )
         self._tune_table(self.materials)
+        self.materials.itemSelectionChanged.connect(self._show_breakdown)
         layout.addWidget(self.materials, stretch=3)
+
+        # تفصيل الرقم — من أين جاءت كمية المادة المحدّدة
+        self.breakdown = QLabel()
+        self.breakdown.setWordWrap(True)
+        self.breakdown.setObjectName("hint")
+        self.breakdown.setTextFormat(Qt.TextFormat.RichText)
+        self.breakdown.setMinimumHeight(70)
+        self.breakdown.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight
+        )
+        layout.addWidget(self.breakdown)
 
         title = QLabel("أجور العمل")
         title.setFont(QFont("", 12, QFont.Weight.Bold))
@@ -124,6 +137,30 @@ class MainWindow(QMainWindow):
 
     # ─────────────────────────────── الحساب ───────────────────────────────
 
+    @staticmethod
+    def _fmt(value: float) -> str:
+        return f"{value:,.3f}".rstrip("0").rstrip(".") if value % 1 else f"{value:,.0f}"
+
+    def _show_breakdown(self) -> None:
+        """يعرض تفصيل كمية المادة المحدّدة — مصادرها ومعادلة كل مصدر."""
+        index = self.materials.currentRow()
+        if index < 0 or index >= len(self._rows):
+            self.breakdown.setText("اختر مادة من الجدول لعرض تفصيل حساب كميتها.")
+            return
+        row = self._rows[index]
+        parts = row["تفصيل"]
+
+        head = f"<b>{row['المادة']}</b> — الكمية {self._fmt(row['الكمية'])} {row['الوحدة']}"
+        if len(parts) == 1:
+            body = f"<br>{parts[0]['المصدر']}"
+        else:
+            items = "".join(
+                f"<br>&nbsp;&nbsp;• <b>{self._fmt(p['الكمية'])}</b> ← {p['المصدر']}"
+                for p in parts
+            )
+            body = f" &nbsp;<i>(مجموع {len(parts)} مصادر)</i>{items}"
+        self.breakdown.setText(head + body)
+
     def recalculate(self) -> None:
         project = OverheadProject(
             net11=self.panel11.network(), net33=self.panel33.network()
@@ -131,6 +168,7 @@ class MainWindow(QMainWindow):
         result = compute(project, self.catalog)
 
         rows = result["المواد"]
+        self._rows = rows
         self.materials.setRowCount(len(rows))
         for r, row in enumerate(rows):
             qty = row["الكمية"]
@@ -142,7 +180,8 @@ class MainWindow(QMainWindow):
             else:
                 price_text = f"{row['سعر الوحدة']:,.0f}"
                 cost_text = f"{row['الكلفة']:,.0f}"
-            cells = [row["المادة"], row["الوحدة"], qty_text, price_text, cost_text]
+            name = row["المادة"] + ("  ⊕" if row["مجمَّع"] else "")
+            cells = [name, row["الوحدة"], qty_text, price_text, cost_text]
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c:
@@ -175,6 +214,7 @@ class MainWindow(QMainWindow):
         else:
             self.warning.setVisible(False)
 
+        self._show_breakdown()
         self.total_mat.setText(f"كلفة المواد:  {result['كلفة_المواد']:,.0f}")
         self.total_lab.setText(f"أجور العمل:  {result['كلفة_العمل']:,.0f}")
         self.total_all.setText(f"الكلفة الكلية:  {result['الكلفة_الكلية']:,.0f} دينار")

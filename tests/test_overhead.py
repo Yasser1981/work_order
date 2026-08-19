@@ -561,3 +561,77 @@ def test_double_circuit_11kv_costs_more_than_single(catalog):
     double = compute(OverheadProject(net11=Network11kV(**base, circuit=DOUBLE)), catalog)
     assert double["كلفة_المواد"] > single["كلفة_المواد"]
     assert double["كلفة_العمل"] > single["كلفة_العمل"]
+
+
+# ═══════════════ ١٢. تتبّع مصدر الرقم (تدقيق الكميات) ═══════════════
+
+
+def test_every_material_carries_its_breakdown(catalog):
+    """كل مادة تحمل تفصيل مصادرها، ومجموع التفصيل يساوي الكمية بالضبط."""
+    project = OverheadProject(
+        net11=Network11kV(route_length_m=500, poles_lattice=5, poles_round=16),
+        net33=Network33kV(route_length_m=2000, poles_suspension=27, anchors_mid=3,
+                          anchors_end=2, circuit=DOUBLE),
+    )
+    result = compute(project, catalog)
+    assert result["المواد"]
+    for row in result["المواد"]:
+        assert row["تفصيل"], f"{row['المادة']} بلا تفصيل"
+        assert sum(p["الكمية"] for p in row["تفصيل"]) == pytest.approx(row["الكمية"])
+        assert all(p["المصدر"] for p in row["تفصيل"])
+
+
+def test_bracket_breakdown_separates_each_contributor(catalog):
+    """البراكيت 1.4 يأتي من ثلاثة مصادر — يجب أن تظهر منفصلة لا مجموعة."""
+    net = Network11kV(
+        poles_lattice=5, poles_round=16, circuit=DOUBLE,
+        lattice_supply=WITH, round_supply=WITH, extra_bracket_14=3,
+    )
+    result = compute(OverheadProject(net11=net), catalog)
+    row = next(r for r in result["المواد"] if r["المادة"] == "براكيت 1.4 م مع الملحقات")
+    assert row["مجمَّع"] is True
+    assert len(row["تفصيل"]) == 3
+    assert {p["الكمية"] for p in row["تفصيل"]} == {5, 16, 3}
+    assert any("إضافي" in p["المصدر"] for p in row["تفصيل"])
+    assert any("مشبك" in p["المصدر"] for p in row["تفصيل"])
+    assert any("مدوّر" in p["المصدر"] for p in row["تفصيل"])
+
+
+def test_breakdown_shows_the_deduction_of_included_bracket(catalog):
+    """المصدر يذكر خصم البراكيت المرفق مع العمود، لا الرقم النهائي وحده."""
+    net = Network11kV(poles_lattice=5, lattice_supply=WITH)
+    result = compute(OverheadProject(net11=net), catalog)
+    row = next(r for r in result["المواد"] if r["المادة"] == "براكيت 1.4 م مع الملحقات")
+    assert "مرفق مع العمود" in row["تفصيل"][0]["المصدر"]
+
+
+def test_shared_material_breakdown_names_both_voltages(catalog):
+    """سلك النحاس يأتي من الجهدين — التفصيل يبيّن نصيب كل جهد."""
+    project = OverheadProject(
+        net11=Network11kV(poles_lattice=5, poles_round=16),
+        net33=Network33kV(poles_suspension=27, anchors_mid=3, anchors_end=2),
+    )
+    result = compute(project, catalog)
+    row = next(r for r in result["المواد"] if r["المادة"] == "سلك نحاس 50 ملم2")
+    sources = [p["المصدر"] for p in row["تفصيل"]]
+    assert any("11م" in s for s in sources)
+    assert any("14م" in s for s in sources)
+    assert sum(p["الكمية"] for p in row["تفصيل"]) == row["الكمية"]
+
+
+def test_single_source_material_is_not_marked_aggregated(catalog):
+    net = Network11kV(route_length_m=500)
+    result = compute(OverheadProject(net11=net), catalog)
+    row = next(r for r in result["المواد"] if r["المادة"] == "سلك ألمنيوم 120/20 ملم²")
+    assert row["مجمَّع"] is False
+    assert len(row["تفصيل"]) == 1
+
+
+def test_rounded_concrete_breakdown_shows_the_unrounded_value(catalog):
+    """الكونكريت مقرَّب لأعلى — التفصيل يعرض القيمة قبل التقريب لتفسير الفرق."""
+    net = Network11kV(poles_lattice=5, poles_round=16)   # 5 + 12.096 = 17.096 ← 18
+    result = compute(OverheadProject(net11=net), catalog)
+    row = next(r for r in result["المواد"] if r["المادة"] == "كونكريت أساسات الأعمدة")
+    assert row["الكمية"] == 18
+    assert "17.096" in row["تفصيل"][0]["المصدر"]
+    assert "مقرَّب لأعلى" in row["تفصيل"][0]["المصدر"]
