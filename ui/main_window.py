@@ -3,13 +3,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMainWindow,
+    QMessageBox,
+    QPushButton,
     QSplitter,
     QTabWidget,
     QTableWidget,
@@ -20,7 +25,9 @@ from PyQt6.QtWidgets import (
 
 from engine.overhead import compute
 from engine.types import OverheadProject
+from printing.iso_form import write_pdf
 
+from .order_panel import OrderPanel
 from .panels import Panel11kV, Panel33kV
 
 STYLE = """
@@ -34,6 +41,7 @@ QLabel#hint   { color: palette(dark); background: palette(alternate-base);
                 border-radius: 4px; padding: 6px 8px; }
 QLabel#total  { font-size: 15px; font-weight: 700; }
 QPushButton   { padding: 6px 14px; border-radius: 5px; }
+QPushButton#print { font-weight: 600; padding: 8px 20px; }
 """
 
 
@@ -42,6 +50,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.catalog = catalog
         self._rows: list[dict] = []
+        self.result: dict = {"المواد": [], "أسعار_مفقودة": []}
         self.setWindowTitle("نظام أوامر العمل الكهربائية — الشبكة الهوائية")
         self.resize(1500, 950)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -52,12 +61,14 @@ class MainWindow(QMainWindow):
     def _build(self) -> None:
         self.panel11 = Panel11kV(self.catalog)
         self.panel33 = Panel33kV(self.catalog)
+        self.order_panel = OrderPanel()
         self.panel11.changed.connect(self.recalculate)
         self.panel33.changed.connect(self.recalculate)
 
         tabs = QTabWidget()
         tabs.addTab(self.panel11, "شبكة 11 ك.ف")
         tabs.addTab(self.panel33, "شبكة 33 ك.ف")
+        tabs.addTab(self.order_panel, "أمر العمل")
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(tabs)
@@ -121,8 +132,57 @@ class MainWindow(QMainWindow):
         for w in (self.total_mat, self.total_lab, self.total_all):
             totals.addWidget(w)
         totals.addStretch(1)
+        self.print_button = QPushButton("طباعة أمر العمل  (PDF)")
+        self.print_button.setObjectName("print")
+        self.print_button.clicked.connect(self.export_pdf)
+        totals.addWidget(self.print_button)
         layout.addLayout(totals)
         return pane
+
+    # ─────────────────────────────── الطباعة ───────────────────────────────
+
+    def write_order_pdf(self, path: str) -> str:
+        """يكتب أمر العمل ملفَّ PDF ويعيد المسار.
+
+        بلا أي حوار — الحوارات في `export_pdf` وحدها. الفصل مقصود: هذه الدالة
+        قابلة للاختبار والاستدعاء آلياً، والنوافذ الحاجزة تُعطّل كليهما.
+        """
+        if not self.result["المواد"]:
+            raise ValueError("جدول المواد فارغ — أدخل معطيات الشبكة أولاً.")
+        if not path.lower().endswith(".pdf"):
+            path += ".pdf"
+        write_pdf(self.order_panel.order(), self.result, path)
+        return path
+
+    def export_pdf(self) -> str | None:
+        """معالج زرّ الطباعة: يتحقّق، يسأل عن المسار، يكتب، ثم يُعلم المستخدم."""
+        if not self.result["المواد"]:
+            QMessageBox.warning(self, "لا توجد مواد",
+                                "أدخل معطيات الشبكة أولاً — جدول المواد فارغ.")
+            return None
+
+        number = self.order_panel.number.text().strip()
+        suggested = f"أمر عمل {number}.pdf" if number else "أمر عمل.pdf"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "حفظ أمر العمل", suggested, "ملفات PDF (*.pdf)"
+        )
+        if not path:
+            return None
+
+        try:
+            path = self.write_order_pdf(path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "تعذّر الحفظ", f"لم يُكتب الملف:\n{exc}")
+            return None
+
+        missing = self.result["أسعار_مفقودة"]
+        note = ""
+        if missing:
+            note = ("\n\nتنبيه: مواد بلا سعر لم تُحتسب كلفتها في المجموع:\n"
+                    + "، ".join(missing))
+        QMessageBox.information(self, "تم الحفظ",
+                                f"حُفظ أمر العمل في:\n{Path(path).name}{note}")
+        return path
 
     @staticmethod
     def _tune_table(table: QTableWidget) -> None:
@@ -166,6 +226,7 @@ class MainWindow(QMainWindow):
             net11=self.panel11.network(), net33=self.panel33.network()
         )
         result = compute(project, self.catalog)
+        self.result = result
 
         rows = result["المواد"]
         self._rows = rows
