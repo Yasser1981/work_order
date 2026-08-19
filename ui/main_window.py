@@ -8,6 +8,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -25,7 +26,7 @@ from PyQt6.QtWidgets import (
 
 from engine.overhead import compute
 from engine.types import OverheadProject
-from printing.iso_form import write_pdf
+import printing
 
 from .order_panel import OrderPanel
 from .panels import Panel11kV, Panel33kV
@@ -132,7 +133,20 @@ class MainWindow(QMainWindow):
         for w in (self.total_mat, self.total_lab, self.total_all):
             totals.addWidget(w)
         totals.addStretch(1)
-        self.print_button = QPushButton("طباعة أمر العمل  (PDF)")
+
+        totals.addWidget(QLabel("القالب:"))
+        self.template_box = QComboBox()
+        for template in printing.available():
+            self.template_box.addItem(template.name, template.key)
+            self.template_box.setItemData(
+                self.template_box.count() - 1,
+                template.description,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self.template_box.setMinimumWidth(170)
+        totals.addWidget(self.template_box)
+
+        self.print_button = QPushButton("طباعة  (PDF)")
         self.print_button.setObjectName("print")
         self.print_button.clicked.connect(self.export_pdf)
         totals.addWidget(self.print_button)
@@ -141,8 +155,13 @@ class MainWindow(QMainWindow):
 
     # ─────────────────────────────── الطباعة ───────────────────────────────
 
-    def write_order_pdf(self, path: str) -> str:
-        """يكتب أمر العمل ملفَّ PDF ويعيد المسار.
+    @property
+    def template(self) -> printing.Template:
+        """القالب المختار حالياً."""
+        return printing.get(self.template_box.currentData())
+
+    def write_order_pdf(self, path: str, template_key: str | None = None) -> str:
+        """يكتب أمر العمل ملفَّ PDF بالقالب المختار ويعيد المسار.
 
         بلا أي حوار — الحوارات في `export_pdf` وحدها. الفصل مقصود: هذه الدالة
         قابلة للاختبار والاستدعاء آلياً، والنوافذ الحاجزة تُعطّل كليهما.
@@ -151,7 +170,8 @@ class MainWindow(QMainWindow):
             raise ValueError("جدول المواد فارغ — أدخل معطيات الشبكة أولاً.")
         if not path.lower().endswith(".pdf"):
             path += ".pdf"
-        write_pdf(self.order_panel.order(), self.result, path)
+        template = printing.get(template_key) if template_key else self.template
+        template.write_pdf(self.order_panel.order(), self.result, path)
         return path
 
     def export_pdf(self) -> str | None:
@@ -162,7 +182,10 @@ class MainWindow(QMainWindow):
             return None
 
         number = self.order_panel.number.text().strip()
-        suggested = f"أمر عمل {number}.pdf" if number else "أمر عمل.pdf"
+        stem = f"أمر عمل {number}" if number else "أمر عمل"
+        if self.template.key != "iso":
+            stem += f" - {self.template.name}"
+        suggested = f"{stem}.pdf"
         path, _ = QFileDialog.getSaveFileName(
             self, "حفظ أمر العمل", suggested, "ملفات PDF (*.pdf)"
         )
@@ -180,8 +203,9 @@ class MainWindow(QMainWindow):
         if missing:
             note = ("\n\nتنبيه: مواد بلا سعر لم تُحتسب كلفتها في المجموع:\n"
                     + "، ".join(missing))
-        QMessageBox.information(self, "تم الحفظ",
-                                f"حُفظ أمر العمل في:\n{Path(path).name}{note}")
+        QMessageBox.information(
+            self, "تم الحفظ",
+            f"حُفظ بقالب «{self.template.name}» في:\n{Path(path).name}{note}")
         return path
 
     @staticmethod
