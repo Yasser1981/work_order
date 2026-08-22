@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from engine.lowvoltage import conductor_quantity, count_poles_lv
 from engine.overhead import (
     resolve_spans,
     suggest_poles_11kv,
@@ -22,8 +23,10 @@ from engine.overhead import (
 from engine.types import (
     BracketPattern,
     CircuitType,
+    LVNetworkType,
     Network11kV,
     Network33kV,
+    NetworkLV,
     SupplyForm,
 )
 
@@ -347,4 +350,178 @@ class Panel33kV(QWidget):
         )
         self.stay_hint.setText(
             f"واير ستي = {self.stay.value()} × 15 م = <b>{self.stay.value() * 15:,} م</b>"
+        )
+
+
+class PanelLV(QWidget):
+    """مدخلات شبكة الضغط الواطئ (ق-٢٢)."""
+
+    changed = pyqtSignal()
+
+    def __init__(self, catalog: dict) -> None:
+        super().__init__()
+        self.catalog = catalog
+        self._build()
+        self._connect()
+        self.refresh_hints()
+
+    def _build(self) -> None:
+        body, layout = scroll_body()
+
+        box, form = section("المسار والموصل")
+        self.enabled = QCheckBox("المشروع يتضمّن شبكة ضغط واطئ")
+        self.route = number_field(0, 500_000, 0, suffix="م")
+        self.kind = _combo([LVNetworkType.BARE_WIRES, LVNetworkType.BUNDLED_CABLE])
+        self.waste_included = QCheckBox("الطول المُدخل يشمل نسبة الزيادة")
+        self.waste_pct = number_field(0, 100, 10, decimals=1, step=0.5, suffix="%")
+        form.addRow(self.enabled)
+        form.addRow("طول مسار الشبكة:", self.route)
+        form.addRow("نوع الشبكة:", self.kind)
+        form.addRow("", self.waste_included)
+        form.addRow("نسبة الزيادة:", self.waste_pct)
+        self.wire_hint = HintLabel()
+        form.addRow(self.wire_hint)
+        layout.addWidget(box)
+
+        box, form = section("أعمدة 9م  —  الحساب استرشادي وغير مُلزِم")
+        self.span = number_field(1, 500, 20, suffix="م")
+        self.tension_span = number_field(1, 5000, 100, suffix="م")
+        form.addRow("المسافة بين الأعمدة:", self.span)
+        form.addRow("المسافة بين أعمدة الشد:", self.tension_span)
+        self.poles_hint = HintLabel()
+        form.addRow(self.poles_hint)
+        self.adopt = QPushButton("اعتماد القيم المقترحة  ↓")
+        form.addRow(self.adopt)
+        self.lattice = number_field(0, 100_000, 0)
+        self.round_ = number_field(0, 100_000, 0)
+        form.addRow("عدد أعمدة 9م مشبك:", self.lattice)
+        form.addRow("عدد أعمدة 9م مدوّر:", self.round_)
+        self.accessory_hint = HintLabel()
+        form.addRow(self.accessory_hint)
+        layout.addWidget(box)
+
+        box, form = section("الشبكة على أعمدة الضغط العالي")
+        self.on_hv = QCheckBox("تمرّ شبكة الضغط الواطئ على أعمدة الضغط العالي")
+        self.hv_kind = _combo([LVNetworkType.BUNDLED_CABLE, LVNetworkType.BARE_WIRES])
+        self.hv_lattice = number_field(0, 100_000, 0)
+        self.hv_round = number_field(0, 100_000, 0)
+        form.addRow(self.on_hv)
+        form.addRow("نوع الشبكة على تلك الأعمدة:", self.hv_kind)
+        form.addRow("عدد أعمدة ض.ع مشبك:", self.hv_lattice)
+        form.addRow("عدد أعمدة ض.ع مدوّر:", self.hv_round)
+        self.hv_hint = HintLabel()
+        form.addRow(self.hv_hint)
+        layout.addWidget(box)
+
+        box, form = section("المستهلكون")
+        self.consumers = number_field(0, 100_000, 0)
+        form.addRow("عدد المستهلكين:", self.consumers)
+        self.consumer_hint = HintLabel()
+        form.addRow(self.consumer_hint)
+        layout.addWidget(box)
+
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+
+    def _connect(self) -> None:
+        for w in (self.route, self.waste_pct, self.span, self.tension_span,
+                  self.lattice, self.round_, self.hv_lattice, self.hv_round,
+                  self.consumers):
+            w.valueChanged.connect(self._on_change)
+        for w in (self.kind, self.hv_kind):
+            w.currentIndexChanged.connect(self._on_change)
+        for w in (self.enabled, self.waste_included, self.on_hv):
+            w.toggled.connect(self._on_change)
+        self.adopt.clicked.connect(self._adopt_suggestion)
+
+    def _on_change(self) -> None:
+        self.refresh_hints()
+        self.changed.emit()
+
+    def _adopt_suggestion(self) -> None:
+        net = self.network() or self._raw_network()
+        span, tension = self.span.value(), self.tension_span.value()
+        result = count_poles_lv(net.route_length_m, span, tension)
+        self.lattice.setValue(result.lattice)
+        self.round_.setValue(result.round_)
+
+    def _raw_network(self) -> NetworkLV:
+        """الشبكة كما تصفها الحقول، بصرف النظر عن مربّع التفعيل."""
+        return NetworkLV(
+            route_length_m=self.route.value(),
+            kind=self.kind.currentData(),
+            length_includes_waste=self.waste_included.isChecked(),
+            waste_pct=self.waste_pct.value() / 100.0,
+            span_m=self.span.value(),
+            tension_span_m=self.tension_span.value(),
+            poles_lattice=self.lattice.value(),
+            poles_round=self.round_.value(),
+            consumers=self.consumers.value(),
+            on_hv_poles=self.on_hv.isChecked(),
+            hv_kind=self.hv_kind.currentData(),
+            hv_poles_lattice=self.hv_lattice.value(),
+            hv_poles_round=self.hv_round.value(),
+        )
+
+    def network(self) -> NetworkLV | None:
+        """None حين لا يتضمّن المشروع شبكة ضغط واطئ."""
+        return self._raw_network() if self.enabled.isChecked() else None
+
+    def refresh_hints(self) -> None:
+        net = self._raw_network()
+        on = self.enabled.isChecked()
+        for w in (self.route, self.kind, self.waste_included, self.waste_pct,
+                  self.span, self.tension_span, self.adopt, self.lattice,
+                  self.round_, self.on_hv, self.consumers):
+            w.setEnabled(on)
+        self.waste_pct.setEnabled(on and not net.length_includes_waste)
+        for w in (self.hv_kind, self.hv_lattice, self.hv_round):
+            w.setEnabled(on and self.on_hv.isChecked())
+
+        factor = 1.0 if net.length_includes_waste else 1 + net.waste_pct
+        qty = conductor_quantity(net)
+        material = ("سلك ألمنيوم 95 ملم²" if net.kind is LVNetworkType.BARE_WIRES
+                    else "قابلو ألمنيوم معلق")
+        self.wire_hint.setText(
+            f"{material} = {net.route_length_m:,.0f} × {net.kind.conductors}"
+            f" × {factor:g} = <b>{qty:,} م</b>"
+            + ("<br>الأسلاك 4 موصلات: 3 حارة و1 بارد."
+               if net.kind is LVNetworkType.BARE_WIRES
+               else "<br>القابلو المعلق كابل واحد يضمّ الموصلات — لا يُضرب.")
+        )
+
+        s = count_poles_lv(net.route_length_m, self.span.value(), self.tension_span.value())
+        step = int(self.tension_span.value() // self.span.value()) or 1
+        self.poles_hint.setText(
+            f"المقترح: <b>{s.total}</b> عموداً — <b>{s.lattice}</b> مشبك و<b>{s.round_}</b> مدوّر."
+            f"<br>عمود شد كل {step} أعمدة ({step * self.span.value():g} م)."
+        )
+
+        lat, rnd = net.poles_lattice, net.poles_round
+        if net.kind is LVNetworkType.BARE_WIRES:
+            self.accessory_hint.setText(
+                f"بوكس كلامب = {lat}×8 + {rnd}×4 = <b>{lat * 8 + rnd * 4:,}</b>"
+                f" &nbsp;·&nbsp; معدات ربط ألمنيوم = {lat}×8 = <b>{lat * 8:,}</b>"
+            )
+        else:
+            self.accessory_hint.setText(
+                f"هوك تعليق = {lat}×2 + {rnd}×1 = <b>{lat * 2 + rnd:,}</b>"
+                f" &nbsp;·&nbsp; كلامب شد = <b>{lat * 2:,}</b>"
+                f" &nbsp;·&nbsp; كلامب تعليق = <b>{rnd:,}</b>"
+                f"<br>كونكتر القابلو = {lat}×5 = <b>{lat * 5:,}</b> (نهايات بكرة — للمشبك فقط)"
+            )
+
+        self.hv_hint.setText(
+            "تُضاف الكلامبات وحدها — الأعمدة قائمة أصلاً أو محسوبة في قسم الضغط العالي، "
+            "فلا تُحتسب أعمدة ولا تأريض ولا كونكريت."
+        )
+        self.consumer_hint.setText(
+            f"كونكتر ربط مشتركين = {self.consumers.value()} × 1 = "
+            f"<b>{self.consumers.value():,}</b> &nbsp;—&nbsp; السعر والأجر غير محدَّدين بعد."
         )

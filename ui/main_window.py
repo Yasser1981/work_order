@@ -29,7 +29,7 @@ from engine.types import OverheadProject
 import printing
 
 from .order_panel import OrderPanel
-from .panels import Panel11kV, Panel33kV
+from .panels import Panel11kV, Panel33kV, PanelLV
 
 STYLE = """
 QWidget       { font-size: 13px; }
@@ -62,13 +62,16 @@ class MainWindow(QMainWindow):
     def _build(self) -> None:
         self.panel11 = Panel11kV(self.catalog)
         self.panel33 = Panel33kV(self.catalog)
+        self.panellv = PanelLV(self.catalog)
         self.order_panel = OrderPanel()
         self.panel11.changed.connect(self.recalculate)
         self.panel33.changed.connect(self.recalculate)
+        self.panellv.changed.connect(self.recalculate)
 
         tabs = QTabWidget()
         tabs.addTab(self.panel11, "شبكة 11 ك.ف")
         tabs.addTab(self.panel33, "شبكة 33 ك.ف")
+        tabs.addTab(self.panellv, "الضغط الواطئ")
         tabs.addTab(self.order_panel, "أمر العمل")
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -123,6 +126,7 @@ class MainWindow(QMainWindow):
         self.warning = QLabel()
         self.warning.setWordWrap(True)
         self.warning.setObjectName("hint")
+        self.warning.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.warning)
 
         totals = QHBoxLayout()
@@ -247,7 +251,9 @@ class MainWindow(QMainWindow):
 
     def recalculate(self) -> None:
         project = OverheadProject(
-            net11=self.panel11.network(), net33=self.panel33.network()
+            net11=self.panel11.network(),
+            net33=self.panel33.network(),
+            netlv=self.panellv.network(),
         )
         result = compute(project, self.catalog)
         self.result = result
@@ -282,19 +288,22 @@ class MainWindow(QMainWindow):
         for r, line in enumerate(labour):
             qty = line.qty
             qty_text = f"{qty:,.0f}" if qty % 1 == 0 else f"{qty:,.2f}"
-            cells = [line.name, f"{qty_text} {line.unit}",
-                     f"{line.rate:,.0f}", f"{line.cost:,.0f}"]
+            rate_text = "— بلا أجر —" if line.rate_missing else f"{line.rate:,.0f}"
+            cost_text = "—" if line.rate_missing else f"{line.cost:,.0f}"
+            cells = [line.name, f"{qty_text} {line.unit}", rate_text, cost_text]
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.labour.setItem(r, c, item)
 
-        missing = result["أسعار_مفقودة"]
-        if missing:
-            self.warning.setText(
-                "⚠️ مواد بلا سعر، كلفتها غير محتسبة في المجموع: " + "، ".join(missing)
-            )
+        notes = []
+        if result["أسعار_مفقودة"]:
+            notes.append("مواد بلا سعر: " + "، ".join(result["أسعار_مفقودة"]))
+        if result.get("أجور_مفقودة"):
+            notes.append("بنود بلا أجر: " + "، ".join(result["أجور_مفقودة"]))
+        if notes:
+            self.warning.setText("⚠️ غير محتسب في المجموع — " + " &nbsp;|&nbsp; ".join(notes))
             self.warning.setVisible(True)
         else:
             self.warning.setVisible(False)

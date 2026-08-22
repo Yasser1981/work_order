@@ -195,3 +195,64 @@ def test_export_pdf_has_no_blocking_dialog_in_the_write_path():
     source = inspect.getsource(MainWindow.write_order_pdf)
     assert "QMessageBox" not in source
     assert "QFileDialog" not in source
+
+
+# ═══════════════════ لسان الضغط الواطئ ═══════════════════
+
+
+def test_lv_tab_is_off_by_default(window):
+    """المشروع بلا ضغط واطئ ما لم يُفعَّل صراحةً."""
+    assert window.panellv.network() is None
+    assert not any("9م" in m["المادة"] for m in window.result["المواد"])
+
+
+def test_enabling_lv_adds_its_materials(window):
+    window.panellv.enabled.setChecked(True)
+    window.panellv.route.setValue(1000)
+    window.panellv._adopt_suggestion()
+    names = [m["المادة"] for m in window.result["المواد"]]
+    assert "عمود 9م مشبك" in names
+    assert "سلك ألمنيوم 95 ملم²" in names
+
+
+def test_lv_adopt_matches_engine(window):
+    """20 م بين الأعمدة و100 م بين أعمدة الشد."""
+    window.panellv.enabled.setChecked(True)
+    window.panellv.route.setValue(1000)
+    window.panellv._adopt_suggestion()
+    assert window.panellv.lattice.value() == 11
+    assert window.panellv.round_.value() == 40
+
+
+def test_lv_kind_switches_the_material(window):
+    window.panellv.enabled.setChecked(True)
+    window.panellv.route.setValue(500)
+    window.panellv.kind.setCurrentIndex(0)          # أسلاك
+    assert any(m["المادة"] == "سلك ألمنيوم 95 ملم²" for m in window.result["المواد"])
+    window.panellv.kind.setCurrentIndex(1)          # قابلو معلق
+    names = [m["المادة"] for m in window.result["المواد"]]
+    assert "قابلو ألمنيوم معلق 3×120+95+16 ملم²" in names
+    assert "سلك ألمنيوم 95 ملم²" not in names
+
+
+def test_hv_pole_fields_follow_their_checkbox(window):
+    window.panellv.enabled.setChecked(True)
+    window.panellv.on_hv.setChecked(False)
+    assert not window.panellv.hv_lattice.isEnabled()
+    window.panellv.on_hv.setChecked(True)
+    assert window.panellv.hv_lattice.isEnabled()
+
+
+def test_warning_reports_both_missing_prices_and_missing_rates(window):
+    """المادة بلا سعر والبند بلا أجر يظهران معاً في التحذير."""
+    window.panellv.enabled.setChecked(True)
+    window.panellv.consumers.setValue(10)
+    assert "كونكتر ربط مشتركين" in window.warning.text()
+    assert "ربط المستهلكين" in window.warning.text()
+
+
+def test_warning_renders_as_rich_text_not_raw_markup(window):
+    """اللافتة في وضع RichText — وإلا ظهرت رموز HTML نصّاً خاماً للمستخدم."""
+    from PyQt6.QtCore import Qt
+
+    assert window.warning.textFormat() == Qt.TextFormat.RichText
