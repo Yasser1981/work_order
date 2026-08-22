@@ -12,6 +12,7 @@ import pytest
 from engine import load_catalog
 from engine.overhead import (
     aggregate,
+    bracket_need_11,
     bracket_purchase_11,
     compute,
     count_poles_11kv,
@@ -246,8 +247,9 @@ def test_wire_rounds_up():
         # الشبكة المزدوجة — النمط القياسي
         (DOUBLE, STD, RND, WITH,    {"1.2": 1, "1.4": 1}),
         (DOUBLE, STD, RND, WITHOUT, {"1.2": 2, "1.4": 1}),
-        (DOUBLE, STD, LAT, WITH,    {"1.2": 4, "1.4": 1}),
-        (DOUBLE, STD, LAT, WITHOUT, {"1.2": 4, "1.4": 2}),
+        # المشبك 6× 1.4م في كلا النمطين (ق-٢١)
+        (DOUBLE, STD, LAT, WITH,    {"1.4": 5}),
+        (DOUBLE, STD, LAT, WITHOUT, {"1.4": 6}),
         # الشبكة المزدوجة — النمط البديل
         (DOUBLE, ALT, RND, WITH,    {"1.2": 2}),
         (DOUBLE, ALT, RND, WITHOUT, {"1.2": 3}),
@@ -591,7 +593,8 @@ def test_bracket_breakdown_separates_each_contributor(catalog):
     row = next(r for r in result["المواد"] if r["المادة"] == "براكيت 1.4 م مع الملحقات")
     assert row["مجمَّع"] is True
     assert len(row["تفصيل"]) == 3
-    assert {p["الكمية"] for p in row["تفصيل"]} == {5, 16, 3}
+    # مشبك 5×5=25 (ق-٢١) + مدوّر 16×1 + إضافي 3
+    assert {p["الكمية"] for p in row["تفصيل"]} == {25, 16, 3}
     assert any("إضافي" in p["المصدر"] for p in row["تفصيل"])
     assert any("مشبك" in p["المصدر"] for p in row["تفصيل"])
     assert any("مدوّر" in p["المصدر"] for p in row["تفصيل"])
@@ -635,3 +638,30 @@ def test_rounded_concrete_breakdown_shows_the_unrounded_value(catalog):
     assert row["الكمية"] == 18
     assert "17.096" in row["تفصيل"][0]["المصدر"]
     assert "مقرَّب لأعلى" in row["تفصيل"][0]["المصدر"]
+
+
+def test_lattice_pole_uses_six_14m_brackets_in_both_double_patterns():
+    """ق-٢١: العمود المشبك 6× 1.4م في المزدوجة بكلا النمطين — لا فرق بينهما."""
+    for pattern in (STD, ALT):
+        assert bracket_need_11(DOUBLE, pattern, LAT) == {"1.4": 6}
+        assert bracket_purchase_11(DOUBLE, pattern, LAT, WITHOUT) == {"1.4": 6}
+        assert bracket_purchase_11(DOUBLE, pattern, LAT, WITH) == {"1.4": 5}
+
+
+def test_lattice_pole_needs_no_12m_bracket_in_double_circuit():
+    """لم يعد العمود المشبك يستهلك براكيت 1.2م إطلاقاً (ق-٢١)."""
+    for pattern in (STD, ALT):
+        for supply in (WITH, WITHOUT):
+            assert "1.2" not in bracket_purchase_11(DOUBLE, pattern, LAT, supply)
+
+
+def test_round_pole_brackets_are_unchanged_by_decision_21():
+    """ق-٢١ يمسّ المشبك وحده — المدوّر يبقى كما اعتُمد في ق-٥."""
+    assert bracket_need_11(DOUBLE, STD, RND) == {"1.2": 2, "1.4": 1}
+    assert bracket_need_11(DOUBLE, ALT, RND) == {"1.2": 3}
+    assert bracket_need_11(SINGLE, STD, RND) == {"1.2": 1}
+
+
+def test_single_circuit_lattice_is_unchanged_by_decision_21():
+    """ق-٢١ يخصّ المزدوجة وحدها — المفردة تبقى 2× 1.4م."""
+    assert bracket_need_11(SINGLE, STD, LAT) == {"1.4": 2}

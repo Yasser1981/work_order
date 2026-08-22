@@ -214,7 +214,8 @@ BRACKET_NEED_11 = {
     (CircuitType.SINGLE, BracketPattern.STANDARD, PoleType11.ROUND): {"1.2": 1},
     (CircuitType.SINGLE, BracketPattern.STANDARD, PoleType11.LATTICE): {"1.4": 2},
     (CircuitType.DOUBLE, BracketPattern.STANDARD, PoleType11.ROUND): {"1.2": 2, "1.4": 1},
-    (CircuitType.DOUBLE, BracketPattern.STANDARD, PoleType11.LATTICE): {"1.2": 4, "1.4": 2},
+    # العمود المشبك: 6× 1.4م في كلا النمطين (ق-٢١ — يُعدّل ق-٥)
+    (CircuitType.DOUBLE, BracketPattern.STANDARD, PoleType11.LATTICE): {"1.4": 6},
     (CircuitType.DOUBLE, BracketPattern.ALTERNATIVE, PoleType11.ROUND): {"1.2": 3},
     (CircuitType.DOUBLE, BracketPattern.ALTERNATIVE, PoleType11.LATTICE): {"1.4": 6},
 }
