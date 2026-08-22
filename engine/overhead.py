@@ -107,10 +107,10 @@ def poles_per_tension_bay(span: float, tension_span: float) -> int:
     return max(1, math.floor(round(tension_span / span, 9)))
 
 
-def count_poles_11kv(
+def count_poles_spanned(
     route_length_m: float, span: float, tension_span: float
 ) -> PoleCount11:
-    """يقترح عدد أعمدة 11 ك.ف ونوعها (ق-١٤، ق-٢٠).
+    """يقترح عدد الأعمدة ونوعها بمسافة عامة ومسافة شد (ق-١٤، ق-٢٠).
 
     عمود كل `span` متراً، وعمود شد (مشبك) كل `tension_span` متراً، وطرفا الخط مشبكان
     إلزاماً. فإن لم يقع العمود الأخير على موقع شد حُوِّل من مدور إلى مشبك.
@@ -131,6 +131,10 @@ def count_poles_11kv(
         round_=total - lattice,
         end_converted=end_converted,
     )
+
+
+count_poles_11kv = count_poles_spanned
+"""شبكة 11 ك.ف والضغط الواطئ تتقاسمان الخوارزمية نفسها بمسافات مختلفة."""
 
 
 def count_poles_33kv(
@@ -520,7 +524,11 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
     prices = catalog["المواد"]
     rates = catalog["أجور_العمل"]
 
+    from .lowvoltage import labour_lv, materials_lv
+
     raw = materials_11kv(project.net11) + materials_33kv(project.net33)
+    if project.netlv is not None:
+        raw += materials_lv(project.netlv)
     totals = aggregate(raw)
 
     # تفصيل كل مادة: الأسطر التي ساهمت فيها ومعادلة كل سطر — ليتمكّن المدقّق من
@@ -553,6 +561,8 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
         )
 
     labour = labour_11kv(project.net11, rates) + labour_33kv(project.net33, rates)
+    if project.netlv is not None:
+        labour += labour_lv(project.netlv, rates)
     labour_cost = sum(line.cost for line in labour)
 
     return {
@@ -563,4 +573,5 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
         "كلفة_العمل": labour_cost,
         "الكلفة_الكلية": materials_cost + labour_cost,
         "أسعار_مفقودة": [m["المادة"] for m in materials if m["سعر_مفقود"]],
+        "أجور_مفقودة": [l.name for l in labour if l.rate_missing],
     }

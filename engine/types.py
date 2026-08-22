@@ -67,12 +67,18 @@ class LabourLine:
     name: str
     unit: str
     qty: float
-    rate: float
+    rate: float | None
+    """None تعني أن الأجر غير محدَّد بعد — يُبلَّغ عنه ولا يُحتسب صفراً بصمت."""
+
     source: str = ""
 
     @property
+    def rate_missing(self) -> bool:
+        return self.rate is None
+
+    @property
     def cost(self) -> float:
-        return self.qty * self.rate
+        return 0.0 if self.rate is None else self.qty * self.rate
 
 
 @dataclass
@@ -165,8 +171,61 @@ class Network33kV:
 
 @dataclass
 class OverheadProject:
-    """مشروع شبكة هوائية — قد يضمّ الجهدين معاً."""
+    """مشروع — قد يضمّ الجهود الثلاثة معاً."""
 
     name: str = ""
     net11: Network11kV = field(default_factory=Network11kV)
     net33: Network33kV = field(default_factory=Network33kV)
+    netlv: "NetworkLV | None" = None
+    """شبكة الضغط الواطئ — None حين لا يتضمّنها المشروع."""
+
+
+class LVNetworkType(Enum):
+    """نوع شبكة الضغط الواطئ."""
+
+    BARE_WIRES = "أسلاك"
+    BUNDLED_CABLE = "قابلو معلق مبروم"
+
+    @property
+    def conductors(self) -> int:
+        """عدد الموصلات التي يُضرب بها المسار.
+
+        الأسلاك 4 (ثلاثة حارة وواحد بارد)، والقابلو المعلق 1 لأنه كابل واحد يضمّ
+        الموصلات كلها.
+        """
+        return 4 if self is LVNetworkType.BARE_WIRES else 1
+
+
+@dataclass
+class NetworkLV:
+    """مدخلات شبكة الضغط الواطئ."""
+
+    route_length_m: float = 0.0
+    kind: LVNetworkType = LVNetworkType.BARE_WIRES
+    length_includes_waste: bool = False
+    waste_pct: float = 0.10
+
+    span_m: float | None = None
+    """المسافة العامة بين أعمدة 9م (م). None ← من الافتراضيات (20 م)."""
+
+    tension_span_m: float | None = None
+    """المسافة بين أعمدة الشد المشبكة (م). None ← من الافتراضيات (100 م)."""
+
+    poles_lattice: int = 0
+    """عدد أعمدة 9م مشبك."""
+
+    poles_round: int = 0
+    """عدد أعمدة 9م مدوّر."""
+
+    consumers: int = 0
+    """عدد المستهلكين — كونكتر ربط مشتركين واحد لكل مستهلك (ق-٢٢)."""
+
+    # ── حالة مرور الشبكة على أعمدة الضغط العالي القائمة ──
+    on_hv_poles: bool = False
+    """أحياناً لا حاجة لنصب أعمدة: تُستغلّ أعمدة الضغط العالي القائمة أو الجديدة."""
+
+    hv_kind: LVNetworkType = LVNetworkType.BUNDLED_CABLE
+    """نوع الشبكة المارّة على أعمدة الضغط العالي — قد يختلف عن نوع الشبكة الأساسي."""
+
+    hv_poles_lattice: int = 0
+    hv_poles_round: int = 0
