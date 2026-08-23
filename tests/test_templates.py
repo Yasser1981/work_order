@@ -143,3 +143,57 @@ def test_adding_a_template_needs_no_engine_change():
     source = inspect.getsource(overhead)
     assert "printing" not in source
     assert "iso_form" not in source
+
+
+# ═══════════════════ القوالب ومشروع المقاطع ═══════════════════
+
+
+@pytest.fixture(scope="module")
+def segmented_result():
+    """مشروع بمقاطع مسمّاة، وفيه بند بلا أجر (ربط المستهلكين)."""
+    from engine.project import compute_project
+    from engine.types import LVNetworkType, NetworkLV, Project, Segment
+
+    project = Project(
+        "مشروع بمقاطع",
+        [
+            Segment("المقطع الأول",
+                    Network11kV(route_length_m=500, poles_lattice=5, poles_round=16)),
+            Segment("المقطع الثاني",
+                    NetworkLV(route_length_m=300, kind=LVNetworkType.BARE_WIRES,
+                              poles_lattice=4, poles_round=12, consumers=5)),
+        ],
+    )
+    return compute_project(project, load_catalog())
+
+
+def test_audit_survives_a_labour_item_with_no_rate(order, segmented_result):
+    """كان القالب ينهار على أي مشروع فيه مستهلكون — الأجر None لا يُنسَّق كرقم."""
+    html = printing.get("audit").build_html(order, segmented_result)
+    assert "بلا أجر" in html
+    assert "ربط المستهلكين" in html
+
+
+def test_audit_warns_about_missing_rates_too(order, segmented_result):
+    html = printing.get("audit").build_html(order, segmented_result)
+    assert "بنود بلا أجر" in html
+
+
+def test_audit_lists_the_project_segments(order, segmented_result):
+    """جدول المقاطع مفتاح قراءة عمود «المصدر» الذي يذكر اسم المقطع."""
+    html = printing.get("audit").build_html(order, segmented_result)
+    assert "مقاطع المشروع" in html
+    assert "المقطع الأول" in html
+    assert "المقطع الثاني" in html
+
+
+def test_the_simple_project_shows_no_segments_table(order, result):
+    """المشروع بلا مقاطع مسمّاة لا يُضاف له جدول فارغ."""
+    html = printing.get("audit").build_html(order, result)
+    assert "مقاطع المشروع" not in html
+
+
+@pytest.mark.parametrize("key", ["iso", "audit"])
+def test_every_template_handles_a_segmented_project(key, order, segmented_result, tmp_path, qapp):
+    path = printing.get(key).write_pdf(order, segmented_result, str(tmp_path / f"{key}.pdf"))
+    assert (tmp_path / f"{key}.pdf").read_bytes().startswith(b"%PDF")

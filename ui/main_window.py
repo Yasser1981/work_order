@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""النافذة الرئيسية — مدخلات الشبكة الهوائية ونتائجها الحيّة."""
+"""النافذة الرئيسية — مقاطع المشروع ونتائجها الحيّة."""
 
 from __future__ import annotations
 
@@ -24,12 +24,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from engine.overhead import compute
-from engine.types import OverheadProject
+from engine.project import compute_project
+from engine.types import Project, SegmentKind
 import printing
 
 from .order_panel import OrderPanel
-from .panels import Panel11kV, Panel33kV, PanelEquipment, PanelLV
+from .segments_panel import SegmentsPanel
 
 STYLE = """
 QWidget       { font-size: 13px; }
@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         self.catalog = catalog
         self._rows: list[dict] = []
         self.result: dict = {"المواد": [], "أسعار_مفقودة": []}
-        self.setWindowTitle("نظام أوامر العمل الكهربائية — الشبكة الهوائية")
+        self.setWindowTitle("نظام أوامر العمل الكهربائية")
         self.resize(1500, 950)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.setStyleSheet(STYLE)
@@ -60,21 +60,12 @@ class MainWindow(QMainWindow):
         self.recalculate()
 
     def _build(self) -> None:
-        self.panel11 = Panel11kV(self.catalog)
-        self.panel33 = Panel33kV(self.catalog)
-        self.panellv = PanelLV(self.catalog)
-        self.panelequip = PanelEquipment(self.catalog)
+        self.segments = SegmentsPanel(self.catalog)
         self.order_panel = OrderPanel()
-        self.panel11.changed.connect(self.recalculate)
-        self.panel33.changed.connect(self.recalculate)
-        self.panellv.changed.connect(self.recalculate)
-        self.panelequip.changed.connect(self.recalculate)
+        self.segments.changed.connect(self.recalculate)
 
         tabs = QTabWidget()
-        tabs.addTab(self.panel11, "شبكة 11 ك.ف")
-        tabs.addTab(self.panel33, "شبكة 33 ك.ف")
-        tabs.addTab(self.panellv, "الضغط الواطئ")
-        tabs.addTab(self.panelequip, "التجهيزات")
+        tabs.addTab(self.segments, "المقاطع")
         tabs.addTab(self.order_panel, "أمر العمل")
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -252,14 +243,14 @@ class MainWindow(QMainWindow):
             body = f" &nbsp;<i>(مجموع {len(parts)} مصادر)</i>{items}"
         self.breakdown.setText(head + body)
 
+    def add_segment(self, kind: SegmentKind, name: str | None = None):
+        """يضيف مقطعاً ويعيد محرّره — طريق مختصر للواجهة وللاختبارات."""
+        row = self.segments.add_segment(kind, name)
+        return self.segments.editor(row)
+
     def recalculate(self) -> None:
-        project = OverheadProject(
-            net11=self.panel11.network(),
-            net33=self.panel33.network(),
-            netlv=self.panellv.network(),
-            equipment=self.panelequip.equipment(),
-        )
-        result = compute(project, self.catalog)
+        project = Project(self.order_panel.project_name.text(), self.segments.segments())
+        result = compute_project(project, self.catalog)
         self.result = result
 
         rows = result["المواد"]

@@ -53,18 +53,40 @@ def build_html(order: WorkOrder, result: dict) -> str:
     labour_rows = "\n".join(
         f'<tr><td align="center">{i}</td><td align="right">{_esc(line.name)}</td>'
         f'<td align="center">{_fmt_qty(line.qty)} {_esc(line.unit)}</td>'
-        f'<td align="center">{line.rate:,.0f}</td>'
-        f'<td align="center">{line.cost:,.0f}</td></tr>'
+        # الأجر المفقود يُطبع نصّاً لا صفراً — الصفر يوهم بأن البند مجّاني
+        f'<td align="center">{"بلا أجر" if line.rate_missing else f"{line.rate:,.0f}"}</td>'
+        f'<td align="center">{"—" if line.rate_missing else f"{line.cost:,.0f}"}</td></tr>'
         for i, line in enumerate(result["أجور_العمل"], start=1)
     )
 
-    missing = result["أسعار_مفقودة"]
+    notes = []
+    if result["أسعار_مفقودة"]:
+        notes.append("مواد بلا سعر: " + "، ".join(result["أسعار_مفقودة"]))
+    if result.get("أجور_مفقودة"):
+        notes.append("بنود بلا أجر: " + "، ".join(result["أجور_مفقودة"]))
     warning = ""
-    if missing:
+    if notes:
         warning = (
-            f'<p class="note"><b>تنبيه:</b> مواد بلا سعر لم تُحتسب كلفتها في '
-            f'المجموع: {_esc("، ".join(missing))}</p>'
+            f'<p class="note"><b>تنبيه — لم تُحتسب في المجموع:</b> '
+            f'{_esc(" · ".join(notes))}</p>'
         )
+
+    # جدول المقاطع: يسبق جدول المواد لأنه مفتاح قراءة عمود «المصدر» بعده
+    segments_block = ""
+    segments = result.get("المقاطع") or []
+    named = [s for s in segments if s.name]
+    if named:
+        rows = "\n".join(
+            f'<tr><td align="center">{i}</td><td align="right">{_esc(s.name)}</td>'
+            f'<td align="right">{_esc(s.kind.value)}</td></tr>'
+            for i, s in enumerate(named, start=1)
+        )
+        segments_block = f"""<p class="section">مقاطع المشروع</p>
+<table {_TABLE}>
+  <tr><th width="6%">ت</th><th width="44%">اسم المقطع</th><th>نوعه</th></tr>
+{rows}
+</table>
+"""
 
     return f"""<html><head><meta charset="utf-8"><style>{_EXTRA_CSS}</style></head>
 <body dir="rtl">
@@ -73,6 +95,7 @@ def build_html(order: WorkOrder, result: dict) -> str:
 <p align="center" class="note">أمر عمل رقم {_esc(order.number)} &nbsp;·&nbsp;
    {_fmt_date(order.order_date)} &nbsp;·&nbsp; للمراجعة الداخلية لا للتسليم الرسمي</p>
 
+{segments_block}
 <p class="section">أ - المواد وتفصيل مصادر كمياتها</p>
 <table {_TABLE}>
   <tr><th width="5%">ت</th><th>اسم المادة</th><th width="9%">الوحدة</th>

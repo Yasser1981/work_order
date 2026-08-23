@@ -152,6 +152,9 @@ class Panel11kV(QWidget):
         self.lattice.setValue(result.lattice)
         self.round_.setValue(result.round_)
 
+    def content(self) -> Network11kV:
+        return self.network()
+
     def network(self) -> Network11kV:
         return Network11kV(
             route_length_m=self.route.value(),
@@ -308,6 +311,9 @@ class Panel33kV(QWidget):
         self.anchors_mid.setValue(s.mid_anchors)
         self.anchors_end.setValue(s.end_anchors)
 
+    def content(self) -> Network33kV:
+        return self.network()
+
     def network(self) -> Network33kV:
         return Network33kV(
             route_length_m=self.route.value(),
@@ -361,14 +367,22 @@ class Panel33kV(QWidget):
 
 
 class PanelLV(QWidget):
-    """مدخلات شبكة الضغط الواطئ (ق-٢٢)."""
+    """مدخلات شبكة الضغط الواطئ (ق-٢٢).
+
+    داخل مقطع (`as_segment=True`) يختفي مربّع «المشروع يتضمّن شبكة ضغط واطئ»:
+    وجود المقطع نفسه هو التفعيل، ومربّع تفعيل ثانٍ فوقه يُربك لا أكثر (ق-٢٤).
+    """
 
     changed = pyqtSignal()
 
-    def __init__(self, catalog: dict) -> None:
+    def __init__(self, catalog: dict, as_segment: bool = False) -> None:
         super().__init__()
         self.catalog = catalog
+        self.as_segment = as_segment
         self._build()
+        if as_segment:
+            self.enabled.setChecked(True)
+            self.enabled.setVisible(False)
         self._connect()
         self.refresh_hints()
 
@@ -475,6 +489,10 @@ class PanelLV(QWidget):
             hv_poles_lattice=self.hv_lattice.value(),
             hv_poles_round=self.hv_round.value(),
         )
+
+    def content(self) -> NetworkLV:
+        """محتوى المقطع — وجود المقطع نفسه هو التفعيل، فلا يمرّ عبر مربّع الاختيار."""
+        return self._raw_network()
 
     def network(self) -> NetworkLV | None:
         """None حين لا يتضمّن المشروع شبكة ضغط واطئ."""
@@ -595,6 +613,9 @@ class PanelEquipment(QWidget):
     def _on_change(self) -> None:
         self.refresh_hints()
         self.changed.emit()
+
+    def content(self) -> Equipment:
+        return self.equipment()
 
     def equipment(self) -> Equipment:
         return Equipment(
