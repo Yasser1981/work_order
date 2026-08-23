@@ -24,6 +24,8 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from .overhead import M_EARTH_TERMINAL, M_EARTH_WIRE
 from .types import Equipment, LabourLine, MaterialLine
 
@@ -73,38 +75,107 @@ TRANSFORMER_KIT = [
     (M_LIGHTING, 2),
 ]
 
-ONLOAD_KIT = [
-    (M_ONLOAD, 1),
-    (M_CU_CABLE_150, 20),
-    (M_AL_FITTINGS_CU, 6),
-    (M_TERMINAL_150, 6),
-]
+# ─────────────────── الفاصل ON-LOAD: مصفوفة الجهد × الموقع ───────────────────
+# الفاصل نوعان بالجهد وحالتان بالموقع، فأربع تركيبات (ق-٢٥):
+#
+#            │ منتصف الشبكة        │ على رأس القابلو
+#   ─────────┼─────────────────────┼──────────────────────────────────
+#   11 ك.ف   │ قابلو 1×150، 20 م   │ قابلو 1×150، 10 م + مانعة 11 ك.ف
+#   33 ك.ف   │ قابلو 1×185، 20 م   │ قابلو 1×185، 10 م + مانعة 33 ك.ف
+#
+# قاعدتان تحكمان الفروق:
+#   • **مانعة الصواعق لرأس القابلو وحده.** الفاصل في منتصف الشبكة الهوائية لا
+#     يحتاجها — الشبكة محمية أصلاً. ورأس القابلو نقطة انتقال من هوائي إلى أرضي،
+#     وهي بالضبط موضع انعكاس الموجة الصاعقية، فتلزم المانعة.
+#   • **قابلو رأس القابلو نصف الكمية.** في منتصف الشبكة يُربط الفاصل بالشبكة
+#     الهوائية من **جهتيه**، وعلى رأس القابلو من **جهة واحدة** فقط والجهة الثانية
+#     يربطها القابلو الأرضي نفسه.
 
-# على رأس القابلو: نفس الفاصل زائد حماية وتأريضاً كاملين.
-ONLOAD_CABLE_HEAD_KIT = ONLOAD_KIT + [
-    (M_ARRESTER_11, 1),
+CABLE_MID_NETWORK_M = 20
+CABLE_HEAD_M = CABLE_MID_NETWORK_M // 2
+LUGS_PER_ISOLATOR = 6
+
+ARRESTER_ASSEMBLY_EXTRAS = [
     (M_ARRESTER_BASE, 1),
     (M_EARTH_ROD, 1),
     (M_CU_CABLE_50, 15),
     (M_EARTH_TERMINAL, 1),
 ]
+"""ما يرافق مانعة الصواعق: قاعدتها وتأريضها. لا معنى لمانعة بلا أرضي."""
 
-AIR_ISOLATOR_33_KIT = [
-    (M_AIR_ISOLATOR_33, 1),
-    (M_ARRESTER_33, 1),
-    (M_ARRESTER_BASE, 1),
-    (M_EARTH_ROD, 1),
-    (M_CABLE_185, 20),
-    (M_TERMINAL_185, 6),
-    (M_CU_CABLE_50, 15),
-    (M_EARTH_TERMINAL, 1),
+
+class IsolatorVoltage(Enum):
+    KV11 = "11 ك.ف"
+    KV33 = "33 ك.ف"
+
+
+class IsolatorPosition(Enum):
+    MID_NETWORK = "منتصف الشبكة"
+    CABLE_HEAD = "على رأس القابلو"
+
+    @property
+    def needs_arrester(self) -> bool:
+        return self is IsolatorPosition.CABLE_HEAD
+
+    @property
+    def cable_m(self) -> int:
+        return CABLE_HEAD_M if self.needs_arrester else CABLE_MID_NETWORK_M
+
+
+ISOLATOR_PARTS = {
+    IsolatorVoltage.KV11: {
+        "isolator": M_ONLOAD,
+        "cable": M_CU_CABLE_150,
+        "lug": M_TERMINAL_150,
+        "arrester": M_ARRESTER_11,
+        # معدات ربط ألمنيوم – نحاس: 6 لكل فاصل في 11 ك.ف. لا نظير لها في 33 ك.ف
+        # في الملف الأصلي — سؤال مفتوح س-٩.
+        "fittings": (M_AL_FITTINGS_CU, 6),
+        "labour": "نصب الفاصل ON-LOAD",
+    },
+    IsolatorVoltage.KV33: {
+        "isolator": M_AIR_ISOLATOR_33,
+        "cable": M_CABLE_185,
+        "lug": M_TERMINAL_185,
+        "arrester": M_ARRESTER_33,
+        "fittings": None,
+        "labour": "نصب فاصل هوائي 33 ك.ف",
+    },
+}
+
+
+def isolator_kit(
+    voltage: IsolatorVoltage, position: IsolatorPosition
+) -> list[tuple[tuple[str, str], float]]:
+    """مواد فاصل واحد بجهده وموقعه."""
+    parts = ISOLATOR_PARTS[voltage]
+    kit = [
+        (parts["isolator"], 1),
+        (parts["cable"], position.cable_m),
+        (parts["lug"], LUGS_PER_ISOLATOR),
+    ]
+    if parts["fittings"]:
+        kit.append(parts["fittings"])
+    if position.needs_arrester:
+        kit.append((parts["arrester"], 1))
+        kit.extend(ARRESTER_ASSEMBLY_EXTRAS)
+    return kit
+
+
+ISOLATORS = [
+    ("onload_11_mid", IsolatorVoltage.KV11, IsolatorPosition.MID_NETWORK),
+    ("onload_11_head", IsolatorVoltage.KV11, IsolatorPosition.CABLE_HEAD),
+    ("isolator_33_mid", IsolatorVoltage.KV33, IsolatorPosition.MID_NETWORK),
+    ("isolator_33_head", IsolatorVoltage.KV33, IsolatorPosition.CABLE_HEAD),
 ]
 
-KITS = [
-    ("transformers", TRANSFORMER_KIT, "محولة 400 KVA"),
-    ("onload", ONLOAD_KIT, "فاصل ON-LOAD"),
-    ("onload_cable_head", ONLOAD_CABLE_HEAD_KIT, "فاصل ON-LOAD على رأس القابلو"),
-    ("air_isolator_33", AIR_ISOLATOR_33_KIT, "فاصل هوائي 33 ك.ف"),
+ISOLATOR_KITS = {
+    attr: (isolator_kit(v, p), f"فاصل {v.value} — {p.value}")
+    for attr, v, p in ISOLATORS
+}
+
+KITS = [("transformers", TRANSFORMER_KIT, "محولة 400 KVA")] + [
+    (attr, kit, label) for attr, (kit, label) in ISOLATOR_KITS.items()
 ]
 
 # ───────────────────────────────── التوليد ─────────────────────────────────
@@ -143,16 +214,25 @@ def labour_equipment(eq: Equipment, rates: dict) -> list[LabourLine]:
     الفاصلان يجتمعان في بند أجر واحد — كما في الملف الأصلي، لأن العمل نفسه.
     القفيص بلا أجر مستقل: يُركَّب مع العمود.
     """
-    out: list[LabourLine] = []
-    for label, count, source in (
-        ("نصب المحولة", eq.transformers, "عدد المحولات"),
-        (
-            "نصب الفاصل ON-LOAD",
-            eq.onload + eq.onload_cable_head,
-            f"هوائي {eq.onload} + على رأس القابلو {eq.onload_cable_head}",
-        ),
-        ("نصب فاصل هوائي 33 ك.ف", eq.air_isolator_33, "عدد الفواصل الهوائية 33 ك.ف"),
+    items = [("نصب المحولة", eq.transformers, "عدد المحولات")]
+
+    # الفاصلان في الجهد الواحد يتقاسمان بند الأجر: العمل نفسه، والموقع لا يغيّره.
+    for voltage, label in (
+        (IsolatorVoltage.KV11, ISOLATOR_PARTS[IsolatorVoltage.KV11]["labour"]),
+        (IsolatorVoltage.KV33, ISOLATOR_PARTS[IsolatorVoltage.KV33]["labour"]),
     ):
+        mid, head = (
+            (eq.onload_11_mid, eq.onload_11_head)
+            if voltage is IsolatorVoltage.KV11
+            else (eq.isolator_33_mid, eq.isolator_33_head)
+        )
+        if mid + head:
+            items.append(
+                (label, mid + head, f"منتصف الشبكة {mid} + على رأس القابلو {head}")
+            )
+
+    out = []
+    for label, count, source in items:
         if count:
             entry = rates[label]
             out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"], source))

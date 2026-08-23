@@ -402,11 +402,32 @@ def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
     assert "نصب المحولة" in [l.name for l in window.result["أجور_العمل"]]
 
 
-def test_both_onload_kinds_feed_one_labour_line(window, pequip):
-    pequip.onload.setValue(2)
-    pequip.onload_head.setValue(3)
+def test_both_onload_positions_feed_one_labour_line(window, pequip):
+    pequip.onload_11_mid.setValue(2)
+    pequip.onload_11_head.setValue(3)
     labour = [l for l in window.result["أجور_العمل"] if l.name == "نصب الفاصل ON-LOAD"]
     assert len(labour) == 1 and labour[0].qty == 5
+
+
+def test_the_two_isolator_voltages_use_their_own_cables(window, pequip):
+    """الحقول الأربعة موصولة فعلاً بالمحرك، وكلٌّ يجرّ قابلوه (ق-٢٥)."""
+    pequip.onload_11_mid.setValue(1)
+    pequip.isolator_33_mid.setValue(1)
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["قابلو نحاس 1×150 ملم²"] == 20
+    assert quantities["قابلو 1×185 ملم2"] == 20
+
+
+def test_cable_head_halves_the_cable_on_screen(window, pequip):
+    pequip.onload_11_head.setValue(1)
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["قابلو نحاس 1×150 ملم²"] == 10
+    assert quantities["مانعة صواعق 11 KV"] == 1
+
+
+def test_mid_network_isolator_pulls_no_arrester_on_screen(window, pequip):
+    pequip.onload_11_mid.setValue(3)
+    assert not any("مانعة" in m["المادة"] for m in window.result["المواد"])
 
 
 def test_equipment_hint_lists_the_kit_so_the_checker_sees_it(pequip):

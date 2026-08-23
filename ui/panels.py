@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import (
 )
 
 from engine.equipment import (
-    AIR_ISOLATOR_33_KIT,
-    ONLOAD_CABLE_HEAD_KIT,
-    ONLOAD_KIT,
+    CABLE_HEAD_M,
+    CABLE_MID_NETWORK_M,
+    ISOLATOR_KITS,
     TRANSFORMER_KIT,
 )
 from engine.lowvoltage import conductor_quantity, count_poles_lv
@@ -578,13 +578,20 @@ class PanelEquipment(QWidget):
         form.addRow(self.transformer_hint)
         layout.addWidget(box)
 
-        box, form = section("الفواصل")
-        self.onload = number_field(0, 1000, 0)
-        self.onload_head = number_field(0, 1000, 0)
-        self.air33 = number_field(0, 1000, 0)
-        form.addRow("عدد فواصل ON-LOAD:", self.onload)
-        form.addRow("عدد فواصل ON-LOAD على رأس القابلو:", self.onload_head)
-        form.addRow("عدد الفواصل الهوائية 33 ك.ف:", self.air33)
+        # الفاصل نوعان بالجهد وحالتان بالموقع — أربعة حقول لا ثلاثة (ق-٢٥)
+        box, form = section("الفواصل  —  الجهد × الموقع")
+        self.isolators = {}
+        labels = {
+            "onload_11_mid": "فاصل ON-LOAD 11 ك.ف — منتصف الشبكة:",
+            "onload_11_head": "فاصل ON-LOAD 11 ك.ف — على رأس القابلو:",
+            "isolator_33_mid": "فاصل هوائي 33 ك.ف — منتصف الشبكة:",
+            "isolator_33_head": "فاصل هوائي 33 ك.ف — على رأس القابلو:",
+        }
+        for attr, label in labels.items():
+            field = number_field(0, 1000, 0)
+            self.isolators[attr] = field
+            setattr(self, attr, field)
+            form.addRow(label, field)
         self.isolator_hint = HintLabel()
         form.addRow(self.isolator_hint)
         layout.addWidget(box)
@@ -606,8 +613,7 @@ class PanelEquipment(QWidget):
         outer.addWidget(scroll)
 
     def _connect(self) -> None:
-        for w in (self.transformers, self.onload, self.onload_head,
-                  self.air33, self.cages):
+        for w in (self.transformers, self.cages, *self.isolators.values()):
             w.valueChanged.connect(self._on_change)
 
     def _on_change(self) -> None:
@@ -620,10 +626,8 @@ class PanelEquipment(QWidget):
     def equipment(self) -> Equipment:
         return Equipment(
             transformers=self.transformers.value(),
-            onload=self.onload.value(),
-            onload_cable_head=self.onload_head.value(),
-            air_isolator_33=self.air33.value(),
             lattice_cages=self.cages.value(),
+            **{attr: field.value() for attr, field in self.isolators.items()},
         )
 
     @staticmethod
@@ -648,23 +652,18 @@ class PanelEquipment(QWidget):
             )
 
         rows = []
-        if eq.onload:
+        for attr, (kit, label) in ISOLATOR_KITS.items():
+            count = getattr(eq, attr)
+            if count:
+                rows.append(f"<b>{label}</b><br>" + self._kit_text(kit, count))
+        if not rows:
             rows.append(
-                "<b>فاصل ON-LOAD</b><br>" + self._kit_text(ONLOAD_KIT, eq.onload)
+                "منتصف الشبكة: <b>بلا مانعة صواعق</b>، وقابلو بطول "
+                f"{CABLE_MID_NETWORK_M} م.<br>"
+                "على رأس القابلو: <b>مع مانعة صواعق</b> وتأريضها، وقابلو "
+                f"<b>{CABLE_HEAD_M} م</b> — نصف الكمية، لأن الربط بالشبكة الهوائية "
+                "من جهة واحدة والجهة الثانية يربطها القابلو الأرضي."
             )
-        if eq.onload_cable_head:
-            rows.append(
-                "<b>فاصل ON-LOAD على رأس القابلو</b><br>"
-                + self._kit_text(ONLOAD_CABLE_HEAD_KIT, eq.onload_cable_head)
-            )
-        if eq.air_isolator_33:
-            rows.append(
-                "<b>فاصل هوائي 33 ك.ف</b><br>"
-                + self._kit_text(AIR_ISOLATOR_33_KIT, eq.air_isolator_33)
-            )
-        both = eq.onload + eq.onload_cable_head
-        if both:
-            rows.append(f"أجر «نصب الفاصل ON-LOAD» يجمع النوعين: {both} فاصل.")
         rows.append("براكيت 2.1 متر ملغى تماماً — لا مادةً ولا أجراً (ق-١٩).")
         self.isolator_hint.setText("<br>".join(rows))
 

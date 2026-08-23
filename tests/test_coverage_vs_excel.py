@@ -132,8 +132,8 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             produced.add((line.name, line.unit))
 
     equipment = Equipment(
-        transformers=1, onload=1, onload_cable_head=1,
-        air_isolator_33=1, lattice_cages=1,
+        transformers=1, onload_11_mid=1, onload_11_head=1,
+        isolator_33_mid=1, isolator_33_head=1, lattice_cages=1,
     )
     for line in materials_equipment(equipment):
         produced.add((line.name, line.unit))

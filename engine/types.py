@@ -245,14 +245,17 @@ class Equipment:
     transformers: int = 0
     """محولة 400 KVA وملحقاتها."""
 
-    onload: int = 0
-    """فاصل ON-LOAD على الشبكة الهوائية."""
+    onload_11_mid: int = 0
+    """فاصل ON-LOAD جهد 11 ك.ف في منتصف الشبكة — بلا مانعة صواعق (ق-٢٥)."""
 
-    onload_cable_head: int = 0
-    """فاصل ON-LOAD على رأس القابلو — يضيف مانعة صواعق وتأريضاً وقابلو نحاس."""
+    onload_11_head: int = 0
+    """فاصل ON-LOAD جهد 11 ك.ف على رأس القابلو — مع مانعة، ونصف كمية القابلو."""
 
-    air_isolator_33: int = 0
-    """فاصل هوائي 33 ك.ف وملحقاته."""
+    isolator_33_mid: int = 0
+    """فاصل هوائي 33 ك.ف في منتصف الشبكة — بلا مانعة صواعق."""
+
+    isolator_33_head: int = 0
+    """فاصل هوائي 33 ك.ف على رأس القابلو — مع مانعة، ونصف كمية القابلو."""
 
     lattice_cages: int = 0
     """قفيص عمود مشبك — كمية يدخلها المستخدم مباشرة، بلا ملحقات وبلا أجر."""
@@ -261,9 +264,10 @@ class Equipment:
         return any(
             (
                 self.transformers,
-                self.onload,
-                self.onload_cable_head,
-                self.air_isolator_33,
+                self.onload_11_mid,
+                self.onload_11_head,
+                self.isolator_33_mid,
+                self.isolator_33_head,
                 self.lattice_cages,
             )
         )

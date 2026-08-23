@@ -10,10 +10,13 @@ import pytest
 
 from engine import load_catalog
 from engine.equipment import (
-    AIR_ISOLATOR_33_KIT,
-    ONLOAD_CABLE_HEAD_KIT,
-    ONLOAD_KIT,
+    CABLE_HEAD_M,
+    CABLE_MID_NETWORK_M,
+    ISOLATOR_KITS,
     TRANSFORMER_KIT,
+    IsolatorPosition,
+    IsolatorVoltage,
+    isolator_kit,
     labour_equipment,
     materials_equipment,
 )
@@ -72,27 +75,27 @@ def test_transformer_accessories_have_no_separate_labour(catalog):
     assert labour[0].cost == 700_000
 
 
-# ═══════════════════ الفاصل ON-LOAD ═══════════════════
+# ═══════════════════ الفاصل ON-LOAD: مصفوفة الجهد × الموقع ═══════════════════
 
 
-def test_onload_kit_matches_the_original_file():
-    lines = materials_equipment(Equipment(onload=1))
+def test_11kv_mid_network_has_no_arrester_and_full_cable():
+    lines = materials_equipment(Equipment(onload_11_mid=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل ON-LOAD": 1,
         "قابلو نحاس 1×150 ملم²": 20,
-        "معدات ربط ألمنيوم – نحاس": 6,
         "ترمنل 150 ملم²": 6,
+        "معدات ربط ألمنيوم – نحاس": 6,
     }
 
 
-def test_onload_on_cable_head_adds_protection_and_earthing():
-    """على رأس القابلو: الفاصل نفسه زائد مانعة صواعق وتأريضاً كاملين."""
-    lines = materials_equipment(Equipment(onload_cable_head=1))
+def test_11kv_cable_head_adds_the_arrester_and_halves_the_cable():
+    """رأس القابلو: مانعة صواعق كاملة بتأريضها، وقابلو نصف الكمية (ق-٢٥)."""
+    lines = materials_equipment(Equipment(onload_11_head=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل ON-LOAD": 1,
-        "قابلو نحاس 1×150 ملم²": 20,
-        "معدات ربط ألمنيوم – نحاس": 6,
+        "قابلو نحاس 1×150 ملم²": 10,
         "ترمنل 150 ملم²": 6,
+        "معدات ربط ألمنيوم – نحاس": 6,
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 1,
@@ -101,49 +104,91 @@ def test_onload_on_cable_head_adds_protection_and_earthing():
     }
 
 
-def test_bracket_21_is_gone_from_both_isolator_kits():
-    """ق-١٩: براكيت 2.1 متر ملغى تماماً — لا في المواد ولا في الأجور."""
-    kits = ONLOAD_KIT + ONLOAD_CABLE_HEAD_KIT + AIR_ISOLATOR_33_KIT + TRANSFORMER_KIT
-    assert not any("2.1" in name for (name, _unit), _per in kits)
-
-    lines = materials_equipment(Equipment(onload=5, onload_cable_head=5))
-    assert not any("2.1" in l.name for l in lines)
-
-
-def test_both_isolator_kinds_share_one_priced_material_and_one_labour_item(catalog):
-    """النوعان مادة واحدة مسعّرة وبند أجر واحد — لكن بمصدرين متمايزين للتتبّع."""
-    eq = Equipment(onload=2, onload_cable_head=3)
-    lines = materials_equipment(eq)
-    assert qty(lines, "فاصل ON-LOAD") == 5
-
-    sources = [l.source for l in lines if l.name == "فاصل ON-LOAD"]
-    assert sources == ["فاصل ON-LOAD: 2 × 1", "فاصل ON-LOAD على رأس القابلو: 3 × 1"]
-
-    labour = labour_equipment(eq, catalog["أجور_العمل"])
-    assert [(l.name, l.qty) for l in labour] == [("نصب الفاصل ON-LOAD", 5)]
-
-
-# ═══════════════════ الفاصل الهوائي 33 ك.ف ═══════════════════
-
-
-def test_air_isolator_33_kit_matches_the_original_file():
-    lines = materials_equipment(Equipment(air_isolator_33=1))
+def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
+    """حالة لا وجود لها في الملف الأصلي أصلاً — أُضيفت بـ ق-٢٥."""
+    lines = materials_equipment(Equipment(isolator_33_mid=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل هوائي 33 ك.ف": 1,
+        "قابلو 1×185 ملم2": 20,
+        "ترمنل 185 ملم2": 6,
+    }
+
+
+def test_33kv_cable_head_matches_the_original_file_except_the_cable():
+    """الملف الأصلي أعطاه 20 م من القابلو 1×185، والصحيح 10 م (ت-٦)."""
+    lines = materials_equipment(Equipment(isolator_33_head=1))
+    assert {l.name: l.qty for l in lines} == {
+        "فاصل هوائي 33 ك.ف": 1,
+        "قابلو 1×185 ملم2": 10,
+        "ترمنل 185 ملم2": 6,
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 1,
-        "قابلو 1×185 ملم2": 20,
-        "ترمنل 185 ملم2": 6,
         "قابلو نحاس 1×50 ملم²": 15,
         "ترمنل 50 ملم²": 1,
     }
 
 
-def test_air_isolator_33_has_its_own_labour_item(catalog):
-    labour = labour_equipment(Equipment(air_isolator_33=2), catalog["أجور_العمل"])
+def test_the_cable_head_cable_is_exactly_half():
+    from engine.equipment import ISOLATOR_PARTS
+
+    assert CABLE_HEAD_M * 2 == CABLE_MID_NETWORK_M
+    for voltage in IsolatorVoltage:
+        kits = {p: dict(isolator_kit(voltage, p)) for p in IsolatorPosition}
+        cable = ISOLATOR_PARTS[voltage]["cable"]
+        assert kits[IsolatorPosition.CABLE_HEAD][cable] * 2 == \
+            kits[IsolatorPosition.MID_NETWORK][cable]
+
+
+def test_only_the_cable_head_carries_an_arrester():
+    for voltage in IsolatorVoltage:
+        mid = {name for (name, _u), _q in isolator_kit(voltage, IsolatorPosition.MID_NETWORK)}
+        head = {name for (name, _u), _q in isolator_kit(voltage, IsolatorPosition.CABLE_HEAD)}
+        assert not any("مانعة" in n for n in mid)
+        assert any("مانعة صواعق" in n for n in head)
+        # ولا مانعة بلا تأريض
+        assert "قضيب تأريض 1.5 متر مع القفيص" in head
+
+
+def test_each_voltage_uses_its_own_cable():
+    """11 ك.ف قابلو نحاس 1×150، و33 ك.ف قابلو 1×185 — لا تبادل بينهما."""
+    for position in IsolatorPosition:
+        kv11 = {n for (n, _u), _q in isolator_kit(IsolatorVoltage.KV11, position)}
+        kv33 = {n for (n, _u), _q in isolator_kit(IsolatorVoltage.KV33, position)}
+        assert "قابلو نحاس 1×150 ملم²" in kv11 and "قابلو 1×185 ملم2" not in kv11
+        assert "قابلو 1×185 ملم2" in kv33 and "قابلو نحاس 1×150 ملم²" not in kv33
+
+
+def test_bracket_21_is_gone_from_every_kit():
+    """ق-١٩: براكيت 2.1 متر ملغى تماماً — لا في المواد ولا في الأجور."""
+    everything = list(TRANSFORMER_KIT)
+    for kit, _label in ISOLATOR_KITS.values():
+        everything += kit
+    assert not any("2.1" in name for (name, _unit), _per in everything)
+
+
+def test_the_two_positions_share_one_priced_material_and_one_labour_item(catalog):
+    """الموقع لا يغيّر المادة ولا الأجر — لكن المصدر يميّزهما للتتبّع."""
+    eq = Equipment(onload_11_mid=2, onload_11_head=3)
+    lines = materials_equipment(eq)
+    assert qty(lines, "فاصل ON-LOAD") == 5
+
+    sources = [l.source for l in lines if l.name == "فاصل ON-LOAD"]
+    assert sources == [
+        "فاصل 11 ك.ف — منتصف الشبكة: 2 × 1",
+        "فاصل 11 ك.ف — على رأس القابلو: 3 × 1",
+    ]
+
+    labour = labour_equipment(eq, catalog["أجور_العمل"])
+    assert [(l.name, l.qty) for l in labour] == [("نصب الفاصل ON-LOAD", 5)]
+
+
+def test_the_two_voltages_have_separate_labour_items(catalog):
+    eq = Equipment(onload_11_mid=1, isolator_33_head=2)
+    labour = labour_equipment(eq, catalog["أجور_العمل"])
     assert [(l.name, l.qty, l.cost) for l in labour] == [
-        ("نصب فاصل هوائي 33 ك.ف", 2, 180_000)
+        ("نصب الفاصل ON-LOAD", 1, 90_000),
+        ("نصب فاصل هوائي 33 ك.ف", 2, 180_000),
     ]
 
 
@@ -194,7 +239,8 @@ def test_equipment_merges_into_project_totals(catalog):
 def test_every_equipment_material_has_an_entry_in_the_catalog(catalog):
     """حارس: كل مادة يولّدها المحرك لها صف في نسخة الأسعار — بسعر أو بتنبيه."""
     eq = Equipment(
-        transformers=1, onload=1, onload_cable_head=1, air_isolator_33=1, lattice_cages=1
+        transformers=1, onload_11_mid=1, onload_11_head=1,
+        isolator_33_mid=1, isolator_33_head=1, lattice_cages=1,
     )
     prices = catalog["المواد"]
     for (name, unit), _qty in aggregate(materials_equipment(eq)).items():
@@ -205,7 +251,7 @@ def test_every_equipment_material_has_an_entry_in_the_catalog(catalog):
 def test_pending_prices_are_reported_not_silently_zeroed(catalog):
     """جهاز الإنارة وترمنل 185 بلا سعر — يُبلَّغ عنهما ولا يمرّان بصفر صامت."""
     result = compute(
-        OverheadProject(equipment=Equipment(transformers=1, air_isolator_33=1)), catalog
+        OverheadProject(equipment=Equipment(transformers=1, isolator_33_mid=1)), catalog
     )
     assert "جهاز إنارة" in result["أسعار_مفقودة"]
     assert "ترمنل 185 ملم2" in result["أسعار_مفقودة"]
