@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""لوحتا إدخال الشبكة الهوائية — 11 ك.ف و33 ك.ف."""
+"""لوحات الإدخال — 11 ك.ف و33 ك.ف والضغط الواطئ والتجهيزات."""
 
 from __future__ import annotations
 
@@ -13,6 +13,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from engine.equipment import (
+    AIR_ISOLATOR_33_KIT,
+    ONLOAD_CABLE_HEAD_KIT,
+    ONLOAD_KIT,
+    TRANSFORMER_KIT,
+)
 from engine.lowvoltage import conductor_quantity, count_poles_lv
 from engine.overhead import (
     resolve_spans,
@@ -23,6 +29,7 @@ from engine.overhead import (
 from engine.types import (
     BracketPattern,
     CircuitType,
+    Equipment,
     LVNetworkType,
     Network11kV,
     Network33kV,
@@ -524,4 +531,122 @@ class PanelLV(QWidget):
         self.consumer_hint.setText(
             f"كونكتر ربط مشتركين = {self.consumers.value()} × 1 = "
             f"<b>{self.consumers.value():,}</b> &nbsp;—&nbsp; السعر والأجر غير محدَّدين بعد."
+        )
+
+
+class PanelEquipment(QWidget):
+    """مدخلات التجهيزات على الأعمدة — المحولة والفواصل والقفيص (ق-٢٣).
+
+    لا تتبع طول المسار، فليس فيها اقتراح ولا زرّ اعتماد: يُدخل المستخدم العدد،
+    وتُعرض تحته قائمة الملحقات التي يجرّها كي يرى ما دخل التخمين قبل الطباعة.
+    """
+
+    changed = pyqtSignal()
+
+    def __init__(self, catalog: dict) -> None:
+        super().__init__()
+        self.catalog = catalog
+        self._build()
+        self._connect()
+        self.refresh_hints()
+
+    def _build(self) -> None:
+        body, layout = scroll_body()
+
+        box, form = section("المحولة")
+        self.transformers = number_field(0, 1000, 0)
+        form.addRow("عدد محولات 400 KVA:", self.transformers)
+        self.transformer_hint = HintLabel()
+        form.addRow(self.transformer_hint)
+        layout.addWidget(box)
+
+        box, form = section("الفواصل")
+        self.onload = number_field(0, 1000, 0)
+        self.onload_head = number_field(0, 1000, 0)
+        self.air33 = number_field(0, 1000, 0)
+        form.addRow("عدد فواصل ON-LOAD:", self.onload)
+        form.addRow("عدد فواصل ON-LOAD على رأس القابلو:", self.onload_head)
+        form.addRow("عدد الفواصل الهوائية 33 ك.ف:", self.air33)
+        self.isolator_hint = HintLabel()
+        form.addRow(self.isolator_hint)
+        layout.addWidget(box)
+
+        box, form = section("متفرقات")
+        self.cages = number_field(0, 100_000, 0)
+        form.addRow("عدد أقفاص العمود المشبك:", self.cages)
+        self.cage_hint = HintLabel()
+        form.addRow(self.cage_hint)
+        layout.addWidget(box)
+
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+
+    def _connect(self) -> None:
+        for w in (self.transformers, self.onload, self.onload_head,
+                  self.air33, self.cages):
+            w.valueChanged.connect(self._on_change)
+
+    def _on_change(self) -> None:
+        self.refresh_hints()
+        self.changed.emit()
+
+    def equipment(self) -> Equipment:
+        return Equipment(
+            transformers=self.transformers.value(),
+            onload=self.onload.value(),
+            onload_cable_head=self.onload_head.value(),
+            air_isolator_33=self.air33.value(),
+            lattice_cages=self.cages.value(),
+        )
+
+    @staticmethod
+    def _kit_text(kit: list, count: int) -> str:
+        """يعرض ملحقات المجموعة الواحدة — مصدر السطور لا نتيجتها فقط."""
+        return "<br>".join(
+            f"&nbsp;&nbsp;– {name}: <b>{per * count:g}</b>" for (name, _unit), per in kit
+        )
+
+    def refresh_hints(self) -> None:
+        eq = self.equipment()
+
+        if eq.transformers:
+            self.transformer_hint.setText(
+                f"<b>تجرّ {len(TRANSFORMER_KIT)} مادة</b>، أجرها كله داخل «نصب المحولة»:"
+                f"<br>{self._kit_text(TRANSFORMER_KIT, eq.transformers)}"
+            )
+        else:
+            self.transformer_hint.setText(
+                "كل محولة تجرّ 15 مادة (قاطع الدورة والقاعدة ولنك الفيوز ومانعة "
+                "الصواعق والتأريض والترمنلات وجهاز الإنارة)، وأجر نصبها يشملها كلها."
+            )
+
+        rows = []
+        if eq.onload:
+            rows.append(
+                "<b>فاصل ON-LOAD</b><br>" + self._kit_text(ONLOAD_KIT, eq.onload)
+            )
+        if eq.onload_cable_head:
+            rows.append(
+                "<b>فاصل ON-LOAD على رأس القابلو</b><br>"
+                + self._kit_text(ONLOAD_CABLE_HEAD_KIT, eq.onload_cable_head)
+            )
+        if eq.air_isolator_33:
+            rows.append(
+                "<b>فاصل هوائي 33 ك.ف</b><br>"
+                + self._kit_text(AIR_ISOLATOR_33_KIT, eq.air_isolator_33)
+            )
+        both = eq.onload + eq.onload_cable_head
+        if both:
+            rows.append(f"أجر «نصب الفاصل ON-LOAD» يجمع النوعين: {both} فاصل.")
+        rows.append("براكيت 2.1 متر ملغى تماماً — لا مادةً ولا أجراً (ق-١٩).")
+        self.isolator_hint.setText("<br>".join(rows))
+
+        self.cage_hint.setText(
+            "كمية يدخلها المستخدم مباشرة — بلا ملحقات وبلا أجر مستقل."
         )

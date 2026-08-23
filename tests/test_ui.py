@@ -256,3 +256,41 @@ def test_warning_renders_as_rich_text_not_raw_markup(window):
     from PyQt6.QtCore import Qt
 
     assert window.warning.textFormat() == Qt.TextFormat.RichText
+
+
+# ═══════════════════ لسان التجهيزات ═══════════════════
+
+
+def test_equipment_tab_is_empty_by_default(window):
+    """لا محولة ولا فاصل ما لم يُدخلهما المستخدم."""
+    assert not window.panelequip.equipment()
+    assert not any(m["المادة"] == "محولة 400 KVA" for m in window.result["المواد"])
+
+
+def test_entering_a_transformer_adds_its_kit_and_its_labour(window):
+    window.panelequip.transformers.setValue(1)
+    names = [m["المادة"] for m in window.result["المواد"]]
+    assert "محولة 400 KVA" in names
+    assert "لنك فيوز 15 KV مع سلك فيوز 40 أمبير" in names
+    assert "نصب المحولة" in [l.name for l in window.result["أجور_العمل"]]
+
+
+def test_both_onload_kinds_feed_one_labour_line(window):
+    window.panelequip.onload.setValue(2)
+    window.panelequip.onload_head.setValue(3)
+    labour = [l for l in window.result["أجور_العمل"] if l.name == "نصب الفاصل ON-LOAD"]
+    assert len(labour) == 1 and labour[0].qty == 5
+
+
+def test_equipment_hint_lists_the_kit_so_the_checker_sees_it(window):
+    """المستخدم يرى ما تجرّه المحولة قبل الطباعة لا بعدها."""
+    window.panelequip.transformers.setValue(2)
+    text = window.panelequip.transformer_hint.text()
+    assert "قاطع دورة 400 أمبير مع المتسعة: <b>4</b>" in text
+    assert "ترمنل 150 ملم²: <b>60</b>" in text
+
+
+def test_equipment_totals_reach_the_screen(window):
+    window.panelequip.transformers.setValue(1)
+    assert f"{window.result['الكلفة_الكلية']:,.0f}" in window.total_all.text()
+    assert "جهاز إنارة" in window.warning.text()

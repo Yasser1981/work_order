@@ -179,6 +179,9 @@ class OverheadProject:
     netlv: "NetworkLV | None" = None
     """شبكة الضغط الواطئ — None حين لا يتضمّنها المشروع."""
 
+    equipment: "Equipment" = field(default_factory=lambda: Equipment())
+    """التجهيزات على الأعمدة: المحولة والفواصل والقفيص (ق-٢٣)."""
+
 
 class LVNetworkType(Enum):
     """نوع شبكة الضغط الواطئ."""
@@ -229,3 +232,38 @@ class NetworkLV:
 
     hv_poles_lattice: int = 0
     hv_poles_round: int = 0
+
+
+@dataclass
+class Equipment:
+    """التجهيزات المنصوبة على الأعمدة — لا تتبع طول المسار بل تُدخَل عدداً.
+
+    كل تجهيز يجرّ خلفه مجموعة ملحقات ثابتة (المحولة 15 مادة، الفاصل ON-LOAD على
+    رأس القابلو 9 مواد …)، وأجر عمله يشمل ملحقاته كلها فلا أجر مستقل لها (ق-٢٣).
+    """
+
+    transformers: int = 0
+    """محولة 400 KVA وملحقاتها."""
+
+    onload: int = 0
+    """فاصل ON-LOAD على الشبكة الهوائية."""
+
+    onload_cable_head: int = 0
+    """فاصل ON-LOAD على رأس القابلو — يضيف مانعة صواعق وتأريضاً وقابلو نحاس."""
+
+    air_isolator_33: int = 0
+    """فاصل هوائي 33 ك.ف وملحقاته."""
+
+    lattice_cages: int = 0
+    """قفيص عمود مشبك — كمية يدخلها المستخدم مباشرة، بلا ملحقات وبلا أجر."""
+
+    def __bool__(self) -> bool:
+        return any(
+            (
+                self.transformers,
+                self.onload,
+                self.onload_cable_head,
+                self.air_isolator_33,
+                self.lattice_cages,
+            )
+        )

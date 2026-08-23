@@ -524,11 +524,13 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
     prices = catalog["المواد"]
     rates = catalog["أجور_العمل"]
 
+    from .equipment import labour_equipment, materials_equipment
     from .lowvoltage import labour_lv, materials_lv
 
     raw = materials_11kv(project.net11) + materials_33kv(project.net33)
     if project.netlv is not None:
         raw += materials_lv(project.netlv)
+    raw += materials_equipment(project.equipment)
     totals = aggregate(raw)
 
     # تفصيل كل مادة: الأسطر التي ساهمت فيها ومعادلة كل سطر — ليتمكّن المدقّق من
@@ -563,6 +565,7 @@ def compute(project: OverheadProject, catalog: dict) -> dict:
     labour = labour_11kv(project.net11, rates) + labour_33kv(project.net33, rates)
     if project.netlv is not None:
         labour += labour_lv(project.netlv, rates)
+    labour += labour_equipment(project.equipment, rates)
     labour_cost = sum(line.cost for line in labour)
 
     return {

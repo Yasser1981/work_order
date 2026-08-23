@@ -29,7 +29,7 @@ from engine.types import OverheadProject
 import printing
 
 from .order_panel import OrderPanel
-from .panels import Panel11kV, Panel33kV, PanelLV
+from .panels import Panel11kV, Panel33kV, PanelEquipment, PanelLV
 
 STYLE = """
 QWidget       { font-size: 13px; }
@@ -63,15 +63,18 @@ class MainWindow(QMainWindow):
         self.panel11 = Panel11kV(self.catalog)
         self.panel33 = Panel33kV(self.catalog)
         self.panellv = PanelLV(self.catalog)
+        self.panelequip = PanelEquipment(self.catalog)
         self.order_panel = OrderPanel()
         self.panel11.changed.connect(self.recalculate)
         self.panel33.changed.connect(self.recalculate)
         self.panellv.changed.connect(self.recalculate)
+        self.panelequip.changed.connect(self.recalculate)
 
         tabs = QTabWidget()
         tabs.addTab(self.panel11, "شبكة 11 ك.ف")
         tabs.addTab(self.panel33, "شبكة 33 ك.ف")
         tabs.addTab(self.panellv, "الضغط الواطئ")
+        tabs.addTab(self.panelequip, "التجهيزات")
         tabs.addTab(self.order_panel, "أمر العمل")
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -254,6 +257,7 @@ class MainWindow(QMainWindow):
             net11=self.panel11.network(),
             net33=self.panel33.network(),
             netlv=self.panellv.network(),
+            equipment=self.panelequip.equipment(),
         )
         result = compute(project, self.catalog)
         self.result = result
