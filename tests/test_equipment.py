@@ -71,27 +71,42 @@ def test_the_lighting_unit_is_gone_from_every_kit_and_from_the_prices():
     assert "جهاز إنارة" not in load_catalog()["المواد"]
 
 
-def test_the_breaker_follows_the_transformer_rating():
-    """قاطع الدورة يطابق السعة رقماً برقم: 250←250، 400←400، 630←630 (ق-٢٦)."""
-    for size in TransformerSize:
-        names = {n for (n, _u), _q in transformer_kit(size)}
-        assert f"محولة {size.value} KVA" in names
-        assert f"قاطع دورة {size.value} أمبير مع المتسعة" in names
+EXPECTED_OUTPUTS = {
+    TransformerSize.KVA250: (2, 250),
+    TransformerSize.KVA400: (2, 400),
+    TransformerSize.KVA630: (4, 400),   # استثناء: أربعة مخارج بقاطع 400 لا 630
+}
 
 
-def test_two_breakers_per_transformer_and_no_main_breaker():
-    """مخرجان لشبكة الضغط الواطئ، فقاطعان — ولا قاطع رئيسي (ق-٢٦)."""
-    for size in TransformerSize:
+def test_the_breaker_follows_the_number_of_outputs_not_the_rating():
+    """250 و400 مخرجان بسعتهما، و630 أربعة مخارج بقاطع 400 أمبير (ق-٢٧)."""
+    for size, (outputs, amps) in EXPECTED_OUTPUTS.items():
         kit = dict(transformer_kit(size))
-        assert kit[(f"قاطع دورة {size.value} أمبير مع المتسعة", "عدد")] == 2
-        assert sum(1 for (n, _u) in kit if "قاطع" in n) == 1
+        assert kit[(f"محولة {size.value} KVA", "عدد")] == 1
+        assert kit[(f"قاطع دورة {amps} أمبير مع المتسعة", "عدد")] == outputs
+        assert sum(1 for (n, _u) in kit if "قاطع" in n) == 1   # ولا قاطع رئيسي
 
 
-def test_only_the_transformer_and_its_breaker_change_with_the_rating():
-    """بقية الملحقات لا تتبع السعة — نقطة مسجَّلة تحتاج تأكيداً (س-١١)."""
+def test_no_630_amp_breaker_exists_anywhere(catalog):
+    """المحولة 630 KVA لا تستخدم قاطع 630 أمبير — فلا وجود له مادةً ولا سعراً."""
+    for size in TransformerSize:
+        assert not any("630 أمبير" in n for (n, _u), _q in transformer_kit(size))
+    assert "قاطع دورة 630 أمبير مع المتسعة" not in catalog["المواد"]
+
+
+def test_the_lv_cable_length_follows_the_number_of_outputs():
+    """40 م لكل مخرج: مخرجان ← 80 م، وأربعة ← 160 م (ق-٢٧)."""
+    for size, (outputs, _amps) in EXPECTED_OUTPUTS.items():
+        kit = dict(transformer_kit(size))
+        assert kit[("قابلو نحاس 1×150 ملم²", "متر")] == outputs * 40
+
+
+def test_everything_else_is_shared_across_ratings():
+    """ما عدا المحولة وقاطعها وقابلو الضغط الواطئ: 11 مادة لا تتغيّر بالسعة."""
     kits = {s: dict(transformer_kit(s)) for s in TransformerSize}
     shared = set.intersection(*(set(k) for k in kits.values()))
-    assert len(shared) == 12
+    shared -= {("قابلو نحاس 1×150 ملم²", "متر")}
+    assert len(shared) == 11
     for material in shared:
         assert len({k[material] for k in kits.values()}) == 1
 
@@ -108,13 +123,12 @@ def test_ratings_without_a_price_are_reported(catalog):
         catalog,
     )
     assert "محولة 630 KVA" in result["أسعار_مفقودة"]
-    assert "قاطع دورة 630 أمبير مع المتسعة" in result["أسعار_مفقودة"]
 
 
 def test_transformer_quantities_scale_linearly():
     lines = materials_equipment(Equipment(transformers={KVA400: 3}))
     assert qty(lines, "محولة 400 KVA") == 3
-    assert qty(lines, "قابلو نحاس 1×150 ملم²") == 240
+    assert qty(lines, "قابلو نحاس 1×150 ملم²") == 240   # 3 × مخرجين × 40
     assert qty(lines, "ترمنل 150 ملم²") == 90
 
 
@@ -150,6 +164,7 @@ def test_11kv_mid_network_has_no_arrester_and_full_cable():
         "فاصل ON-LOAD": 1,
         "قابلو نحاس 1×150 ملم²": 20,
         "ترمنل 150 ملم²": 6,
+        "براكيت 2.1 متر": 1,
         "معدات ربط ألمنيوم – نحاس": 6,
     }
 
@@ -161,6 +176,7 @@ def test_11kv_cable_head_adds_the_arrester_and_halves_the_cable():
         "فاصل ON-LOAD": 1,
         "قابلو نحاس 1×150 ملم²": 10,
         "ترمنل 150 ملم²": 6,
+        "براكيت 2.1 متر": 1,
         "معدات ربط ألمنيوم – نحاس": 6,
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
@@ -177,6 +193,7 @@ def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
         "فاصل هوائي 33 ك.ف": 1,
         "قابلو 1×185 ملم2": 20,
         "ترمنل 185 ملم2": 6,
+        "براكيت 2.1 متر": 1,
         "معدات ربط ألمنيوم – نحاس": 6,
     }
 
@@ -188,6 +205,7 @@ def test_33kv_cable_head_matches_the_original_file_except_the_cable():
         "فاصل هوائي 33 ك.ف": 1,
         "قابلو 1×185 ملم2": 10,
         "ترمنل 185 ملم2": 6,
+        "براكيت 2.1 متر": 1,
         "معدات ربط ألمنيوم – نحاس": 6,
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
@@ -225,15 +243,6 @@ def test_each_voltage_uses_its_own_cable():
         kv33 = {n for (n, _u), _q in isolator_kit(IsolatorVoltage.KV33, position)}
         assert "قابلو نحاس 1×150 ملم²" in kv11 and "قابلو 1×185 ملم2" not in kv11
         assert "قابلو 1×185 ملم2" in kv33 and "قابلو نحاس 1×150 ملم²" not in kv33
-
-
-def test_bracket_21_is_gone_from_every_kit():
-    """ق-١٩: براكيت 2.1 متر ملغى تماماً — لا في المواد ولا في الأجور."""
-    everything = []
-    for kits in (TRANSFORMER_KITS, ISOLATOR_KITS):
-        for kit, _label in kits.values():
-            everything += kit
-    assert not any("2.1" in name for (name, _unit), _per in everything)
 
 
 def test_the_two_positions_share_one_priced_material_and_one_labour_item(catalog):

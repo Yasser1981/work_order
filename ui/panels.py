@@ -14,11 +14,11 @@ from PyQt6.QtWidgets import (
 )
 
 from engine.equipment import (
-    BREAKERS_PER_TRANSFORMER,
     CABLE_HEAD_M,
     CABLE_MID_NETWORK_M,
     ISOLATOR_KITS,
     TRANSFORMER_KITS,
+    TRANSFORMER_OUTPUTS,
     TransformerSize,
 )
 from engine.lowvoltage import conductor_quantity, count_poles_lv
@@ -577,9 +577,12 @@ class PanelEquipment(QWidget):
         box, form = section("المحولات")
         self.transformers = {}
         for size in TransformerSize:
+            outputs, amps = TRANSFORMER_OUTPUTS[size]
             field = number_field(0, 1000, 0)
             self.transformers[size] = field
-            form.addRow(f"عدد محولات {size.label}:", field)
+            form.addRow(
+                f"عدد محولات {size.label}   ({outputs} × قاطع {amps} أمبير):", field
+            )
         self.transformer_hint = HintLabel()
         form.addRow(self.transformer_hint)
         layout.addWidget(box)
@@ -656,9 +659,11 @@ class PanelEquipment(QWidget):
             rows.append(f"<b>{label} × {count}</b><br>" + self._kit_text(kit, count))
         if not rows:
             rows.append(
-                "قاطع الدورة يتبع السعة رقماً برقم (250←250، 400←400، 630←630)، "
-                f"و<b>{BREAKERS_PER_TRANSFORMER} قاطع لكل محولة</b> لأن لها مخرجين "
-                "لشبكة الضغط الواطئ ولا قاطع رئيسي.<br>"
+                "<b>عدد المخارج يحكم القاطع والقابلو</b>، ولا قاطع رئيسي:<br>"
+                "&nbsp;&nbsp;– 250 و400 KVA: مخرجان، قاطعان بسعة المحولة، "
+                "وقابلو 1×150 بطول 80 م<br>"
+                "&nbsp;&nbsp;– 630 KVA: <b>أربعة مخارج</b>، أربعة قواطع "
+                "<b>400 أمبير</b> (لا 630)، وقابلو <b>160 م</b><br>"
                 "وكل محولة تجرّ قاعدتها ولنك الفيوز ومانعة الصواعق والتأريض "
                 "والترمنلات — وأجر نصبها يشملها كلها.<br>"
                 "سعة 1000 KVA لا تُستخدم هوائياً — أرضية فقط."

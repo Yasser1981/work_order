@@ -42,9 +42,21 @@ class TransformerSize(Enum):
         return f"{self.value} KVA"
 
 
+TRANSFORMER_OUTPUTS = {
+    TransformerSize.KVA250: (2, 250),
+    TransformerSize.KVA400: (2, 400),
+    # 630 استثناء: أربعة مخارج بقاطع 400 أمبير لا قاطع 630 (ق-٢٧)
+    TransformerSize.KVA630: (4, 400),
+}
+"""لكل سعة: (عدد المخارج لشبكة الضغط الواطئ، سعة قاطع الدورة بالأمبير).
+
+عدد المخارج = عدد قواطع الدورة، ولا قاطع رئيسي."""
+
 M_TRANSFORMER = {s: (f"محولة {s.value} KVA", "عدد") for s in TransformerSize}
-M_BREAKER = {s: (f"قاطع دورة {s.value} أمبير مع المتسعة", "عدد") for s in TransformerSize}
-"""قاطع الدورة يطابق سعة المحولة رقماً برقم: 250←250، 400←400، 630←630."""
+M_BREAKER = {
+    s: (f"قاطع دورة {amps} أمبير مع المتسعة", "عدد")
+    for s, (_outputs, amps) in TRANSFORMER_OUTPUTS.items()
+}
 M_TRANSFORMER_BASE = ("قاعدة محولة 2.4 متر", "سيت")
 M_FUSE_LINK = ("لنك فيوز 15 KV مع سلك فيوز 40 أمبير", "سيت")
 M_FUSE_LINK_BASE = ("قاعدة لنك فيوز 2.4 متر", "عدد")
@@ -61,14 +73,17 @@ M_ARRESTER_33 = ("مانعة صواعق 33 ك.ف", "سيت")
 M_CABLE_185 = ("قابلو 1×185 ملم2", "متر")
 M_TERMINAL_185 = ("ترمنل 185 ملم2", "عدد")
 M_LATTICE_CAGE = ("قفيص عمود مشبك", "عدد")
+M_BRACKET_21 = ("براكيت 2.1 متر", "عدد")
 
 # ───────────────────────────── جداول الملحقات ─────────────────────────────
 # (المادة، الكمية لكل وحدة). مقروءة من RAW_تفصيلي في الملف الأصلي:
 # المحولة الصفوف 5–19، الفاصل ON-LOAD 43–47، وعلى رأس القابلو 48–57،
 # والفاصل الهوائي 33 ك.ف 85–92.
 
-BREAKERS_PER_TRANSFORMER = 2
-"""كل محولة لها مخرجان لشبكة الضغط الواطئ، فقاطعان — ولا قاطع رئيسي (ق-٢٦)."""
+CU_CABLE_150_PER_OUTPUT_M = 40
+"""قابلو نحاس 1×150 لكل مخرج (م). مخرجان ← 80 م، وأربعة ← 160 م (ق-٢٧).
+
+الطول يتبع **عدد المخارج** لا سعة المحولة — وهو ما يفسّر الرقمين اللذين ذكرتَهما."""
 
 TRANSFORMER_COMMON_KIT = [
     (M_TRANSFORMER_BASE, 1),
@@ -77,7 +92,6 @@ TRANSFORMER_COMMON_KIT = [
     (M_EARTH_ROD, 3),
     (M_EARTH_WIRE, 15),
     (M_CU_CABLE_50, 25),
-    (M_CU_CABLE_150, 80),
     (M_ARRESTER_11, 1),
     (M_ARRESTER_BASE, 1),
     (M_AL_FITTINGS_CU, 15),
@@ -90,10 +104,16 @@ TRANSFORMER_COMMON_KIT = [
 
 
 def transformer_kit(size: TransformerSize) -> list[tuple[tuple[str, str], float]]:
-    """مواد محولة واحدة بسعتها."""
+    """مواد محولة واحدة بسعتها.
+
+    المتغيّر بالسعة ثلاثة: المحولة نفسها، وقاطع الدورة (سعةً وعدداً)، وطول قابلو
+    الضغط الواطئ التابع لعدد المخارج. وما عدا ذلك مشترك لا يتغيّر.
+    """
+    outputs, _amps = TRANSFORMER_OUTPUTS[size]
     return [
         (M_TRANSFORMER[size], 1),
-        (M_BREAKER[size], BREAKERS_PER_TRANSFORMER),
+        (M_BREAKER[size], outputs),
+        (M_CU_CABLE_150, outputs * CU_CABLE_150_PER_OUTPUT_M),
     ] + TRANSFORMER_COMMON_KIT
 
 
@@ -121,6 +141,10 @@ CABLE_MID_NETWORK_M = 20
 CABLE_HEAD_M = CABLE_MID_NETWORK_M // 2
 LUGS_PER_ISOLATOR = 6
 FITTINGS_PER_ISOLATOR = 6
+BRACKETS_21_PER_ISOLATOR = 1
+"""براكيت جنل 2.1 م مفرد — واحد لكل فاصل، في الجهدين وفي الموقعين (ق-٢٧).
+
+يُعيد ما ألغاه ق-١٩ بطلبك. أجر تركيبه داخل أجر نصب الفاصل، وسعره معلَّق."""
 """معدات ربط ألمنيوم – نحاس لكل فاصل — في الجهدين معاً، وفي الموقعين معاً (ق-٢٦).
 
 لا وجود لمعدات ألمنيوم – ألمنيوم في الفاصل إطلاقاً."""
@@ -182,6 +206,7 @@ def isolator_kit(
         (parts["isolator"], 1),
         (parts["cable"], position.cable_m),
         (parts["lug"], LUGS_PER_ISOLATOR),
+        (M_BRACKET_21, BRACKETS_21_PER_ISOLATOR),
     ]
     if parts["fittings"]:
         kit.append(parts["fittings"])

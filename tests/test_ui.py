@@ -405,7 +405,7 @@ def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
 
 
 def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip):
-    """قاطع الدورة يتبع السعة رقماً برقم (ق-٢٦)."""
+    """عدد المخارج يحكم القاطع والقابلو (ق-٢٧)."""
     from engine.equipment import TransformerSize
 
     for size in TransformerSize:
@@ -413,7 +413,9 @@ def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
     for size in TransformerSize:
         assert quantities[f"محولة {size.value} KVA"] == 1
-        assert quantities[f"قاطع دورة {size.value} أمبير مع المتسعة"] == 2
+    assert quantities["قاطع دورة 250 أمبير مع المتسعة"] == 2
+    assert quantities["قاطع دورة 400 أمبير مع المتسعة"] == 2 + 4   # 400 و630 معاً
+    assert quantities["قابلو نحاس 1×150 ملم²"] == 80 + 80 + 160
     # الملحق المشترك يُجمَّع من السعات الثلاث
     assert quantities["قاعدة محولة 2.4 متر"] == 3
 
