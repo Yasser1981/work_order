@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from engine.equipment import (
     CABLE_HEAD_M,
+    M_BRACKET_21,
     CABLE_MID_NETWORK_M,
     ISOLATOR_KITS,
     TRANSFORMER_KITS,
@@ -683,7 +684,10 @@ class PanelEquipment(QWidget):
                 f"<b>{CABLE_HEAD_M} م</b> — نصف الكمية، لأن الربط بالشبكة الهوائية "
                 "من جهة واحدة والجهة الثانية يربطها القابلو الأرضي."
             )
-        rows.append("براكيت 2.1 متر ملغى تماماً — لا مادةً ولا أجراً (ق-١٩).")
+        rows.append(
+            f"<b>{M_BRACKET_21[0]}</b>: واحد لكل فاصل في الجهدين معاً، "
+            "وأجر تركيبه ضمن أجر نصب الفاصل (ق-٢٧)."
+        )
         self.isolator_hint.setText("<br>".join(rows))
 
         self.cage_hint.setText(

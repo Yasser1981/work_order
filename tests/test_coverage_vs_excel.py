@@ -89,6 +89,11 @@ CANCELLED = {
     ("جهاز إنارة", "عدد"): "ملغى تماماً بطلبك — كان بكمية 2 وسعر صفر (ق-٢٦)",
 }
 
+RENAMED = {
+    # اسم الملف الأصلي ← الاسم المعتمد عندنا. المادة نفسها لا مادة جديدة (ق-٢٩).
+    ("براكيت 2.1 متر", "عدد"): ("براكيت جنل 2.1م مفرد", "عدد"),
+}
+
 DEFERRED = {
     ("قابلو 3×150 ملم2 جهد 11 ك.ف", "متر"): "الشبكة الأرضية (ق-١٢)",
     ("صندوق مستقيم 3×150 ملم2 جهد 11 ك.ف", "عدد"): "الشبكة الأرضية (ق-١٢)",
@@ -142,6 +147,14 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
     return produced
 
 
+def test_renamed_materials_map_onto_something_the_engine_produces():
+    """إعادة التسمية ليست إخفاءً: الاسم الجديد موجود فعلاً، والقديم لم يعد."""
+    produced = all_materials_the_engine_can_produce()
+    for excel_name, our_name in RENAMED.items():
+        assert our_name in produced, f"الاسم الجديد غير مولَّد: {our_name}"
+        assert excel_name not in produced, f"الاسم القديم ما زال يُولَّد: {excel_name}"
+
+
 def test_the_excel_snapshot_is_the_full_61_rows():
     assert len(EXCEL_MATERIALS) == 61
     assert len(set(EXCEL_MATERIALS)) == 61
@@ -151,7 +164,9 @@ def test_every_excel_material_is_implemented_or_explicitly_set_aside():
     produced = all_materials_the_engine_can_produce()
     orphans = [
         m for m in EXCEL_MATERIALS
-        if m not in produced and m not in DEFERRED and m not in CANCELLED
+        if RENAMED.get(m, m) not in produced
+        and m not in DEFERRED
+        and m not in CANCELLED
     ]
     assert not orphans, (
         "مواد سقطت بين النطاق والمؤجَّل — نفّذها أو أدرجها صراحةً في DEFERRED:\n"
@@ -162,14 +177,17 @@ def test_every_excel_material_is_implemented_or_explicitly_set_aside():
 def test_deferred_materials_are_really_not_produced():
     """العكس أيضاً محروس: مادة مؤجَّلة لا تتسلّل إلى المخرجات."""
     produced = all_materials_the_engine_can_produce()
-    leaked = [m for m in list(DEFERRED) + list(CANCELLED) if m in produced]
+    leaked = [
+        m for m in list(DEFERRED) + list(CANCELLED)
+        if RENAMED.get(m, m) in produced
+    ]
     assert not leaked, f"مادة مؤجَّلة أو ملغاة يولّدها المحرك: {leaked}"
 
 
 def test_engine_extras_beyond_the_excel_table_are_known():
     """ما يولّده المحرك ولا صف له في الملف الأصلي — كلاهما مقصود ومسجَّل."""
     produced = all_materials_the_engine_can_produce()
-    extras = produced - set(EXCEL_MATERIALS)
+    extras = produced - set(EXCEL_MATERIALS) - set(RENAMED.values())
     assert extras == {
         # RAW يحسبه في الملف الأصلي لكن بلا صف في جدول المواد — خلل مسجَّل
         ("شيش تسليح", "طن"),
