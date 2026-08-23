@@ -267,3 +267,67 @@ class Equipment:
                 self.lattice_cages,
             )
         )
+
+
+class SegmentKind(Enum):
+    """نوع المقطع — يُشتقّ من نوع محتواه فلا يمكن أن يتعارض معه."""
+
+    HV11 = "شبكة هوائية 11 ك.ف"
+    HV33 = "شبكة هوائية 33 ك.ف"
+    LV = "شبكة ضغط واطئ"
+    EQUIPMENT = "تجهيزات"
+
+
+SegmentContent = "Network11kV | Network33kV | NetworkLV | Equipment"
+
+
+@dataclass
+class Segment:
+    """مقطع واحد من المشروع.
+
+    المشروع الواقعي نادراً ما يكون شبكة واحدة متجانسة: مقطع مزدوج، ومقطع مفرد،
+    ومقطع ضغط واطئ بالقابلو المعلق، وآخر بالأسلاك. المقاطع تجعل ذلك قابلاً
+    للإدخال بدل إجبار المستخدم على جمع الأطوال ذهنياً (ق-٢٤).
+    """
+
+    name: str
+    content: object
+    """Network11kV أو Network33kV أو NetworkLV أو Equipment."""
+
+    @property
+    def kind(self) -> SegmentKind:
+        if isinstance(self.content, Network11kV):
+            return SegmentKind.HV11
+        if isinstance(self.content, Network33kV):
+            return SegmentKind.HV33
+        if isinstance(self.content, NetworkLV):
+            return SegmentKind.LV
+        if isinstance(self.content, Equipment):
+            return SegmentKind.EQUIPMENT
+        raise TypeError(f"محتوى مقطع غير معروف: {type(self.content).__name__}")
+
+
+@dataclass
+class Project:
+    """مشروع = قائمة مقاطع. الكميات تُجمَّع من المقاطع كلها بمفتاح (المادة + الوحدة)."""
+
+    name: str = ""
+    segments: list = field(default_factory=list)
+
+    def of_kind(self, kind: SegmentKind) -> list:
+        return [s for s in self.segments if s.kind is kind]
+
+
+ORDINALS = [
+    "الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع",
+    "الثامن", "التاسع", "العاشر", "الحادي عشر", "الثاني عشر", "الثالث عشر",
+    "الرابع عشر", "الخامس عشر", "السادس عشر", "السابع عشر", "الثامن عشر",
+    "التاسع عشر", "العشرون",
+]
+
+
+def segment_default_name(index: int) -> str:
+    """اسم افتراضي للمقطع رقم `index` (يبدأ من صفر) — «المقطع الأول» وهكذا."""
+    if index < len(ORDINALS):
+        return f"المقطع {ORDINALS[index]}"
+    return f"المقطع {index + 1}"

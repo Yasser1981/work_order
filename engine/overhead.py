@@ -520,61 +520,16 @@ def aggregate(lines: list[MaterialLine]) -> "OrderedDict[tuple[str, str], float]
 
 
 def compute(project: OverheadProject, catalog: dict) -> dict:
-    """يحسب المشروع كاملاً ويعيد المواد والأجور والمجاميع."""
-    prices = catalog["المواد"]
-    rates = catalog["أجور_العمل"]
+    """يحسب مشروعاً بسيطاً — شبكة واحدة من كل جهد — ويعيد المواد والأجور والمجاميع.
 
-    from .equipment import labour_equipment, materials_equipment
-    from .lowvoltage import labour_lv, materials_lv
+    غلاف حول `compute_project`: المشروع البسيط مقاطع بلا أسماء، فلا يظهر وسم مقطع
+    في مصادر الأسطر. مسار الحساب واحد لا اثنان (ق-٢٤).
+    """
+    from .project import compute_project
+    from .types import Project, Segment
 
-    raw = materials_11kv(project.net11) + materials_33kv(project.net33)
+    segments = [Segment("", project.net11), Segment("", project.net33)]
     if project.netlv is not None:
-        raw += materials_lv(project.netlv)
-    raw += materials_equipment(project.equipment)
-    totals = aggregate(raw)
-
-    # تفصيل كل مادة: الأسطر التي ساهمت فيها ومعادلة كل سطر — ليتمكّن المدقّق من
-    # تتبّع الرقم النهائي إلى مصادره بدل قبوله كما هو.
-    breakdown: dict[tuple[str, str], list[MaterialLine]] = {}
-    for line in raw:
-        breakdown.setdefault((line.name, line.unit), []).append(line)
-
-    materials = []
-    materials_cost = 0.0
-    for (name, unit), qty in totals.items():
-        entry = prices.get(name, {})
-        price = entry.get("السعر")
-        quantity_only = entry.get("كمية_فقط", False)
-        cost = 0.0 if (price is None or quantity_only) else qty * price
-        materials_cost += cost
-        contributors = breakdown[(name, unit)]
-        materials.append(
-            {
-                "المادة": name,
-                "الوحدة": unit,
-                "الكمية": qty,
-                "سعر الوحدة": price,
-                "الكلفة": cost,
-                "كمية_فقط": quantity_only,
-                "سعر_مفقود": price is None,
-                "تفصيل": [{"الكمية": c.qty, "المصدر": c.source} for c in contributors],
-                "مجمَّع": len(contributors) > 1,
-            }
-        )
-
-    labour = labour_11kv(project.net11, rates) + labour_33kv(project.net33, rates)
-    if project.netlv is not None:
-        labour += labour_lv(project.netlv, rates)
-    labour += labour_equipment(project.equipment, rates)
-    labour_cost = sum(line.cost for line in labour)
-
-    return {
-        "raw": raw,
-        "المواد": materials,
-        "أجور_العمل": labour,
-        "كلفة_المواد": materials_cost,
-        "كلفة_العمل": labour_cost,
-        "الكلفة_الكلية": materials_cost + labour_cost,
-        "أسعار_مفقودة": [m["المادة"] for m in materials if m["سعر_مفقود"]],
-        "أجور_مفقودة": [l.name for l in labour if l.rate_missing],
-    }
+        segments.append(Segment("", project.netlv))
+    segments.append(Segment("", project.equipment))
+    return compute_project(Project(project.name, segments), catalog)
