@@ -9,7 +9,7 @@
 قائمة الـ61 لقطة مجمَّدة من الملف الأصلي — لا تُعدَّل إلا بقرار مسجَّل (ق-٠).
 """
 
-from engine.equipment import materials_equipment
+from engine.equipment import TransformerSize, materials_equipment
 from engine.lowvoltage import materials_lv
 from engine.overhead import materials_11kv, materials_33kv
 from engine.types import (
@@ -87,6 +87,7 @@ EXCEL_MATERIALS = [
 
 CANCELLED = {
     ("براكيت 2.1 متر", "عدد"): "ملغى تماماً — الفاصل ON-LOAD لا يحتاجه (ق-١٩)",
+    ("جهاز إنارة", "عدد"): "ملغى تماماً بطلبك — كان بكمية 2 وسعر صفر (ق-٢٦)",
 }
 
 DEFERRED = {
@@ -132,7 +133,8 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             produced.add((line.name, line.unit))
 
     equipment = Equipment(
-        transformers=1, onload_11_mid=1, onload_11_head=1,
+        transformers={s: 1 for s in TransformerSize},
+        onload_11_mid=1, onload_11_head=1,
         isolator_33_mid=1, isolator_33_head=1, lattice_cages=1,
     )
     for line in materials_equipment(equipment):
@@ -174,6 +176,11 @@ def test_engine_extras_beyond_the_excel_table_are_known():
         ("شيش تسليح", "طن"),
         # مادة جديدة أضافها المستخدم (ق-٢٢)
         ("كونكتر ربط مشتركين", "عدد"),
+        # سعتان جديدتان لا يعرفهما الملف الأصلي (ق-٢٦)
+        ("محولة 250 KVA", "عدد"),
+        ("قاطع دورة 250 أمبير مع المتسعة", "عدد"),
+        ("محولة 630 KVA", "عدد"),
+        ("قاطع دورة 630 أمبير مع المتسعة", "عدد"),
     }
 
 

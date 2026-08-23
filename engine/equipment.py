@@ -1,25 +1,20 @@
 # -*- coding: utf-8 -*-
 """محرك التجهيزات المنصوبة على الأعمدة.
 
-أربع مجموعات لا تتبع طول المسار، بل يُدخل المستخدم عددها:
+مجموعات لا تتبع طول المسار، بل يُدخل المستخدم عددها:
 
-| التجهيز | المواد المولَّدة | الأجر |
+| التجهيز | المُدخَل | الأجر |
 |---|---|---|
-| محولة 400 KVA | 15 مادة | نصب المحولة |
-| فاصل ON-LOAD | 4 مواد | نصب الفاصل ON-LOAD |
-| فاصل ON-LOAD على رأس القابلو | 9 مواد | نصب الفاصل ON-LOAD |
-| فاصل هوائي 33 ك.ف | 8 مواد | نصب فاصل هوائي 33 ك.ف |
-| قفيص عمود مشبك | مادة واحدة | بلا أجر |
+| محولة 250 / 400 / 630 KVA | عدد لكل سعة | نصب المحولة |
+| فاصل ON-LOAD 11 ك.ف — منتصف الشبكة / رأس القابلو | عدد | نصب الفاصل ON-LOAD |
+| فاصل هوائي 33 ك.ف — منتصف الشبكة / رأس القابلو | عدد | نصب فاصل هوائي 33 ك.ف |
+| قفيص عمود مشبك | عدد | بلا أجر |
 
 القاعدة الحاكمة: **أجر التجهيز يشمل ملحقاته كلها** — قاطع الدورة والقاعدة ولنك
-الفيوز ومانعة الصواعق والتأريض والترمنلات وجهاز الإنارة كلها داخل «نصب المحولة»،
-وقابلو الفاصل النحاسي وترمنلاته داخل «نصب الفاصل». هذا ما يقوله الملف الأصلي حرفياً
-وما أكّده المستخدم في وصف واجهة كلفة العمل.
+الفيوز ومانعة الصواعق والتأريض والترمنلات كلها داخل «نصب المحولة»، وقابلو الفاصل
+النحاسي وترمنلاته داخل «نصب الفاصل».
 
-**براكيت 2.1 متر ملغى تماماً (ق-١٩)** — كان في الملف الأصلي سطراً لكل فاصل، وأُسقط
-من المجموعتين هنا: لا كمادة ولا كأجر.
-
-المرجع: ق-٢٣ في docs/سجل_القرارات.md
+المرجع: ق-٢٣ و ق-٢٥ و ق-٢٦ في docs/سجل_القرارات.md
 """
 
 from __future__ import annotations
@@ -32,8 +27,24 @@ from .types import Equipment, LabourLine, MaterialLine
 # ─────────────────────────────── أسماء المواد ───────────────────────────────
 # تطابق الملف الأصلي حرفياً — أي اختلاف حرف واحد يفصل المادة عن سعرها.
 
-M_TRANSFORMER = ("محولة 400 KVA", "عدد")
-M_BREAKER = ("قاطع دورة 400 أمبير مع المتسعة", "عدد")
+class TransformerSize(Enum):
+    """سعات المحولة المستخدمة في الشبكة الهوائية (ق-٢٦).
+
+    سعة 1000 KVA لا تُستخدم هوائياً — أرضية فقط، وتُضاف مع الشبكة الأرضية لاحقاً.
+    """
+
+    KVA250 = 250
+    KVA400 = 400
+    KVA630 = 630
+
+    @property
+    def label(self) -> str:
+        return f"{self.value} KVA"
+
+
+M_TRANSFORMER = {s: (f"محولة {s.value} KVA", "عدد") for s in TransformerSize}
+M_BREAKER = {s: (f"قاطع دورة {s.value} أمبير مع المتسعة", "عدد") for s in TransformerSize}
+"""قاطع الدورة يطابق سعة المحولة رقماً برقم: 250←250، 400←400، 630←630."""
 M_TRANSFORMER_BASE = ("قاعدة محولة 2.4 متر", "سيت")
 M_FUSE_LINK = ("لنك فيوز 15 KV مع سلك فيوز 40 أمبير", "سيت")
 M_FUSE_LINK_BASE = ("قاعدة لنك فيوز 2.4 متر", "عدد")
@@ -44,7 +55,6 @@ M_ARRESTER_11 = ("مانعة صواعق 11 KV", "سيت")
 M_ARRESTER_BASE = ("قاعدة مانعة صواعق مع الملحقات", "عدد")
 M_TERMINAL_150 = ("ترمنل 150 ملم²", "عدد")
 M_AL_FITTINGS_CU = ("معدات ربط ألمنيوم – نحاس", "عدد")
-M_LIGHTING = ("جهاز إنارة", "عدد")
 M_ONLOAD = ("فاصل ON-LOAD", "عدد")
 M_AIR_ISOLATOR_33 = ("فاصل هوائي 33 ك.ف", "عدد")
 M_ARRESTER_33 = ("مانعة صواعق 33 ك.ف", "سيت")
@@ -57,9 +67,10 @@ M_LATTICE_CAGE = ("قفيص عمود مشبك", "عدد")
 # المحولة الصفوف 5–19، الفاصل ON-LOAD 43–47، وعلى رأس القابلو 48–57،
 # والفاصل الهوائي 33 ك.ف 85–92.
 
-TRANSFORMER_KIT = [
-    (M_TRANSFORMER, 1),
-    (M_BREAKER, 2),
+BREAKERS_PER_TRANSFORMER = 2
+"""كل محولة لها مخرجان لشبكة الضغط الواطئ، فقاطعان — ولا قاطع رئيسي (ق-٢٦)."""
+
+TRANSFORMER_COMMON_KIT = [
     (M_TRANSFORMER_BASE, 1),
     (M_FUSE_LINK, 1),
     (M_FUSE_LINK_BASE, 1),
@@ -72,8 +83,23 @@ TRANSFORMER_KIT = [
     (M_AL_FITTINGS_CU, 15),
     (M_EARTH_TERMINAL, 15),
     (M_TERMINAL_150, 30),
-    (M_LIGHTING, 2),
 ]
+"""ما لا يتغيّر بسعة المحولة. المتغيّر: المحولة نفسها وقاطع دورتها.
+
+**جهاز الإنارة ملغى تماماً** — كان في الملف الأصلي بكمية 2 وسعر صفر (ق-٢٦)."""
+
+
+def transformer_kit(size: TransformerSize) -> list[tuple[tuple[str, str], float]]:
+    """مواد محولة واحدة بسعتها."""
+    return [
+        (M_TRANSFORMER[size], 1),
+        (M_BREAKER[size], BREAKERS_PER_TRANSFORMER),
+    ] + TRANSFORMER_COMMON_KIT
+
+
+TRANSFORMER_KITS = {
+    size: (transformer_kit(size), f"محولة {size.label}") for size in TransformerSize
+}
 
 # ─────────────────── الفاصل ON-LOAD: مصفوفة الجهد × الموقع ───────────────────
 # الفاصل نوعان بالجهد وحالتان بالموقع، فأربع تركيبات (ق-٢٥):
@@ -94,6 +120,10 @@ TRANSFORMER_KIT = [
 CABLE_MID_NETWORK_M = 20
 CABLE_HEAD_M = CABLE_MID_NETWORK_M // 2
 LUGS_PER_ISOLATOR = 6
+FITTINGS_PER_ISOLATOR = 6
+"""معدات ربط ألمنيوم – نحاس لكل فاصل — في الجهدين معاً، وفي الموقعين معاً (ق-٢٦).
+
+لا وجود لمعدات ألمنيوم – ألمنيوم في الفاصل إطلاقاً."""
 
 ARRESTER_ASSEMBLY_EXTRAS = [
     (M_ARRESTER_BASE, 1),
@@ -128,9 +158,7 @@ ISOLATOR_PARTS = {
         "cable": M_CU_CABLE_150,
         "lug": M_TERMINAL_150,
         "arrester": M_ARRESTER_11,
-        # معدات ربط ألمنيوم – نحاس: 6 لكل فاصل في 11 ك.ف. لا نظير لها في 33 ك.ف
-        # في الملف الأصلي — سؤال مفتوح س-٩.
-        "fittings": (M_AL_FITTINGS_CU, 6),
+        "fittings": (M_AL_FITTINGS_CU, FITTINGS_PER_ISOLATOR),
         "labour": "نصب الفاصل ON-LOAD",
     },
     IsolatorVoltage.KV33: {
@@ -138,7 +166,8 @@ ISOLATOR_PARTS = {
         "cable": M_CABLE_185,
         "lug": M_TERMINAL_185,
         "arrester": M_ARRESTER_33,
-        "fittings": None,
+        # الملف الأصلي أغفلها في 33 ك.ف، وأكّدتَ أنها 6 هنا أيضاً (ق-٢٦)
+        "fittings": (M_AL_FITTINGS_CU, FITTINGS_PER_ISOLATOR),
         "labour": "نصب فاصل هوائي 33 ك.ف",
     },
 }
@@ -174,9 +203,7 @@ ISOLATOR_KITS = {
     for attr, v, p in ISOLATORS
 }
 
-KITS = [("transformers", TRANSFORMER_KIT, "محولة 400 KVA")] + [
-    (attr, kit, label) for attr, (kit, label) in ISOLATOR_KITS.items()
-]
+KITS = [(attr, kit, label) for attr, (kit, label) in ISOLATOR_KITS.items()]
 
 # ───────────────────────────────── التوليد ─────────────────────────────────
 
@@ -188,16 +215,25 @@ def materials_equipment(eq: Equipment) -> list[MaterialLine]:
     واحد، لكن بمصدرين مختلفين فيبقى تتبّع الرقم ممكناً.
     """
     lines: list[MaterialLine] = []
-    for attr, kit, label in KITS:
-        count = getattr(eq, attr)
-        if not count:
-            continue
+
+    def emit(kit, count, label):
         for material, per_unit in kit:
             lines.append(
                 MaterialLine(
                     *material, count * per_unit, f"{label}: {count} × {per_unit}"
                 )
             )
+
+    for size in TransformerSize:                 # الترتيب ثابت لا يتبع ترتيب الإدخال
+        count = eq.transformers.get(size, 0)
+        if count:
+            kit, label = TRANSFORMER_KITS[size]
+            emit(kit, count, label)
+
+    for attr, kit, label in KITS:
+        count = getattr(eq, attr)
+        if count:
+            emit(kit, count, label)
 
     if eq.lattice_cages:
         lines.append(
@@ -214,7 +250,8 @@ def labour_equipment(eq: Equipment, rates: dict) -> list[LabourLine]:
     الفاصلان يجتمعان في بند أجر واحد — كما في الملف الأصلي، لأن العمل نفسه.
     القفيص بلا أجر مستقل: يُركَّب مع العمود.
     """
-    items = [("نصب المحولة", eq.transformers, "عدد المحولات")]
+    transformers = sum(eq.transformers.values())
+    items = [("نصب المحولة", transformers, "عدد المحولات بكل السعات")]
 
     # الفاصلان في الجهد الواحد يتقاسمان بند الأجر: العمل نفسه، والموقع لا يغيّره.
     for voltage, label in (

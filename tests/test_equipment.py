@@ -13,9 +13,11 @@ from engine.equipment import (
     CABLE_HEAD_M,
     CABLE_MID_NETWORK_M,
     ISOLATOR_KITS,
-    TRANSFORMER_KIT,
+    TRANSFORMER_KITS,
     IsolatorPosition,
     IsolatorVoltage,
+    TransformerSize,
+    transformer_kit,
     isolator_kit,
     labour_equipment,
     materials_equipment,
@@ -35,10 +37,12 @@ def qty(lines, name):
 
 # ═══════════════════ المحولة ═══════════════════
 
+KVA400 = TransformerSize.KVA400
+
 
 def test_transformer_kit_matches_the_original_file():
-    """15 مادة بالكميات نفسها التي يولّدها الملف الأصلي لمحولة واحدة."""
-    lines = materials_equipment(Equipment(transformers=1))
+    """14 مادة — الملف الأصلي 15، وجهاز الإنارة ملغى منها (ق-٢٦)."""
+    lines = materials_equipment(Equipment(transformers={KVA400: 1}))
     expected = {
         "محولة 400 KVA": 1,
         "قاطع دورة 400 أمبير مع المتسعة": 2,
@@ -54,22 +58,84 @@ def test_transformer_kit_matches_the_original_file():
         "معدات ربط ألمنيوم – نحاس": 15,
         "ترمنل 50 ملم²": 15,
         "ترمنل 150 ملم²": 30,
-        "جهاز إنارة": 2,
     }
-    assert len(lines) == len(expected) == len(TRANSFORMER_KIT)
     assert {l.name: l.qty for l in lines} == expected
 
 
+def test_the_lighting_unit_is_gone_from_every_kit_and_from_the_prices():
+    """جهاز الإنارة ملغى تماماً — لا مادةً ولا صفّاً في نسخة الأسعار (ق-٢٦)."""
+    from engine import load_catalog
+
+    for size in TransformerSize:
+        assert not any("إنارة" in n for (n, _u), _q in transformer_kit(size))
+    assert "جهاز إنارة" not in load_catalog()["المواد"]
+
+
+def test_the_breaker_follows_the_transformer_rating():
+    """قاطع الدورة يطابق السعة رقماً برقم: 250←250، 400←400، 630←630 (ق-٢٦)."""
+    for size in TransformerSize:
+        names = {n for (n, _u), _q in transformer_kit(size)}
+        assert f"محولة {size.value} KVA" in names
+        assert f"قاطع دورة {size.value} أمبير مع المتسعة" in names
+
+
+def test_two_breakers_per_transformer_and_no_main_breaker():
+    """مخرجان لشبكة الضغط الواطئ، فقاطعان — ولا قاطع رئيسي (ق-٢٦)."""
+    for size in TransformerSize:
+        kit = dict(transformer_kit(size))
+        assert kit[(f"قاطع دورة {size.value} أمبير مع المتسعة", "عدد")] == 2
+        assert sum(1 for (n, _u) in kit if "قاطع" in n) == 1
+
+
+def test_only_the_transformer_and_its_breaker_change_with_the_rating():
+    """بقية الملحقات لا تتبع السعة — نقطة مسجَّلة تحتاج تأكيداً (س-١١)."""
+    kits = {s: dict(transformer_kit(s)) for s in TransformerSize}
+    shared = set.intersection(*(set(k) for k in kits.values()))
+    assert len(shared) == 12
+    for material in shared:
+        assert len({k[material] for k in kits.values()}) == 1
+
+
+def test_1000_kva_is_not_an_overhead_option():
+    """سعة 1000 KVA أرضية فقط — لا تُستخدم في الشبكة الهوائية (ق-٢٦)."""
+    assert [s.value for s in TransformerSize] == [250, 400, 630]
+
+
+def test_ratings_without_a_price_are_reported(catalog):
+    """سعتا 250 و630 بلا سعر — يُبلَّغ عنهما ولا يمرّان بصفر صامت."""
+    result = compute(
+        OverheadProject(equipment=Equipment(transformers={TransformerSize.KVA630: 1})),
+        catalog,
+    )
+    assert "محولة 630 KVA" in result["أسعار_مفقودة"]
+    assert "قاطع دورة 630 أمبير مع المتسعة" in result["أسعار_مفقودة"]
+
+
 def test_transformer_quantities_scale_linearly():
-    lines = materials_equipment(Equipment(transformers=3))
+    lines = materials_equipment(Equipment(transformers={KVA400: 3}))
     assert qty(lines, "محولة 400 KVA") == 3
     assert qty(lines, "قابلو نحاس 1×150 ملم²") == 240
     assert qty(lines, "ترمنل 150 ملم²") == 90
 
 
+def test_mixed_ratings_share_the_common_accessories():
+    """محولتان بسعتين مختلفتين: المحولة والقاطع منفصلان، والملحقات تُجمَّع."""
+    lines = materials_equipment(
+        Equipment(transformers={TransformerSize.KVA250: 2, KVA400: 1})
+    )
+    assert qty(lines, "محولة 250 KVA") == 2
+    assert qty(lines, "محولة 400 KVA") == 1
+    assert qty(lines, "قاطع دورة 250 أمبير مع المتسعة") == 4
+    assert qty(lines, "قاطع دورة 400 أمبير مع المتسعة") == 2
+    assert qty(lines, "قاعدة محولة 2.4 متر") == 3          # ملحق مشترك
+
+
 def test_transformer_accessories_have_no_separate_labour(catalog):
-    """أجر واحد للمحولة يشمل ملحقاتها كلها — لا بند مستقل لأي ملحق."""
-    labour = labour_equipment(Equipment(transformers=2), catalog["أجور_العمل"])
+    """أجر واحد للمحولة يشمل ملحقاتها كلها — بكل السعات معاً."""
+    labour = labour_equipment(
+        Equipment(transformers={TransformerSize.KVA250: 1, KVA400: 1}),
+        catalog["أجور_العمل"],
+    )
     assert [l.name for l in labour] == ["نصب المحولة"]
     assert labour[0].qty == 2
     assert labour[0].cost == 700_000
@@ -111,6 +177,7 @@ def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
         "فاصل هوائي 33 ك.ف": 1,
         "قابلو 1×185 ملم2": 20,
         "ترمنل 185 ملم2": 6,
+        "معدات ربط ألمنيوم – نحاس": 6,
     }
 
 
@@ -121,6 +188,7 @@ def test_33kv_cable_head_matches_the_original_file_except_the_cable():
         "فاصل هوائي 33 ك.ف": 1,
         "قابلو 1×185 ملم2": 10,
         "ترمنل 185 ملم2": 6,
+        "معدات ربط ألمنيوم – نحاس": 6,
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 1,
@@ -161,9 +229,10 @@ def test_each_voltage_uses_its_own_cable():
 
 def test_bracket_21_is_gone_from_every_kit():
     """ق-١٩: براكيت 2.1 متر ملغى تماماً — لا في المواد ولا في الأجور."""
-    everything = list(TRANSFORMER_KIT)
-    for kit, _label in ISOLATOR_KITS.values():
-        everything += kit
+    everything = []
+    for kits in (TRANSFORMER_KITS, ISOLATOR_KITS):
+        for kit, _label in kits.values():
+            everything += kit
     assert not any("2.1" in name for (name, _unit), _per in everything)
 
 
@@ -225,7 +294,7 @@ def test_equipment_merges_into_project_totals(catalog):
 
     project = OverheadProject(
         net11=Network11kV(route_length_m=500, poles_lattice=5, poles_round=20),
-        equipment=Equipment(transformers=1),
+        equipment=Equipment(transformers={KVA400: 1}),
     )
     result = compute(project, catalog)
     earth = next(m for m in result["المواد"] if m["المادة"] == "سلك نحاس 50 ملم2")
@@ -239,7 +308,8 @@ def test_equipment_merges_into_project_totals(catalog):
 def test_every_equipment_material_has_an_entry_in_the_catalog(catalog):
     """حارس: كل مادة يولّدها المحرك لها صف في نسخة الأسعار — بسعر أو بتنبيه."""
     eq = Equipment(
-        transformers=1, onload_11_mid=1, onload_11_head=1,
+        transformers={s: 1 for s in TransformerSize},
+        onload_11_mid=1, onload_11_head=1,
         isolator_33_mid=1, isolator_33_head=1, lattice_cages=1,
     )
     prices = catalog["المواد"]
@@ -251,15 +321,14 @@ def test_every_equipment_material_has_an_entry_in_the_catalog(catalog):
 def test_pending_prices_are_reported_not_silently_zeroed(catalog):
     """جهاز الإنارة وترمنل 185 بلا سعر — يُبلَّغ عنهما ولا يمرّان بصفر صامت."""
     result = compute(
-        OverheadProject(equipment=Equipment(transformers=1, isolator_33_mid=1)), catalog
+        OverheadProject(equipment=Equipment(isolator_33_mid=1)), catalog
     )
-    assert "جهاز إنارة" in result["أسعار_مفقودة"]
     assert "ترمنل 185 ملم2" in result["أسعار_مفقودة"]
 
 
 def test_transformer_cost_is_the_heaviest_single_line(catalog):
     """المحولة وحدها 17 مليوناً — رقم يستحق أن يُثبَّت باختبار."""
-    result = compute(OverheadProject(equipment=Equipment(transformers=1)), catalog)
+    result = compute(OverheadProject(equipment=Equipment(transformers={KVA400: 1})), catalog)
     transformer = next(m for m in result["المواد"] if m["المادة"] == "محولة 400 KVA")
     assert transformer["الكلفة"] == 17_000_000
     assert result["كلفة_المواد"] == 23_639_000

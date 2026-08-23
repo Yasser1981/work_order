@@ -14,10 +14,12 @@ from PyQt6.QtWidgets import (
 )
 
 from engine.equipment import (
+    BREAKERS_PER_TRANSFORMER,
     CABLE_HEAD_M,
     CABLE_MID_NETWORK_M,
     ISOLATOR_KITS,
-    TRANSFORMER_KIT,
+    TRANSFORMER_KITS,
+    TransformerSize,
 )
 from engine.lowvoltage import conductor_quantity, count_poles_lv
 from engine.overhead import (
@@ -571,9 +573,13 @@ class PanelEquipment(QWidget):
     def _build(self) -> None:
         body, layout = scroll_body()
 
-        box, form = section("المحولة")
-        self.transformers = number_field(0, 1000, 0)
-        form.addRow("عدد محولات 400 KVA:", self.transformers)
+        # سعة لكل صفّ — قاطع الدورة يتبع السعة رقماً برقم (ق-٢٦)
+        box, form = section("المحولات")
+        self.transformers = {}
+        for size in TransformerSize:
+            field = number_field(0, 1000, 0)
+            self.transformers[size] = field
+            form.addRow(f"عدد محولات {size.label}:", field)
         self.transformer_hint = HintLabel()
         form.addRow(self.transformer_hint)
         layout.addWidget(box)
@@ -613,7 +619,7 @@ class PanelEquipment(QWidget):
         outer.addWidget(scroll)
 
     def _connect(self) -> None:
-        for w in (self.transformers, self.cages, *self.isolators.values()):
+        for w in (self.cages, *self.transformers.values(), *self.isolators.values()):
             w.valueChanged.connect(self._on_change)
 
     def _on_change(self) -> None:
@@ -625,7 +631,11 @@ class PanelEquipment(QWidget):
 
     def equipment(self) -> Equipment:
         return Equipment(
-            transformers=self.transformers.value(),
+            transformers={
+                size: field.value()
+                for size, field in self.transformers.items()
+                if field.value()
+            },
             lattice_cages=self.cages.value(),
             **{attr: field.value() for attr, field in self.isolators.items()},
         )
@@ -640,16 +650,20 @@ class PanelEquipment(QWidget):
     def refresh_hints(self) -> None:
         eq = self.equipment()
 
-        if eq.transformers:
-            self.transformer_hint.setText(
-                f"<b>تجرّ {len(TRANSFORMER_KIT)} مادة</b>، أجرها كله داخل «نصب المحولة»:"
-                f"<br>{self._kit_text(TRANSFORMER_KIT, eq.transformers)}"
+        rows = []
+        for size, count in eq.transformers.items():
+            kit, label = TRANSFORMER_KITS[size]
+            rows.append(f"<b>{label} × {count}</b><br>" + self._kit_text(kit, count))
+        if not rows:
+            rows.append(
+                "قاطع الدورة يتبع السعة رقماً برقم (250←250، 400←400، 630←630)، "
+                f"و<b>{BREAKERS_PER_TRANSFORMER} قاطع لكل محولة</b> لأن لها مخرجين "
+                "لشبكة الضغط الواطئ ولا قاطع رئيسي.<br>"
+                "وكل محولة تجرّ قاعدتها ولنك الفيوز ومانعة الصواعق والتأريض "
+                "والترمنلات — وأجر نصبها يشملها كلها.<br>"
+                "سعة 1000 KVA لا تُستخدم هوائياً — أرضية فقط."
             )
-        else:
-            self.transformer_hint.setText(
-                "كل محولة تجرّ 15 مادة (قاطع الدورة والقاعدة ولنك الفيوز ومانعة "
-                "الصواعق والتأريض والترمنلات وجهاز الإنارة)، وأجر نصبها يشملها كلها."
-            )
+        self.transformer_hint.setText("<br>".join(rows))
 
         rows = []
         for attr, (kit, label) in ISOLATOR_KITS.items():

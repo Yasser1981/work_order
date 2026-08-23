@@ -242,8 +242,8 @@ class Equipment:
     رأس القابلو 9 مواد …)، وأجر عمله يشمل ملحقاته كلها فلا أجر مستقل لها (ق-٢٣).
     """
 
-    transformers: int = 0
-    """محولة 400 KVA وملحقاتها."""
+    transformers: dict = field(default_factory=dict)
+    """عدد المحولات بكل سعة: {TransformerSize: العدد} — 250 و400 و630 (ق-٢٦)."""
 
     onload_11_mid: int = 0
     """فاصل ON-LOAD جهد 11 ك.ف في منتصف الشبكة — بلا مانعة صواعق (ق-٢٥)."""
@@ -263,7 +263,7 @@ class Equipment:
     def __bool__(self) -> bool:
         return any(
             (
-                self.transformers,
+                any(self.transformers.values()),
                 self.onload_11_mid,
                 self.onload_11_head,
                 self.isolator_33_mid,

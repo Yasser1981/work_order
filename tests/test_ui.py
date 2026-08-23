@@ -395,11 +395,27 @@ def test_equipment_segment_is_empty_by_default(window, pequip):
 
 
 def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
-    pequip.transformers.setValue(1)
+    from engine.equipment import TransformerSize
+
+    pequip.transformers[TransformerSize.KVA400].setValue(1)
     names = [m["المادة"] for m in window.result["المواد"]]
     assert "محولة 400 KVA" in names
     assert "لنك فيوز 15 KV مع سلك فيوز 40 أمبير" in names
     assert "نصب المحولة" in [l.name for l in window.result["أجور_العمل"]]
+
+
+def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip):
+    """قاطع الدورة يتبع السعة رقماً برقم (ق-٢٦)."""
+    from engine.equipment import TransformerSize
+
+    for size in TransformerSize:
+        pequip.transformers[size].setValue(1)
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    for size in TransformerSize:
+        assert quantities[f"محولة {size.value} KVA"] == 1
+        assert quantities[f"قاطع دورة {size.value} أمبير مع المتسعة"] == 2
+    # الملحق المشترك يُجمَّع من السعات الثلاث
+    assert quantities["قاعدة محولة 2.4 متر"] == 3
 
 
 def test_both_onload_positions_feed_one_labour_line(window, pequip):
@@ -432,16 +448,23 @@ def test_mid_network_isolator_pulls_no_arrester_on_screen(window, pequip):
 
 def test_equipment_hint_lists_the_kit_so_the_checker_sees_it(pequip):
     """المستخدم يرى ما تجرّه المحولة قبل الطباعة لا بعدها."""
-    pequip.transformers.setValue(2)
+    from engine.equipment import TransformerSize
+
+    pequip.transformers[TransformerSize.KVA400].setValue(2)
     text = pequip.transformer_hint.text()
     assert "قاطع دورة 400 أمبير مع المتسعة: <b>4</b>" in text
     assert "ترمنل 150 ملم²: <b>60</b>" in text
 
 
 def test_equipment_totals_reach_the_screen(window, pequip):
-    pequip.transformers.setValue(1)
+    from engine.equipment import TransformerSize
+
+    pequip.transformers[TransformerSize.KVA400].setValue(1)
     assert f"{window.result['الكلفة_الكلية']:,.0f}" in window.total_all.text()
-    assert "جهاز إنارة" in window.warning.text()
+    assert not window.warning.text()          # سعة 400 مسعّرة بالكامل
+
+    pequip.transformers[TransformerSize.KVA630].setValue(1)
+    assert "محولة 630 KVA" in window.warning.text()
 
 
 def test_labour_rows_merge_across_segments(window):
