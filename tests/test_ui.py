@@ -46,6 +46,11 @@ def pug11(window):
     return window.add_segment(SegmentKind.UG11)
 
 
+@pytest.fixture
+def pug33(window):
+    return window.add_segment(SegmentKind.UG33)
+
+
 # ═══════════════════ المقاطع ═══════════════════
 
 
@@ -571,3 +576,61 @@ def test_mixing_overhead_and_underground_segments_in_the_ui(window):
     names = {m["المادة"] for m in window.result["المواد"]}
     assert "عمود 11م مشبك" in names
     assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
+
+
+# ═══════════════════ مقطع الشبكة الأرضية 33 ك.ف ═══════════════════
+
+
+def test_ug33_segment_is_empty_by_default(window, pug33):
+    assert not any(m["المادة"].startswith("قابلو 1×400") for m in window.result["المواد"])
+
+
+def test_ug33_matches_the_users_worked_example(window, pug33):
+    """500م مزدوجة الدائرة ← 3300م قابلو — عبر الواجهة لا المحرك مباشرة."""
+    pug33.route.setValue(500)
+    pug33.circuit.setCurrentIndex(1)          # مزدوجة
+    cable = next(m for m in window.result["المواد"] if m["المادة"].startswith("قابلو 1×400"))
+    assert cable["الكمية"] == 3300
+
+
+def test_ug33_single_circuit_is_half_of_double(window, pug33):
+    pug33.route.setValue(500)
+    pug33.circuit.setCurrentIndex(0)          # مفردة
+    cable = next(m for m in window.result["المواد"] if m["المادة"].startswith("قابلو 1×400"))
+    assert cable["الكمية"] == 1650
+
+
+def test_ug33_civil_works_treats_one_feeder_like_11kv(window, pug33):
+    """المغذي الواحد (3 كابلات) يُعامَل معاملة مغذٍّ واحد — لا 3 — في الأعمال المدنية."""
+    pug33.route.setValue(500)
+    pug33.circuit.setCurrentIndex(0)          # مفردة = مغذٍّ واحد
+    civil = next(l for l in window.result["أجور_العمل"] if l.name.startswith("الأعمال المدنية"))
+    assert civil.rate == 20000                # تعرفة "1" — نفس عمود 11 ك.ف الأول
+
+
+def test_ug33_adopt_button_uses_the_cable_count(window, pug33):
+    """1000م مزدوجة ببكرة 500م: لكل كابل صندوق × 6 كابلات = 6."""
+    pug33.route.setValue(1000)
+    pug33.circuit.setCurrentIndex(1)          # مزدوجة
+    pug33.drum_length.setValue(500)
+    pug33._adopt_suggestion()
+    assert pug33.straight_boxes.value() == 6
+
+
+def test_ug33_end_boxes_are_purely_manual(window, pug33):
+    pug33.route.setValue(500)
+    pug33.end_internal.setValue(2)
+    pug33.end_external.setValue(1)
+    pug33._adopt_suggestion()                 # يمسّ الصندوق المستقيم فقط
+    assert pug33.end_internal.value() == 2
+    assert pug33.end_external.value() == 1
+
+
+def test_11kv_and_33kv_underground_segments_together_in_the_ui(window):
+    ug11 = window.add_segment(SegmentKind.UG11)
+    ug11.route.setValue(300)
+    ug33 = window.add_segment(SegmentKind.UG33)
+    ug33.route.setValue(500)
+    names = {m["المادة"] for m in window.result["المواد"]}
+    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
+    assert "قابلو 1×400 ملم2 جهد 33 ك.ف" in names

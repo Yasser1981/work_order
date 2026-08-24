@@ -29,10 +29,18 @@ from engine.types import (
     Segment,
     SegmentKind,
     Underground11kV,
+    Underground33kV,
     segment_default_name,
 )
 
-from .panels import Panel11kV, Panel33kV, PanelEquipment, PanelLV, PanelUnderground11kV
+from .panels import (
+    Panel11kV,
+    Panel33kV,
+    PanelEquipment,
+    PanelLV,
+    PanelUnderground11kV,
+    PanelUnderground33kV,
+)
 from .widgets import HintLabel, number_field, section
 
 EDITORS = {
@@ -41,6 +49,7 @@ EDITORS = {
     SegmentKind.LV: PanelLV,
     SegmentKind.EQUIPMENT: PanelEquipment,
     SegmentKind.UG11: PanelUnderground11kV,
+    SegmentKind.UG33: PanelUnderground33kV,
 }
 
 JUNCTION_NOTE = (

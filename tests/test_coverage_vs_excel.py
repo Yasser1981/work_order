@@ -21,8 +21,9 @@ from engine.types import (
     NetworkLV,
     SidewalkType,
     Underground11kV,
+    Underground33kV,
 )
-from engine.underground import materials_underground11
+from engine.underground import materials_underground11, materials_underground33
 
 EXCEL_MATERIALS = [
     ("سلك ألمنيوم 120/20 ملم²", "متر"),
@@ -98,11 +99,7 @@ RENAMED = {
 }
 
 DEFERRED = {
-    # 11 ك.ف صار داخل النطاق بـ ق-٣٠ — انتقل إلى IMPLEMENTED ضمنياً (يُولَّد فعلاً)
-    ("قابلو 1×400 ملم2 جهد 33 ك.ف", "متر"): "الشبكة الأرضية 33 ك.ف (مؤجَّلة بطلب المستخدم حتى إنجاز 11 ك.ف، ق-٣٠)",
-    ("صندوق مستقيم 1×400 ملم2 جهد 33 ك.ف", "عدد"): "الشبكة الأرضية 33 ك.ف (ق-٣٠)",
-    ("صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف", "سيت"): "الشبكة الأرضية 33 ك.ف (ق-٣٠)",
-    ("صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف", "سيت"): "الشبكة الأرضية 33 ك.ف (ق-٣٠)",
+    # 11 و33 ك.ف صارا داخل النطاق بـ ق-٣٠ و ق-٣١ — يُولَّدان فعلاً
     ("أنبوب 8 انج 10 بار", "روطة"): "عبور الشوارع بالأنابيب (ق-١٢)",
 }
 
@@ -147,6 +144,14 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             straight_boxes=1, end_boxes_internal=1, end_boxes_external=1,
         )
         for line in materials_underground11(ug11):
+            produced.add((line.name, line.unit))
+
+    for circuit in CircuitType:
+        ug33 = Underground33kV(
+            route_length_m=100, circuit=circuit,
+            straight_boxes=1, end_boxes_internal=1, end_boxes_external=1,
+        )
+        for line in materials_underground33(ug33):
             produced.add((line.name, line.unit))
 
     return produced

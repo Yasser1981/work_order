@@ -281,6 +281,7 @@ class SegmentKind(Enum):
     LV = "شبكة ضغط واطئ"
     EQUIPMENT = "تجهيزات"
     UG11 = "شبكة أرضية 11 ك.ف"
+    UG33 = "شبكة أرضية 33 ك.ف"
 
 
 SegmentContent = "Network11kV | Network33kV | NetworkLV | Equipment"
@@ -311,6 +312,8 @@ class Segment:
             return SegmentKind.EQUIPMENT
         if isinstance(self.content, Underground11kV):
             return SegmentKind.UG11
+        if isinstance(self.content, Underground33kV):
+            return SegmentKind.UG33
         raise TypeError(f"محتوى مقطع غير معروف: {type(self.content).__name__}")
 
 
@@ -386,3 +389,42 @@ class Underground11kV:
 
     end_boxes_external: int = 0
     """صندوق نهاية خارجي — يدوي بحت، يربط نهاية القابلو بشبكة هوائية."""
+
+
+@dataclass
+class Underground33kV:
+    """مدخلات مقطع شبكة أرضية 33 ك.ف — قابلو 1×400 ملم² (ق-٣١).
+
+    الفرق الجوهري عن 11 ك.ف: القابلو هنا **أحادي القلب** — كل مغذٍّ (دائرة) يحتاج
+    **ثلاثة كابلات منفصلة**، طور مستقل لكل كابل، لا كابلاً واحداً ثلاثي القلب.
+    فمُدخل «عدد المغذيات» في 11 ك.ف استُبدل هنا بـ`circuit` (مفردة/مزدوجة) —
+    نفس تصنيف الشبكة الهوائية بالضبط — ويُشتقّ منه عدد الكابلات الفعلي (×3 أطوار).
+
+    **للأعمال المدنية وحدها:** المغذي الواحد (بكابلاته الثلاثة معاً في خندق واحد)
+    يُعامَل معاملة مغذٍّ واحد مماثل لـ11 ك.ف — أي أن عدد «الوحدات» الذي يُبحث به في
+    تعرفة الرصيف هو عدد **الدوائر** (1 أو 2)، لا عدد الكابلات (3 أو 6). بتأكيد
+    المستخدم صراحةً.
+    """
+
+    route_length_m: float = 0.0
+    """طول الخندق الجغرافي — يحدّد الأعمال المدنية وموادّ الخندق وحده."""
+
+    circuit: CircuitType = CircuitType.SINGLE
+    """مفردة = 3 كابلات (مغذٍّ واحد)، مزدوجة = 6 كابلات (مغذّيان)."""
+
+    sidewalk_type: SidewalkType = SidewalkType.EARTH
+
+    length_includes_waste: bool = False
+    waste_pct: float = 0.10
+
+    drum_length_m: float | None = None
+    """طول بكرة القابلو القياسي (م). None ← من الافتراضيات، عادة 500 م (ق-٢٠)."""
+
+    straight_boxes: int = 0
+    """صندوق مستقيم — استرشادي بالكامل، غير مُلزِم: لكل كابل (طور) صناديقه."""
+
+    end_boxes_internal: int = 0
+    """صندوق نهاية داخلي — يدوي بحت، لكل طور صندوقه الخاص عادة."""
+
+    end_boxes_external: int = 0
+    """صندوق نهاية خارجي — يدوي بحت."""

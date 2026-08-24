@@ -296,3 +296,201 @@ def test_every_underground_material_is_priced_or_flagged(catalog):
     for line in materials_underground11(net):
         assert line.name in prices, f"مادة بلا صف في نسخة الأسعار: {line.name}"
         assert prices[line.name]["الوحدة"] == line.unit
+
+
+# ═══════════════════════════ 33 ك.ف — قابلو 1×400 ملم² (ق-٣١) ═══════════════════════════
+
+from engine.types import CircuitType, Underground33kV  # noqa: E402
+from engine.underground import (  # noqa: E402
+    cable_count_33,
+    cable_quantity_33,
+    civil_works_rate_33,
+    labour_underground33,
+    materials_underground33,
+    resolve_drum_length_33,
+)
+
+
+# ─────────────────── عدد الكابلات وكمية القابلو ───────────────────
+
+
+def test_single_circuit_is_three_cables():
+    net = Underground33kV(circuit=CircuitType.SINGLE)
+    assert cable_count_33(net) == 3
+
+
+def test_double_circuit_is_six_cables():
+    net = Underground33kV(circuit=CircuitType.DOUBLE)
+    assert cable_count_33(net) == 6
+
+
+def test_the_users_own_worked_example():
+    """500م مزدوجة الدائرة ← 500×6×1.1 = 3300م — الرقم الذي ذكره المستخدم حرفياً."""
+    net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE)
+    assert cable_quantity_33(net) == 3300
+
+
+def test_single_circuit_worked_example():
+    net = Underground33kV(route_length_m=500, circuit=CircuitType.SINGLE)
+    assert cable_quantity_33(net) == 1650          # 500×3×1.1
+
+
+def test_waste_included_flag_skips_the_10_percent_33():
+    net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE,
+                           length_includes_waste=True)
+    assert cable_quantity_33(net) == 3000
+
+
+def test_zero_route_length_produces_nothing_33():
+    assert cable_quantity_33(Underground33kV(route_length_m=0, circuit=CircuitType.DOUBLE)) == 0
+
+
+# ─────────────────── طول البكرة الافتراضي ───────────────────
+
+
+def test_drum_length_33_defaults_to_500(catalog):
+    assert resolve_drum_length_33(Underground33kV(), catalog) == 500
+
+
+def test_drum_length_33_differs_from_11kv_default(catalog):
+    assert resolve_drum_length_33(Underground33kV(), catalog) != \
+        resolve_drum_length(Underground11kV(), catalog)
+
+
+# ─────────────────── الصندوق المستقيم — لكل كابل (طور) على حدة ───────────────────
+
+
+def test_straight_boxes_use_the_cable_count_not_the_circuit_count():
+    """مزدوجة الدائرة (500م، بكرة 500م) لا تحتاج صندوقاً — الطول لا يتجاوز البكرة."""
+    net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE, drum_length_m=500)
+    assert suggest_straight_boxes(net.route_length_m, cable_count_33(net), net.drum_length_m) == 0
+
+
+def test_straight_boxes_scale_with_the_six_cables_of_a_double_circuit():
+    """1000م مزدوجة ببكرة 500م: لكل كابل صندوق واحد × 6 كابلات = 6."""
+    net = Underground33kV(route_length_m=1000, circuit=CircuitType.DOUBLE, drum_length_m=500)
+    assert suggest_straight_boxes(net.route_length_m, cable_count_33(net), net.drum_length_m) == 6
+
+
+# ─────────────────── الأعمال المدنية — المغذي الواحد كمغذٍّ واحد (ق-٣١) ───────────────────
+
+
+def test_civil_rate_uses_circuit_count_not_cable_count(catalog):
+    """مفردة (3 كابلات) تُعامَل كـ«1» لا «3» — بتأكيد المستخدم صراحةً."""
+    single = Underground33kV(sidewalk_type=SidewalkType.EARTH, circuit=CircuitType.SINGLE)
+    assert civil_works_rate_33(single, catalog) == 20000       # نفس تعرفة "1" في جدول 11 ك.ف
+
+
+def test_civil_rate_double_circuit_uses_count_two(catalog):
+    double = Underground33kV(sidewalk_type=SidewalkType.PAVED, circuit=CircuitType.DOUBLE)
+    assert civil_works_rate_33(double, catalog) == 22000        # نفس تعرفة "2"
+
+
+def test_civil_rate_33_and_11_share_the_exact_same_table(catalog):
+    """جدول واحد للجهدين — لا نسخة منفصلة لـ33 ك.ف."""
+    for sidewalk in SidewalkType:
+        for circuit, count in ((CircuitType.SINGLE, 1), (CircuitType.DOUBLE, 2)):
+            ug33 = Underground33kV(sidewalk_type=sidewalk, circuit=circuit)
+            ug11 = Underground11kV(sidewalk_type=sidewalk, feeder_count=count)
+            assert civil_works_rate_33(ug33, catalog) == civil_works_rate(ug11, catalog)
+
+
+def test_civil_works_cost_is_route_length_not_cable_quantity_33(catalog):
+    net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE,
+                           sidewalk_type=SidewalkType.EARTH)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    civil = next(l for l in result["أجور_العمل"] if l.name.startswith("الأعمال المدنية"))
+    assert civil.qty == 500                # لا 3300 (كمية القابلو)
+    assert civil.rate == 26000
+
+
+# ─────────────────── المواد ───────────────────
+
+
+def test_materials_match_the_prices_from_the_original_file(catalog):
+    prices = catalog["المواد"]
+    assert prices["قابلو 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 85000
+    assert prices["صندوق مستقيم 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 285000
+    assert prices["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 408000
+    assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 471000
+
+
+def test_end_boxes_are_seat_units_not_count(catalog):
+    """صناديق النهاية 33 ك.ف بوحدة «سيت» — كما في الملف الأصلي، لا «عدد»."""
+    prices = catalog["المواد"]
+    assert prices["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "سيت"
+    assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "سيت"
+
+
+def test_trench_materials_are_shared_with_11kv_and_route_length_based():
+    net33 = Underground33kV(route_length_m=1000, circuit=CircuitType.DOUBLE)
+    net11 = Underground11kV(route_length_m=1000, feeder_count=1)
+    lines33, lines11 = materials_underground33(net33), materials_underground11(net11)
+    for name in ("شتايكر 50×50×5 سم", "رمل نهري", "شريط تحذير"):
+        assert qty(lines33, name) == qty(lines11, name)
+
+
+def test_end_boxes_manual_no_advisory_33(catalog):
+    """صناديق النهاية 33 ك.ف يدوية بحتة — بتأكيد المستخدم صراحةً، كما 11 ك.ف."""
+    net = Underground33kV(route_length_m=500, end_boxes_internal=3, end_boxes_external=2)
+    lines = materials_underground33(net)
+    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف") == 3
+    assert qty(lines, "صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف") == 2
+
+
+# ─────────────────── الأجور ───────────────────
+
+
+def test_cable_laying_labour_uses_the_cable_quantity_33(catalog):
+    net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    laying = next(l for l in result["أجور_العمل"] if l.name == "كلفة مد القابلو 33 ك.ف")
+    assert laying.qty == 3300
+    assert laying.rate == 2000
+
+
+def test_end_boxes_share_one_labour_line_33(catalog):
+    net = Underground33kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    boxes = [l for l in result["أجور_العمل"] if l.name == "كلفة نصب صندوق نهاية 33 ك.ف"]
+    assert len(boxes) == 1 and boxes[0].qty == 5
+    assert boxes[0].rate == 225000
+
+
+def test_33kv_and_11kv_labour_rates_are_independent(catalog):
+    """أسعار 33 ك.ف مختلفة عن 11 ك.ف — لا مشاركة سعر بالخطأ."""
+    rates = catalog["أجور_العمل"]
+    assert rates["كلفة مد القابلو 11 ك.ف"]["السعر"] != rates["كلفة مد القابلو 33 ك.ف"]["السعر"]
+    assert rates["كلفة نصب صندوق نهاية 11 ك.ف"]["السعر"] != \
+        rates["كلفة نصب صندوق نهاية 33 ك.ف"]["السعر"]
+
+
+# ─────────────────── التكامل ───────────────────
+
+
+def test_11kv_and_33kv_underground_segments_coexist(catalog):
+    project = Project(segments=[
+        Segment("مقطع 11", Underground11kV(route_length_m=300, feeder_count=1)),
+        Segment("مقطع 33", Underground33kV(route_length_m=500, circuit=CircuitType.SINGLE)),
+    ])
+    result = compute_project(project, catalog)
+    names = {m["المادة"] for m in result["المواد"]}
+    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
+    assert "قابلو 1×400 ملم2 جهد 33 ك.ف" in names
+
+
+def test_empty_33kv_segment_produces_nothing(catalog):
+    result = compute_project(Project(segments=[Segment("م", Underground33kV())]), catalog)
+    assert result["المواد"] == []
+    assert result["أجور_العمل"] == []
+
+
+def test_every_33kv_material_is_priced_or_flagged(catalog):
+    prices = catalog["المواد"]
+    net = Underground33kV(
+        route_length_m=100, circuit=CircuitType.DOUBLE, straight_boxes=1,
+        end_boxes_internal=1, end_boxes_external=1,
+    )
+    for line in materials_underground33(net):
+        assert line.name in prices, f"مادة بلا صف في نسخة الأسعار: {line.name}"
+        assert prices[line.name]["الوحدة"] == line.unit

@@ -33,8 +33,14 @@ from .types import (
     Project,
     Segment,
     Underground11kV,
+    Underground33kV,
 )
-from .underground import labour_underground11, materials_underground11
+from .underground import (
+    labour_underground11,
+    labour_underground33,
+    materials_underground11,
+    materials_underground33,
+)
 
 
 def _tag(lines: list, label: str) -> list:
@@ -57,6 +63,8 @@ def materials_of(segment: Segment) -> list[MaterialLine]:
         lines = materials_equipment(content)
     elif isinstance(content, Underground11kV):
         lines = materials_underground11(content)
+    elif isinstance(content, Underground33kV):
+        lines = materials_underground33(content)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)
@@ -80,6 +88,8 @@ def labour_of(segment: Segment, catalog: dict) -> list[LabourLine]:
         lines = labour_equipment(content, rates)
     elif isinstance(content, Underground11kV):
         lines = labour_underground11(content, catalog)
+    elif isinstance(content, Underground33kV):
+        lines = labour_underground33(content, catalog)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)
