@@ -58,7 +58,7 @@ CONCRETE_14_MID_ANCHOR = {CircuitType.SINGLE: 10.31, CircuitType.DOUBLE: 10.31}
 CONCRETE_14_END_ANCHOR = {CircuitType.SINGLE: 12.26, CircuitType.DOUBLE: 18.76}
 
 EARTH_WIRE_PER_POLE = 1.5
-"""سلك نحاس 50 ملم2 لكل عمود (م) — لا يتغيّر بنوع الدائرة (ق-١٣ في المواصفة)."""
+"""سلك نحاس 50 ملم² لكل عمود (م) — لا يتغيّر بنوع الدائرة (ق-١٣ في المواصفة)."""
 
 EARTH_TERMINAL_PER_POLE = 1
 
@@ -73,12 +73,12 @@ M_DISC_INSULATOR_11 = ("عازل قرصي مع الملحقات", "سيت")
 M_PIN_INSULATOR_33 = ("عازل دبوسي 33 ك.ف مع السبندل", "عدد")
 M_DISC_INSULATOR_33 = ("عازل قرصي 33 ك.ف مع الملحقات", "سيت")
 M_AL_FITTINGS_11 = ("معدات ربط ألمنيوم – ألمنيوم", "عدد")
-M_AL_FITTINGS_33 = ("معدات المنيوم - المنيوم 210 ملم2", "عدد")
+M_AL_FITTINGS_33 = ("معدات ربط المنيوم - المنيوم 210 ملم²", "عدد")
 M_BRACKET_12 = ("براكيت 1.2 م مع الملحقات", "عدد")
 M_BRACKET_14 = ("براكيت 1.4 م مع الملحقات", "عدد")
 M_BRACKET_2 = ("براكيت 2 متر", "عدد")
 M_BRACKET_25 = ("براكيت 2.5 متر", "عدد")
-M_EARTH_WIRE = ("سلك نحاس 50 ملم2", "متر")
+M_EARTH_WIRE = ("سلك نحاس 50 ملم²", "متر")
 M_EARTH_TERMINAL = ("ترمنل 50 ملم²", "عدد")
 M_CONCRETE = ("كونكريت أساسات الأعمدة", "متر مكعب")
 M_REBAR = ("شيش تسليح", "طن")
@@ -502,9 +502,9 @@ def labour_33kv(net: Network33kV, rates: dict) -> list[LabourLine]:
                        rates["تسليك شبكة 33 ك.ف 210"]["السعر"])
         )
     for label, count in (
-        ("نصب عمود مشبك 14م", net.poles_suspension),
-        ("نصب ركيزة شد وسطية", net.anchors_mid),
-        ("نصب ركيزة شد بداية ونهاية", net.anchors_end),
+        ("نصب عمود مشبك تعليق 14م", net.poles_suspension),
+        ("نصب ركيزة شد وسطية عمود 14م", net.anchors_mid),
+        ("نصب ركيزة شد بداية ونهاية عمود 14م", net.anchors_end),
     ):
         if count:
             unit = rates[label]["الوحدة"]

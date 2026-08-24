@@ -7,6 +7,8 @@
 
 import math
 
+import copy
+
 import pytest
 
 from engine import load_catalog
@@ -369,7 +371,7 @@ def test_33kv_anchor_items(circuit, b25, pin, disc, fittings):
     assert qty_of(lines, "براكيت 2.5 متر") == b25
     assert qty_of(lines, "عازل دبوسي 33 ك.ف مع السبندل") == pin
     assert qty_of(lines, "عازل قرصي 33 ك.ف مع الملحقات") == disc
-    assert qty_of(lines, "معدات المنيوم - المنيوم 210 ملم2") == fittings
+    assert qty_of(lines, "معدات ربط المنيوم - المنيوم 210 ملم²") == fittings
 
 
 def test_suspension_pole_gets_no_disc_insulator():
@@ -469,14 +471,14 @@ def test_concrete_and_rebar_have_no_material_cost(catalog):
 def test_earthing_independent_of_circuit_type():
     a = materials_11kv(Network11kV(poles_lattice=5, poles_round=20, circuit=SINGLE))
     b = materials_11kv(Network11kV(poles_lattice=5, poles_round=20, circuit=DOUBLE))
-    for name in ("سلك نحاس 50 ملم2", "ترمنل 50 ملم²"):
+    for name in ("سلك نحاس 50 ملم²", "ترمنل 50 ملم²"):
         assert qty_of(a, name) == qty_of(b, name)
 
 
 def test_earthing_matches_original_excel():
     """25 عموداً × 1.5 = 37.5 م نحاس و25 ترمنل."""
     lines = materials_11kv(Network11kV(poles_lattice=5, poles_round=20))
-    assert qty_of(lines, "سلك نحاس 50 ملم2") == 37.5
+    assert qty_of(lines, "سلك نحاس 50 ملم²") == 37.5
     assert qty_of(lines, "ترمنل 50 ملم²") == 25
 
 
@@ -541,12 +543,12 @@ def test_33kv_labour_uses_circuit_specific_rates(catalog):
     net.circuit = DOUBLE
     double = {l.name: l.cost for l in labour_33kv(net, rates)}
 
-    assert single["نصب عمود مشبك 14م"] == 30 * 260_000
-    assert double["نصب عمود مشبك 14م"] == 30 * 450_000
-    assert single["نصب ركيزة شد وسطية"] == 3 * 2_050_000
-    assert double["نصب ركيزة شد وسطية"] == 3 * 2_075_000   # ت-٣ مغلق: فرق 1.2% مؤكَّد
-    assert single["نصب ركيزة شد بداية ونهاية"] == 2 * 2_200_000
-    assert double["نصب ركيزة شد بداية ونهاية"] == 2 * 3_250_000
+    assert single["نصب عمود مشبك تعليق 14م"] == 30 * 260_000
+    assert double["نصب عمود مشبك تعليق 14م"] == 30 * 450_000
+    assert single["نصب ركيزة شد وسطية عمود 14م"] == 3 * 2_050_000
+    assert double["نصب ركيزة شد وسطية عمود 14م"] == 3 * 2_075_000   # ت-٣ مغلق: فرق 1.2% مؤكَّد
+    assert single["نصب ركيزة شد بداية ونهاية عمود 14م"] == 2 * 2_200_000
+    assert double["نصب ركيزة شد بداية ونهاية عمود 14م"] == 2 * 3_250_000
 
 
 # ═══════════════════════ ١١. التكامل والحالات الحدّية ═══════════════════════
@@ -559,10 +561,31 @@ def test_empty_project_is_zero(catalog):
 
 
 def test_missing_price_is_reported_not_silently_zero(catalog):
-    """واير ستي بلا سعر — يُبلَّغ عنه صراحةً ولا يُحسب صفراً بصمت."""
-    project = OverheadProject(net11=Network11kV(poles_lattice=1, stay_rod_sets=2))
-    result = compute(project, catalog)
-    assert "واير ستي" in result["أسعار_مفقودة"]
+    """المادة بلا سعر يُبلَّغ عنها صراحةً ولا تُحسب صفراً بصمت.
+
+    تُختبر الآلية بسعر **مُحقون** لا بمادة حقيقية: بعد ق-٣٦ صارت كل المواد
+    مسعّرة، فربط الاختبار بمادة بعينها يجعله يفشل مع كل تحديث أسعار.
+    """
+    catalog = copy.deepcopy(catalog)
+    catalog["المواد"]["عمود 11م مشبك"]["السعر"] = None
+
+    result = compute(OverheadProject(net11=Network11kV(poles_lattice=1)), catalog)
+    assert "عمود 11م مشبك" in result["أسعار_مفقودة"]
+    row = next(r for r in result["المواد"] if r["المادة"] == "عمود 11م مشبك")
+    assert row["الكمية"] == 1
+    assert row["الكلفة"] == 0          # لا تُحتسب، لكنها مُبلَّغ عنها
+
+
+def test_stay_wire_is_quantity_only_not_missing(catalog):
+    """واير ستي: سعره مضمَّن في «طقم ستي رود» — كمية فقط لا سعر مفقود (ق-٣٦)."""
+    result = compute(
+        OverheadProject(net11=Network11kV(poles_lattice=1, stay_rod_sets=2)), catalog
+    )
+    assert "واير ستي" not in result["أسعار_مفقودة"]
+    row = next(r for r in result["المواد"] if r["المادة"] == "واير ستي")
+    assert row["الكمية"] == 24         # 2 طقم × 12 م
+    assert row["كمية_فقط"] is True
+    assert row["الكلفة"] == 0
 
 
 def test_materials_aggregate_across_voltages():
@@ -572,7 +595,7 @@ def test_materials_aggregate_across_voltages():
         net33=Network33kV(poles_suspension=10),               # 10 أعمدة
     )
     totals = aggregate(materials_11kv(project.net11) + materials_33kv(project.net33))
-    assert totals[("سلك نحاس 50 ملم2", "متر")] == (25 + 10) * 1.5
+    assert totals[("سلك نحاس 50 ملم²", "متر")] == (25 + 10) * 1.5
 
 
 def test_double_circuit_11kv_costs_more_than_single(catalog):
@@ -634,7 +657,7 @@ def test_shared_material_breakdown_names_both_voltages(catalog):
         net33=Network33kV(poles_suspension=27, anchors_mid=3, anchors_end=2),
     )
     result = compute(project, catalog)
-    row = next(r for r in result["المواد"] if r["المادة"] == "سلك نحاس 50 ملم2")
+    row = next(r for r in result["المواد"] if r["المادة"] == "سلك نحاس 50 ملم²")
     sources = [p["المصدر"] for p in row["تفصيل"]]
     assert any("11م" in s for s in sources)
     assert any("14م" in s for s in sources)

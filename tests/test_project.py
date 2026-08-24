@@ -138,8 +138,8 @@ def test_mixed_low_voltage_is_now_expressible(catalog):
     assert "قابلو ألمنيوم معلق 3×120+95+16 ملم²" in names
     assert "سلك ألمنيوم 95 ملم²" in names
     # الكلامبات تتبع كل مقطع نوعه: بوكس كلامب للأسلاك، وهوك وكلامبات للقابلو
-    assert material(result, "بوكس كلامب (أسلاك)")["الكمية"] == 7 * 8 + 24 * 4
-    assert material(result, "هوك تعليق (قابلو)")["الكمية"] == 5 * 2 + 16 * 1
+    assert material(result, "بكرة عازلة ض.و مع الملحقات")["الكمية"] == 7 * 8 + 24 * 4
+    assert material(result, "هوك تعليق")["الكمية"] == 5 * 2 + 16 * 1
 
 
 # ═══════════════════ أجور العمل ═══════════════════
@@ -164,7 +164,7 @@ def test_labour_with_different_rates_stays_separate(catalog):
         Segment("مزدوج", Network33kV(poles_suspension=4, circuit=CircuitType.DOUBLE)),
     ])
     result = compute_project(project, catalog)
-    rows = [l for l in result["أجور_العمل"] if l.name == "نصب عمود مشبك 14م"]
+    rows = [l for l in result["أجور_العمل"] if l.name == "نصب عمود مشبك تعليق 14م"]
     assert sorted(l.rate for l in rows) == [260_000, 450_000]
     assert sum(l.cost for l in rows) == 4 * 260_000 + 4 * 450_000
 
@@ -179,7 +179,16 @@ def test_merged_labour_keeps_both_sources():
 
 
 def test_a_missing_rate_survives_the_merge(catalog):
-    """بند بلا أجر يبقى بلا أجر بعد الدمج — لا يتحوّل إلى صفر."""
+    """بند بلا أجر يبقى بلا أجر بعد الدمج — لا يتحوّل إلى صفر.
+
+    بأجر **مُحقون**: بعد ق-٣٦ صارت كل البنود مسعّرة، فربط الاختبار ببند بعينه
+    يجعله يفشل مع كل تحديث أسعار.
+    """
+    import copy
+
+    catalog = copy.deepcopy(catalog)
+    catalog["أجور_العمل"]["ربط المستهلكين"]["السعر"] = None
+
     project = Project(segments=[
         Segment("أ", NetworkLV(consumers=5)),
         Segment("ب", NetworkLV(consumers=7)),

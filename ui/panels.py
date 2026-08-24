@@ -606,10 +606,10 @@ class PanelEquipment(QWidget):
         box, form = section("الفواصل  —  الجهد × الموقع")
         self.isolators = {}
         labels = {
-            "onload_11_mid": "فاصل ON-LOAD 11 ك.ف — منتصف الشبكة:",
-            "onload_11_head": "فاصل ON-LOAD 11 ك.ف — على رأس القابلو:",
-            "isolator_33_mid": "فاصل هوائي 33 ك.ف — منتصف الشبكة:",
-            "isolator_33_head": "فاصل هوائي 33 ك.ف — على رأس القابلو:",
+            "onload_11_mid": "فاصل هوائي 11 ك.ف ON LOAD 11 ك.ف — منتصف الشبكة:",
+            "onload_11_head": "فاصل هوائي 11 ك.ف ON LOAD 11 ك.ف — على رأس القابلو:",
+            "isolator_33_mid": "فاصل هوائي 33 ك.ف ON LOAD — منتصف الشبكة:",
+            "isolator_33_head": "فاصل هوائي 33 ك.ف ON LOAD — على رأس القابلو:",
         }
         for attr, label in labels.items():
             field = number_field(0, 1000, 0)

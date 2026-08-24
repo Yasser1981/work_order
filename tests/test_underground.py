@@ -107,10 +107,10 @@ def test_materials_match_the_users_worked_example():
         end_boxes_internal=1, end_boxes_external=1,
     )
     lines = materials_underground11(net)
-    assert qty(lines, "قابلو 3×150 ملم2 جهد 11 ك.ف") == 1320       # 600×2×1.1
-    assert qty(lines, "صندوق مستقيم 3×150 ملم2 جهد 11 ك.ف") == 4
-    assert qty(lines, "صندوق نهاية داخلي 3×150 ملم2 جهد 11 ك.ف") == 1
-    assert qty(lines, "صندوق نهاية خارجي 3×150 ملم2 جهد 11 ك.ف") == 1
+    assert qty(lines, "قابلو 3×150 ملم² جهد 11 ك.ف") == 1320       # 600×2×1.1
+    assert qty(lines, "صندوق مستقيم 3×150 ملم² جهد 11 ك.ف") == 4
+    assert qty(lines, "صندوق نهاية داخلي 3×150 ملم² جهد 11 ك.ف") == 1
+    assert qty(lines, "صندوق نهاية خارجي 3×150 ملم² جهد 11 ك.ف") == 1
 
 
 def test_trench_materials_depend_on_route_length_only_not_on_feeder_count():
@@ -195,7 +195,7 @@ def test_civil_works_cost_is_route_length_times_rate_not_cable_quantity(catalog)
 def test_cable_laying_labour_uses_the_multiplied_cable_quantity(catalog):
     net = Underground11kV(route_length_m=400, feeder_count=3)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    laying = next(l for l in result["أجور_العمل"] if l.name == "كلفة مد القابلو 11 ك.ف")
+    laying = next(l for l in result["أجور_العمل"] if l.name == "كلفة مد قابلو 3×150 ملم²")
     assert laying.qty == 1320               # 400×3×1.1 — لا 400
     assert laying.rate == 3500
 
@@ -204,7 +204,7 @@ def test_end_boxes_share_one_labour_line_like_the_original_file(catalog):
     """صندوق نهاية داخلي وخارجي يجتمعان في بند أجر واحد — كما فعل الملف الأصلي."""
     net = Underground11kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    boxes = [l for l in result["أجور_العمل"] if l.name == "كلفة نصب صندوق نهاية 11 ك.ف"]
+    boxes = [l for l in result["أجور_العمل"] if l.name == "كلفة نصب صندوق نهاية 3×150 ملم²"]
     assert len(boxes) == 1 and boxes[0].qty == 5
 
 
@@ -212,8 +212,8 @@ def test_straight_and_end_boxes_are_separate_labour_items(catalog):
     net = Underground11kV(route_length_m=1, straight_boxes=2, end_boxes_internal=1)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
     names = {l.name for l in result["أجور_العمل"]}
-    assert "كلفة نصب صندوق مستقيم 11 ك.ف" in names
-    assert "كلفة نصب صندوق نهاية 11 ك.ف" in names
+    assert "كلفة نصب صندوق مستقيم 3×150 ملم²" in names
+    assert "كلفة نصب صندوق نهاية 3×150 ملم²" in names
 
 
 # ═══════════════════ عبور الشوارع — للمشروع كله لا للمقطع ═══════════════════
@@ -284,7 +284,7 @@ def test_mixing_overhead_and_underground_segments(catalog):
     result = compute_project(project, catalog)
     names = {m["المادة"] for m in result["المواد"]}
     assert "عمود 11م مشبك" in names
-    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
+    assert "قابلو 3×150 ملم² جهد 11 ك.ف" in names
 
 
 def test_every_underground_material_is_priced_or_flagged(catalog):
@@ -409,10 +409,10 @@ def test_civil_works_cost_is_route_length_not_cable_quantity_33(catalog):
 
 def test_materials_match_the_prices_from_the_original_file(catalog):
     prices = catalog["المواد"]
-    assert prices["قابلو 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 85000
-    assert prices["صندوق مستقيم 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 285000
-    assert prices["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 408000
-    assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 471000
+    assert prices["قابلو 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 85000
+    assert prices["صندوق مستقيم 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 285000
+    assert prices["صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 136000
+    assert prices["صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 157000
 
 
 def test_end_boxes_are_counted_per_piece_not_per_set(catalog):
@@ -422,8 +422,8 @@ def test_end_boxes_are_counted_per_piece_not_per_set(catalog):
     يحسب ثلث الكلفة الحقيقية.
     """
     prices = catalog["المواد"]
-    assert prices["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "عدد"
-    assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "عدد"
+    assert prices["صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف"]["الوحدة"] == "عدد"
+    assert prices["صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف"]["الوحدة"] == "عدد"
 
 
 def test_one_end_set_generates_three_boxes():
@@ -432,18 +432,23 @@ def test_one_end_set_generates_three_boxes():
 
     assert BOXES_PER_END_SET_33 == 3
     lines = materials_underground33(Underground33kV(route_length_m=1, end_boxes_internal=1))
-    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف") == 3
+    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف") == 3
 
 
-def test_end_box_cost_triples_versus_the_old_per_set_reading(catalog):
-    """أثر مالي مقصود: كلفة نقطة النهاية الواحدة تصير ثلاثة أضعاف ما كانت."""
+def test_end_box_set_cost_is_unchanged_after_the_unit_switch(catalog):
+    """التحويل من «سيت» إلى «عدد» **محايد الكلفة** — لا يزيدها ولا ينقصها.
+
+    الكمية ×3 والسعر ÷3 (408,000 ← 136,000 في ورقتك، ق-٣٦)، فكلفة نقطة النهاية
+    الواحدة تبقى 408,000 كما كانت. هذا يُصحّح استنتاجاً خاطئاً في ق-٣٥ ادّعى أن
+    الكلفة تتضاعف ثلاثة أضعاف.
+    """
     net = Underground33kV(route_length_m=1, end_boxes_internal=1)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
     row = next(m for m in result["المواد"]
-               if m["المادة"] == "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف")
+               if m["المادة"] == "صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف")
     assert row["الكمية"] == 3
-    assert row["سعر الوحدة"] == 408_000          # سعر الصندوق الواحد بلا تغيير
-    assert row["الكلفة"] == 3 * 408_000
+    assert row["سعر الوحدة"] == 136_000          # سعر الصندوق الواحد
+    assert row["الكلفة"] == 408_000              # = كلفة السيت الواحد قبل التحويل
 
 
 def test_eleven_kv_end_boxes_are_not_multiplied():
@@ -451,8 +456,8 @@ def test_eleven_kv_end_boxes_are_not_multiplied():
     lines = materials_underground11(
         Underground11kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
     )
-    assert qty(lines, "صندوق نهاية داخلي 3×150 ملم2 جهد 11 ك.ف") == 2
-    assert qty(lines, "صندوق نهاية خارجي 3×150 ملم2 جهد 11 ك.ف") == 3
+    assert qty(lines, "صندوق نهاية داخلي 3×150 ملم² جهد 11 ك.ف") == 2
+    assert qty(lines, "صندوق نهاية خارجي 3×150 ملم² جهد 11 ك.ف") == 3
 
 
 def test_trench_materials_are_shared_with_11kv_and_route_length_based():
@@ -467,8 +472,8 @@ def test_end_boxes_manual_no_advisory_33(catalog):
     """صناديق النهاية 33 ك.ف يدوية بحتة — والمُدخَل سيتات تُضرب ×3 (ق-٣٥)."""
     net = Underground33kV(route_length_m=500, end_boxes_internal=3, end_boxes_external=2)
     lines = materials_underground33(net)
-    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف") == 9
-    assert qty(lines, "صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف") == 6
+    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف") == 9
+    assert qty(lines, "صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف") == 6
 
 
 # ─────────────────── الأجور ───────────────────
@@ -477,7 +482,7 @@ def test_end_boxes_manual_no_advisory_33(catalog):
 def test_cable_laying_labour_uses_the_cable_quantity_33(catalog):
     net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    laying = next(l for l in result["أجور_العمل"] if l.name == "كلفة مد القابلو 33 ك.ف")
+    laying = next(l for l in result["أجور_العمل"] if l.name == "كلفة مد قابلو 1×400 ملم²")
     assert laying.qty == 3300
     assert laying.rate == 2000
 
@@ -485,7 +490,7 @@ def test_cable_laying_labour_uses_the_cable_quantity_33(catalog):
 def test_end_boxes_share_one_labour_line_33(catalog):
     net = Underground33kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    boxes = [l for l in result["أجور_العمل"] if l.name == "كلفة نصب صندوق نهاية 33 ك.ف"]
+    boxes = [l for l in result["أجور_العمل"] if l.name == "كلفة نصب صندوق نهاية 1×400 ملم²"]
     assert len(boxes) == 1 and boxes[0].qty == 5
     assert boxes[0].rate == 225000
 
@@ -493,9 +498,9 @@ def test_end_boxes_share_one_labour_line_33(catalog):
 def test_33kv_and_11kv_labour_rates_are_independent(catalog):
     """أسعار 33 ك.ف مختلفة عن 11 ك.ف — لا مشاركة سعر بالخطأ."""
     rates = catalog["أجور_العمل"]
-    assert rates["كلفة مد القابلو 11 ك.ف"]["السعر"] != rates["كلفة مد القابلو 33 ك.ف"]["السعر"]
-    assert rates["كلفة نصب صندوق نهاية 11 ك.ف"]["السعر"] != \
-        rates["كلفة نصب صندوق نهاية 33 ك.ف"]["السعر"]
+    assert rates["كلفة مد قابلو 3×150 ملم²"]["السعر"] != rates["كلفة مد قابلو 1×400 ملم²"]["السعر"]
+    assert rates["كلفة نصب صندوق نهاية 3×150 ملم²"]["السعر"] != \
+        rates["كلفة نصب صندوق نهاية 1×400 ملم²"]["السعر"]
 
 
 # ─────────────────── التكامل ───────────────────
@@ -508,8 +513,8 @@ def test_11kv_and_33kv_underground_segments_coexist(catalog):
     ])
     result = compute_project(project, catalog)
     names = {m["المادة"] for m in result["المواد"]}
-    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
-    assert "قابلو 1×400 ملم2 جهد 33 ك.ف" in names
+    assert "قابلو 3×150 ملم² جهد 11 ك.ف" in names
+    assert "قابلو 1×400 ملم² جهد 33 ك.ف" in names
 
 
 def test_empty_33kv_segment_produces_nothing(catalog):

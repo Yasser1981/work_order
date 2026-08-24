@@ -190,14 +190,34 @@ def test_totals_match_engine_exactly(window, p11):
     assert f"{result['الكلفة_الكلية']:,.0f}" in window.total_all.text()
 
 
-def test_missing_price_warning_is_shown(window, p11):
-    """السعر المفقود يُعرض تحذيراً ولا يُحتسب صفراً بصمت."""
-    p11.stay.setValue(2)          # يُدخل «واير ستي» وهو بلا سعر
-    assert window.warning.isVisible() or "واير ستي" in window.warning.text()
+def test_missing_price_warning_is_shown(qapp, p11):
+    """السعر المفقود يُعرض تحذيراً ولا يُحتسب صفراً بصمت.
 
-    p11.stay.setValue(0)
-    window.recalculate()
-    assert window.warning.text() == "" or not window.warning.isVisible()
+    بسعر **مُحقون**: بعد ق-٣٦ صارت كل المواد مسعّرة، فربط الاختبار بمادة بعينها
+    يجعله يفشل مع كل تحديث أسعار.
+    """
+    import copy
+
+    catalog = copy.deepcopy(load_catalog())
+    catalog["المواد"]["عمود 11م مشبك"]["السعر"] = None
+    w = MainWindow(catalog)
+    editor = w.add_segment(SegmentKind.HV11)
+
+    editor.lattice.setValue(3)
+    assert "عمود 11م مشبك" in w.warning.text()
+
+    editor.lattice.setValue(0)
+    assert w.warning.text() == "" or not w.warning.isVisible()
+
+
+def test_no_warning_when_everything_is_priced(window, p11):
+    """المشروع العادي بلا تحذير — كل المواد والأجور مسعّرة بعد ق-٣٦."""
+    p11.route.setValue(1000)
+    p11.stay.setValue(2)
+    p11._adopt_suggestion()
+    assert window.result["أسعار_مفقودة"] == []
+    assert window.result["أجور_مفقودة"] == []
+    assert not window.warning.text()
 
 
 def test_waste_field_disabled_when_length_already_includes_it(p11):
@@ -381,11 +401,19 @@ def test_hv_pole_fields_follow_their_checkbox(plv):
     assert plv.hv_lattice.isEnabled()
 
 
-def test_warning_reports_both_missing_prices_and_missing_rates(window, plv):
-    """المادة بلا سعر والبند بلا أجر يظهران معاً في التحذير."""
-    plv.consumers.setValue(10)
-    assert "كونكتر ربط مشتركين" in window.warning.text()
-    assert "ربط المستهلكين" in window.warning.text()
+def test_warning_reports_both_missing_prices_and_missing_rates(qapp):
+    """المادة بلا سعر والبند بلا أجر يظهران معاً في التحذير — بقيم مُحقونة."""
+    import copy
+
+    catalog = copy.deepcopy(load_catalog())
+    catalog["المواد"]["كونكتر ربط مشتركين"]["السعر"] = None
+    catalog["أجور_العمل"]["ربط المستهلكين"]["السعر"] = None
+    w = MainWindow(catalog)
+    editor = w.add_segment(SegmentKind.LV)
+
+    editor.consumers.setValue(10)
+    assert "كونكتر ربط مشتركين" in w.warning.text()
+    assert "ربط المستهلكين" in w.warning.text()
 
 
 def test_warning_renders_as_rich_text_not_raw_markup(window):
@@ -401,7 +429,7 @@ def test_warning_renders_as_rich_text_not_raw_markup(window):
 def test_equipment_segment_is_empty_by_default(window, pequip):
     """لا محولة ولا فاصل ما لم يُدخلهما المستخدم."""
     assert not pequip.equipment()
-    assert not any(m["المادة"] == "محولة 400 KVA" for m in window.result["المواد"])
+    assert not any(m["المادة"] == "محولة 400 KVA جهد 11/0.4 ك.ف" for m in window.result["المواد"])
 
 
 def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
@@ -409,8 +437,8 @@ def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
 
     pequip.transformers[TransformerSize.KVA400].setValue(1)
     names = [m["المادة"] for m in window.result["المواد"]]
-    assert "محولة 400 KVA" in names
-    assert "لنك فيوز 15 KV مع سلك فيوز 40 أمبير" in names
+    assert "محولة 400 KVA جهد 11/0.4 ك.ف" in names
+    assert "فاصل فيوز 11 ك.ف مع السلك" in names
     assert "نصب المحولة" in [l.name for l in window.result["أجور_العمل"]]
 
 
@@ -422,12 +450,12 @@ def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip)
         pequip.transformers[size].setValue(1)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
     for size in TransformerSize:
-        assert quantities[f"محولة {size.value} KVA"] == 1
+        assert quantities[f"محولة {size.value} KVA جهد 11/0.4 ك.ف"] == 1
     assert quantities["قاطع دورة 250 أمبير مع المتسعة"] == 2
     assert quantities["قاطع دورة 400 أمبير مع المتسعة"] == 2 + 4   # 400 و630 معاً
     assert quantities["قابلو نحاس 1×150 ملم²"] == 80 + 80 + 160
     # الملحق المشترك يُجمَّع من السعات الثلاث
-    assert quantities["قاعدة محولة 2.4 متر"] == 3
+    assert quantities["قاعدة محولة مع الملحقات"] == 3
 
 
 def test_both_onload_positions_feed_one_labour_line(window, pequip):
@@ -443,7 +471,7 @@ def test_the_two_isolator_voltages_use_their_own_cables(window, pequip):
     pequip.isolator_33_mid.setValue(1)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
     assert quantities["قابلو نحاس 1×150 ملم²"] == 20
-    assert quantities["قابلو 1×185 ملم2"] == 20
+    assert quantities["قابلو 1×185 ملم²"] == 20
 
 
 def test_cable_head_halves_the_cable_on_screen(window, pequip):
@@ -469,14 +497,14 @@ def test_equipment_hint_lists_the_kit_so_the_checker_sees_it(pequip):
 
 
 def test_equipment_totals_reach_the_screen(window, pequip):
+    """كل السعات مسعّرة بعد ق-٣٦ — لا تحذير مع أيٍّ منها."""
     from engine.equipment import TransformerSize
 
-    pequip.transformers[TransformerSize.KVA400].setValue(1)
-    assert f"{window.result['الكلفة_الكلية']:,.0f}" in window.total_all.text()
-    assert not window.warning.text()          # سعة 400 مسعّرة بالكامل
-
-    pequip.transformers[TransformerSize.KVA630].setValue(1)
-    assert "محولة 630 KVA" in window.warning.text()
+    for size in TransformerSize:
+        pequip.transformers[size].setValue(1)
+        assert f"{window.result['الكلفة_الكلية']:,.0f}" in window.total_all.text()
+        assert not window.warning.text()
+        pequip.transformers[size].setValue(0)
 
 
 def test_labour_rows_merge_across_segments(window):
@@ -575,7 +603,7 @@ def test_mixing_overhead_and_underground_segments_in_the_ui(window):
     ug.route.setValue(300)
     names = {m["المادة"] for m in window.result["المواد"]}
     assert "عمود 11م مشبك" in names
-    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
+    assert "قابلو 3×150 ملم² جهد 11 ك.ف" in names
 
 
 # ═══════════════════ مقطع الشبكة الأرضية 33 ك.ف ═══════════════════
@@ -632,8 +660,8 @@ def test_11kv_and_33kv_underground_segments_together_in_the_ui(window):
     ug33 = window.add_segment(SegmentKind.UG33)
     ug33.route.setValue(500)
     names = {m["المادة"] for m in window.result["المواد"]}
-    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
-    assert "قابلو 1×400 ملم2 جهد 33 ك.ف" in names
+    assert "قابلو 3×150 ملم² جهد 11 ك.ف" in names
+    assert "قابلو 1×400 ملم² جهد 33 ك.ف" in names
 
 
 # ═══════════════════ قفيص العمود المشبك — استرشادي (ق-٣٥) ═══════════════════
@@ -673,8 +701,8 @@ def test_ug33_end_box_set_becomes_three_boxes_on_screen(window, pug33):
     pug33.end_internal.setValue(1)
     pug33.end_external.setValue(2)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
-    assert quantities["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"] == 3
-    assert quantities["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"] == 6
+    assert quantities["صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف"] == 3
+    assert quantities["صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف"] == 6
 
 
 def test_ug33_end_box_hint_shows_the_resulting_count(window, pug33):

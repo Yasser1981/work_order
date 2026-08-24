@@ -47,10 +47,10 @@ from .types import (
 # ─────────────────────────────── أسماء المواد ───────────────────────────────
 # تطابق الملف الأصلي حرفياً
 
-M_CABLE_11 = ("قابلو 3×150 ملم2 جهد 11 ك.ف", "متر")
-M_BOX_STRAIGHT_11 = ("صندوق مستقيم 3×150 ملم2 جهد 11 ك.ف", "عدد")
-M_BOX_END_INTERNAL_11 = ("صندوق نهاية داخلي 3×150 ملم2 جهد 11 ك.ف", "عدد")
-M_BOX_END_EXTERNAL_11 = ("صندوق نهاية خارجي 3×150 ملم2 جهد 11 ك.ف", "عدد")
+M_CABLE_11 = ("قابلو 3×150 ملم² جهد 11 ك.ف", "متر")
+M_BOX_STRAIGHT_11 = ("صندوق مستقيم 3×150 ملم² جهد 11 ك.ف", "عدد")
+M_BOX_END_INTERNAL_11 = ("صندوق نهاية داخلي 3×150 ملم² جهد 11 ك.ف", "عدد")
+M_BOX_END_EXTERNAL_11 = ("صندوق نهاية خارجي 3×150 ملم² جهد 11 ك.ف", "عدد")
 M_STAKER = ("شتايكر 50×50×5 سم", "عدد")
 M_RIVER_SAND = ("رمل نهري", "متر مكعب")
 M_WARNING_TAPE = ("شريط تحذير", "لفة")
@@ -204,22 +204,22 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
 
     qty = cable_quantity(net)
     if qty:
-        entry = rates["كلفة مد القابلو 11 ك.ف"]
-        out.append(LabourLine("كلفة مد القابلو 11 ك.ف", entry["الوحدة"], qty, entry["السعر"]))
+        entry = rates["كلفة مد قابلو 3×150 ملم²"]
+        out.append(LabourLine("كلفة مد قابلو 3×150 ملم²", entry["الوحدة"], qty, entry["السعر"]))
 
     if net.straight_boxes:
-        entry = rates["كلفة نصب صندوق مستقيم 11 ك.ف"]
+        entry = rates["كلفة نصب صندوق مستقيم 3×150 ملم²"]
         out.append(
             LabourLine(
-                "كلفة نصب صندوق مستقيم 11 ك.ف", entry["الوحدة"], net.straight_boxes, entry["السعر"]
+                "كلفة نصب صندوق مستقيم 3×150 ملم²", entry["الوحدة"], net.straight_boxes, entry["السعر"]
             )
         )
 
     end_total = net.end_boxes_internal + net.end_boxes_external
     if end_total:
-        entry = rates["كلفة نصب صندوق نهاية 11 ك.ف"]
+        entry = rates["كلفة نصب صندوق نهاية 3×150 ملم²"]
         out.append(
-            LabourLine("كلفة نصب صندوق نهاية 11 ك.ف", entry["الوحدة"], end_total, entry["السعر"])
+            LabourLine("كلفة نصب صندوق نهاية 3×150 ملم²", entry["الوحدة"], end_total, entry["السعر"])
         )
 
     if net.route_length_m > 0:
@@ -232,10 +232,10 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
 
 # ═══════════════════════════ 33 ك.ف — قابلو 1×400 ملم² (ق-٣١) ═══════════════════════════
 
-M_CABLE_33 = ("قابلو 1×400 ملم2 جهد 33 ك.ف", "متر")
-M_BOX_STRAIGHT_33 = ("صندوق مستقيم 1×400 ملم2 جهد 33 ك.ف", "عدد")
-M_BOX_END_INTERNAL_33 = ("صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف", "عدد")
-M_BOX_END_EXTERNAL_33 = ("صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف", "عدد")
+M_CABLE_33 = ("قابلو 1×400 ملم² جهد 33 ك.ف", "متر")
+M_BOX_STRAIGHT_33 = ("صندوق مستقيم 1×400 ملم² جهد 33 ك.ف", "عدد")
+M_BOX_END_INTERNAL_33 = ("صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف", "عدد")
+M_BOX_END_EXTERNAL_33 = ("صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف", "عدد")
 
 PHASES_PER_CIRCUIT_33 = 3
 """قابلو 33 ك.ف أحادي القلب — كل دائرة (مغذٍّ) تحتاج ثلاثة كابلات منفصلة، طور
@@ -358,22 +358,22 @@ def labour_underground33(net: Underground33kV, catalog: dict) -> list[LabourLine
 
     qty = cable_quantity_33(net)
     if qty:
-        entry = rates["كلفة مد القابلو 33 ك.ف"]
-        out.append(LabourLine("كلفة مد القابلو 33 ك.ف", entry["الوحدة"], qty, entry["السعر"]))
+        entry = rates["كلفة مد قابلو 1×400 ملم²"]
+        out.append(LabourLine("كلفة مد قابلو 1×400 ملم²", entry["الوحدة"], qty, entry["السعر"]))
 
     if net.straight_boxes:
-        entry = rates["كلفة نصب صندوق مستقيم 33 ك.ف"]
+        entry = rates["كلفة نصب صندوق مستقيم 1×400 ملم²"]
         out.append(
             LabourLine(
-                "كلفة نصب صندوق مستقيم 33 ك.ف", entry["الوحدة"], net.straight_boxes, entry["السعر"]
+                "كلفة نصب صندوق مستقيم 1×400 ملم²", entry["الوحدة"], net.straight_boxes, entry["السعر"]
             )
         )
 
     end_total = net.end_boxes_internal + net.end_boxes_external
     if end_total:
-        entry = rates["كلفة نصب صندوق نهاية 33 ك.ف"]
+        entry = rates["كلفة نصب صندوق نهاية 1×400 ملم²"]
         out.append(
-            LabourLine("كلفة نصب صندوق نهاية 33 ك.ف", entry["الوحدة"], end_total, entry["السعر"])
+            LabourLine("كلفة نصب صندوق نهاية 1×400 ملم²", entry["الوحدة"], end_total, entry["السعر"])
         )
 
     if net.route_length_m > 0:

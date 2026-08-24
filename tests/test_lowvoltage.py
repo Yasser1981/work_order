@@ -99,25 +99,25 @@ def test_spans_are_user_editable(catalog):
 def test_bare_wire_accessories_match_the_original():
     """بوكس كلامب 8 لكل مشبك و4 لكل مدوّر — ومعدات الربط للمشبك وحده."""
     lines = materials_lv(NetworkLV(kind=WIRES, poles_lattice=10, poles_round=40))
-    assert qty_of(lines, "بوكس كلامب (أسلاك)") == 10 * 8 + 40 * 4      # 240
+    assert qty_of(lines, "بكرة عازلة ض.و مع الملحقات") == 10 * 8 + 40 * 4      # 240
     assert qty_of(lines, "معدات ربط ألمنيوم – ألمنيوم") == 10 * 8      # 80
 
 
 def test_bundled_cable_accessories_match_the_original():
     """المشبك للشد (كلامب شد) والمدوّر للتعليق (كلامب تعليق)."""
     lines = materials_lv(NetworkLV(kind=CABLE, poles_lattice=10, poles_round=40))
-    assert qty_of(lines, "هوك تعليق (قابلو)") == 10 * 2 + 40 * 1       # 60
-    assert qty_of(lines, "كلامب شد (قابلو)") == 10 * 2                 # 20
-    assert qty_of(lines, "كلامب تعليق (قابلو)") == 40 * 1              # 40
+    assert qty_of(lines, "هوك تعليق") == 10 * 2 + 40 * 1       # 60
+    assert qty_of(lines, "كلامب شد") == 10 * 2                 # 20
+    assert qty_of(lines, "كلامب تعليق") == 40 * 1              # 40
 
 
 def test_accessories_never_cross_between_kinds():
     """شبكة الأسلاك لا تُنتج كلامبات القابلو، والعكس."""
     wires = materials_lv(NetworkLV(kind=WIRES, poles_lattice=10, poles_round=40))
     cable = materials_lv(NetworkLV(kind=CABLE, poles_lattice=10, poles_round=40))
-    for name in ("هوك تعليق (قابلو)", "كلامب شد (قابلو)", "كلامب تعليق (قابلو)"):
+    for name in ("هوك تعليق", "كلامب شد", "كلامب تعليق"):
         assert qty_of(wires, name) == 0
-    assert qty_of(cable, "بوكس كلامب (أسلاك)") == 0
+    assert qty_of(cable, "بكرة عازلة ض.و مع الملحقات") == 0
 
 
 def test_cable_connector_is_for_lattice_poles_only():
@@ -148,7 +148,7 @@ def test_lv_uses_no_insulators():
 def test_earthing_and_concrete_do_not_depend_on_kind():
     a = materials_lv(NetworkLV(kind=WIRES, poles_lattice=10, poles_round=40))
     b = materials_lv(NetworkLV(kind=CABLE, poles_lattice=10, poles_round=40))
-    for name in ("سلك نحاس 50 ملم2", "ترمنل 50 ملم²", "كونكريت أساسات الأعمدة"):
+    for name in ("سلك نحاس 50 ملم²", "ترمنل 50 ملم²", "كونكريت أساسات الأعمدة"):
         assert qty_of(a, name) == qty_of(b, name)
 
 
@@ -160,7 +160,7 @@ def test_concrete_coefficients_match_the_original():
 
 def test_earthing_is_per_pole():
     lines = materials_lv(NetworkLV(poles_lattice=11, poles_round=40))
-    assert qty_of(lines, "سلك نحاس 50 ملم2") == 51 * 1.5
+    assert qty_of(lines, "سلك نحاس 50 ملم²") == 51 * 1.5
     assert qty_of(lines, "ترمنل 50 ملم²") == 51
 
 
@@ -172,11 +172,11 @@ def test_lv_on_hv_poles_adds_clamps_only():
     net = NetworkLV(on_hv_poles=True, hv_kind=CABLE,
                     hv_poles_lattice=5, hv_poles_round=16)
     lines = materials_lv(net)
-    assert qty_of(lines, "هوك تعليق (قابلو)") == 5 * 2 + 16 * 1
-    assert qty_of(lines, "كلامب شد (قابلو)") == 5 * 2
-    assert qty_of(lines, "كلامب تعليق (قابلو)") == 16
+    assert qty_of(lines, "هوك تعليق") == 5 * 2 + 16 * 1
+    assert qty_of(lines, "كلامب شد") == 5 * 2
+    assert qty_of(lines, "كلامب تعليق") == 16
     # لا أعمدة ولا تأريض ولا كونكريت
-    for name in ("عمود 9م مشبك", "عمود 9م مدوّر", "سلك نحاس 50 ملم2",
+    for name in ("عمود 9م مشبك", "عمود 9م مدوّر", "سلك نحاس 50 ملم²",
                  "ترمنل 50 ملم²", "كونكريت أساسات الأعمدة"):
         assert qty_of(lines, name) == 0
 
@@ -186,7 +186,7 @@ def test_hv_pole_coefficients_equal_the_9m_ones():
     own = materials_lv(NetworkLV(kind=CABLE, poles_lattice=5, poles_round=16))
     on_hv = materials_lv(NetworkLV(on_hv_poles=True, hv_kind=CABLE,
                                    hv_poles_lattice=5, hv_poles_round=16))
-    for name in ("هوك تعليق (قابلو)", "كلامب شد (قابلو)", "كلامب تعليق (قابلو)"):
+    for name in ("هوك تعليق", "كلامب شد", "كلامب تعليق"):
         assert qty_of(own, name) == qty_of(on_hv, name)
 
 
@@ -195,8 +195,8 @@ def test_hv_kind_can_differ_from_the_main_kind():
     net = NetworkLV(kind=WIRES, poles_lattice=10,
                     on_hv_poles=True, hv_kind=CABLE, hv_poles_lattice=5)
     lines = materials_lv(net)
-    assert qty_of(lines, "بوكس كلامب (أسلاك)") == 10 * 8    # الأساسية أسلاك
-    assert qty_of(lines, "كلامب شد (قابلو)") == 5 * 2        # وعلى أعمدة ض.ع قابلو
+    assert qty_of(lines, "بكرة عازلة ض.و مع الملحقات") == 10 * 8    # الأساسية أسلاك
+    assert qty_of(lines, "كلامب شد") == 5 * 2        # وعلى أعمدة ض.ع قابلو
 
 
 def test_hv_section_is_ignored_when_switched_off():
@@ -213,32 +213,32 @@ def test_one_connector_per_consumer(catalog):
     assert qty_of(lines, "كونكتر ربط مشتركين") == 25
 
 
-def test_consumer_connector_price_is_pending_not_zero(catalog):
-    """السعر غير محدَّد بعد — يُبلَّغ عنه ولا يُحتسب صفراً بصمت."""
+def test_consumer_connector_is_now_priced(catalog):
+    """صار مسعّراً بـ5,000 (ق-٣٦) بعد أن كان معلَّقاً منذ ق-٢٢."""
     result = compute(OverheadProject(netlv=NetworkLV(consumers=25)), catalog)
-    assert "كونكتر ربط مشتركين" in result["أسعار_مفقودة"]
+    assert catalog["المواد"]["كونكتر ربط مشتركين"]["السعر"] == 5_000
     row = next(r for r in result["المواد"] if r["المادة"] == "كونكتر ربط مشتركين")
     assert row["الكمية"] == 25
-    assert row["الكلفة"] == 0
-    assert row["سعر_مفقود"] is True
+    assert row["الكلفة"] == 25 * 5_000
+    assert row["سعر_مفقود"] is False
 
 
-def test_consumer_labour_rate_is_pending(catalog):
-    """أجر ربط المستهلكين يُترك فارغاً حالياً ويُبلَّغ عنه (ق-٢٢)."""
+def test_consumer_labour_rate_is_now_set(catalog):
+    """صار أجراً محدَّداً بـ25,000 (ق-٣٦) بعد أن كان فارغاً منذ ق-٢٢."""
     result = compute(OverheadProject(netlv=NetworkLV(consumers=25)), catalog)
-    assert "ربط المستهلكين" in result["أجور_مفقودة"]
+    assert catalog["أجور_العمل"]["ربط المستهلكين"]["السعر"] == 25_000
     line = next(l for l in result["أجور_العمل"] if l.name == "ربط المستهلكين")
-    assert line.rate_missing is True
-    assert line.cost == 0
+    assert line.rate_missing is False
+    assert line.cost == 25 * 25_000
 
 
-def test_pending_rate_does_not_corrupt_the_total(catalog):
-    """البند بلا أجر لا يُسقط المجموع ولا يضيف صفراً خاطئاً."""
+def test_consumer_labour_now_adds_to_the_total(catalog):
+    """بعد تسعير «ربط المستهلكين» بـ25,000 (ق-٣٦) صار يضيف إلى المجموع فعلاً."""
     without = compute(OverheadProject(netlv=NetworkLV(poles_lattice=5)), catalog)
     with_consumers = compute(
         OverheadProject(netlv=NetworkLV(poles_lattice=5, consumers=100)), catalog
     )
-    assert with_consumers["كلفة_العمل"] == without["كلفة_العمل"]
+    assert with_consumers["كلفة_العمل"] == without["كلفة_العمل"] + 100 * 25_000
 
 
 # ═══════════════════════ ٧. الأجور ═══════════════════════
@@ -272,7 +272,7 @@ def test_lv_aggregates_with_the_overhead_networks(catalog):
         netlv=NetworkLV(poles_lattice=11, poles_round=40),
     )
     result = compute(project, catalog)
-    copper = next(r for r in result["المواد"] if r["المادة"] == "سلك نحاس 50 ملم2")
+    copper = next(r for r in result["المواد"] if r["المادة"] == "سلك نحاس 50 ملم²")
     assert copper["الكمية"] == (21 + 51) * 1.5
     assert copper["مجمَّع"] is True
     sources = [p["المصدر"] for p in copper["تفصيل"]]

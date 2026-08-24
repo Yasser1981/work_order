@@ -122,13 +122,25 @@ def test_audit_totals_match_the_engine(order, result):
     assert f"{result['الكلفة_الكلية']:,.0f}" in audit
 
 
-def test_audit_warns_about_unpriced_materials(order, result):
-    """«واير ستي» بلا سعر — ورقة التدقيق تُنبّه صراحةً."""
-    audit = printing.get("audit").build_html(order, result)
-    assert result["أسعار_مفقودة"]
+def test_audit_warns_about_unpriced_materials(order):
+    """المادة بلا سعر تُنبّه عنها ورقة التدقيق صراحةً.
+
+    بسعر **مُحقون**: بعد ق-٣٦ صارت كل المواد مسعّرة، فربط الاختبار بمادة بعينها
+    يجعله يفشل مع كل تحديث أسعار.
+    """
+    import copy
+
+    from engine.overhead import compute
+    from engine.types import Network11kV, OverheadProject
+
+    catalog = copy.deepcopy(load_catalog())
+    catalog["المواد"]["عمود 11م مشبك"]["السعر"] = None
+    unpriced = compute(OverheadProject(net11=Network11kV(poles_lattice=3)), catalog)
+
+    audit = printing.get("audit").build_html(order, unpriced)
+    assert unpriced["أسعار_مفقودة"] == ["عمود 11م مشبك"]
     assert "تنبيه" in audit
-    for name in result["أسعار_مفقودة"]:
-        assert name in audit
+    assert "عمود 11م مشبك" in audit
 
 
 def test_adding_a_template_needs_no_engine_change():
@@ -167,15 +179,19 @@ def segmented_result():
     return compute_project(project, load_catalog())
 
 
-def test_audit_survives_a_labour_item_with_no_rate(order, segmented_result):
-    """كان القالب ينهار على أي مشروع فيه مستهلكون — الأجر None لا يُنسَّق كرقم."""
-    html = printing.get("audit").build_html(order, segmented_result)
+def test_audit_survives_a_labour_item_with_no_rate(order, underground_result):
+    """كان القالب ينهار على أي أجر بلا سعر — الأجر None لا يُنسَّق كرقم.
+
+    المصدر الطبيعي الوحيد لأجر مفقود بعد ق-٣٦ هو تعرفة أعمال مدنية خارج الجدول
+    (أكثر من 5 مغذيات)، وهو ما يبنيه `underground_result`.
+    """
+    html = printing.get("audit").build_html(order, underground_result)
+    assert underground_result["أجور_مفقودة"]
     assert "بلا أجر" in html
-    assert "ربط المستهلكين" in html
 
 
-def test_audit_warns_about_missing_rates_too(order, segmented_result):
-    html = printing.get("audit").build_html(order, segmented_result)
+def test_audit_warns_about_missing_rates_too(order, underground_result):
+    html = printing.get("audit").build_html(order, underground_result)
     assert "بنود بلا أجر" in html
 
 
@@ -204,7 +220,10 @@ def test_every_template_handles_a_segmented_project(key, order, segmented_result
 
 @pytest.fixture(scope="module")
 def underground_result():
-    """مشروع أرضي فيه بند أجر بلا سعر — عدد مغذيات خارج جدول التعرفة."""
+    """مشروع أرضي فيه بند أجر بلا سعر — عدد مغذيات خارج جدول التعرفة.
+
+    التعرفة خارج الجدول تبقى المصدر الطبيعي الوحيد لأجر مفقود بعد ق-٣٦.
+    """
     from engine.project import compute_project
     from engine.types import Project, Segment, SidewalkType, Underground11kV
 

@@ -96,7 +96,7 @@ def test_quantities_match_the_engine(order, result):
     printed = [re.findall(r"<td[^>]*>(.*?)</td>", r, flags=re.S) for r in rows]
     by_name = {cells[1]: cells[3] for cells in printed}
     assert by_name["كونكريت أساسات الأعمدة"] == "161"
-    assert by_name["سلك نحاس 50 ملم2"] == "87"
+    assert by_name["سلك نحاس 50 ملم²"] == "87"
     assert by_name["شيش تسليح"] == "0.2"           # مقرَّب لأقرب عُشر لأعلى (ق-٣٢)
 
 
