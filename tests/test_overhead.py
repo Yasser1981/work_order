@@ -422,11 +422,30 @@ def test_concrete_rounded_up_separately_per_voltage():
 
 
 def test_rebar_independent_of_circuit_type():
+    """شيش التسليح لا يتغيّر بنوع الدائرة — ويُقرَّب لأقرب عُشر طن لأعلى (ق-٣٢)."""
     a = materials_33kv(Network33kV(anchors_mid=3, anchors_end=2, circuit=SINGLE))
     b = materials_33kv(Network33kV(anchors_mid=3, anchors_end=2, circuit=DOUBLE))
-    expected = (3 * 4 + 2 * 6) / 130
+    raw = (3 * 4 + 2 * 6) / 130           # 0.1846...
+    expected = 0.2                        # مقرَّب لأعلى لأقرب عُشر
     assert qty_of(a, "شيش تسليح") == pytest.approx(expected)
     assert qty_of(b, "شيش تسليح") == pytest.approx(expected)
+    assert raw < expected                 # التقريب فعلياً لأعلى لا تطابقاً صدفة
+
+
+def test_rebar_rounds_up_to_the_nearest_tenth_of_a_ton():
+    """0.18 ← 0.2 — المثال الذي طلب المستخدم تطبيقه حرفياً (ق-٣٢)."""
+    lines = materials_33kv(Network33kV(anchors_mid=1, anchors_end=1))
+    raw = (1 * 4 + 1 * 6) / 130           # = 0.0769...
+    assert qty_of(lines, "شيش تسليح") == pytest.approx(0.1)
+    assert raw < 0.1
+
+
+def test_rebar_exact_tenth_is_not_bumped_up_further():
+    """قيمة تقع بالضبط على عُشر لا تُقرَّب إلى العُشر التالي."""
+    from engine.overhead import REBAR_DIVISOR, _roundup
+
+    exact = 0.2
+    assert _roundup(exact, decimals=1) == pytest.approx(0.2)
 
 
 def test_concrete_and_rebar_have_no_material_cost(catalog):

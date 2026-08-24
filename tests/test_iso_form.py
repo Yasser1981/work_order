@@ -97,12 +97,12 @@ def test_quantities_match_the_engine(order, result):
     by_name = {cells[1]: cells[3] for cells in printed}
     assert by_name["كونكريت أساسات الأعمدة"] == "161"
     assert by_name["سلك نحاس 50 ملم2"] == "87"
-    assert by_name["شيش تسليح"] == "0.185"
+    assert by_name["شيش تسليح"] == "0.2"           # مقرَّب لأقرب عُشر لأعلى (ق-٣٢)
 
 
 def test_fractional_quantity_keeps_its_decimals(order, result):
-    """31.5 م لا تُقرَّب إلى 32 في النموذج."""
-    assert "0.185" in build_html(order, result)
+    """31.5 م لا تُقرَّب إلى 32 في النموذج، و0.2 لا تُبتَر إلى صفر."""
+    assert "0.2" in build_html(order, result)
 
 
 def test_rows_are_numbered_consecutively(order, result):

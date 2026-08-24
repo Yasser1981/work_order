@@ -48,6 +48,8 @@ STAY_WIRE_PER_SET_14M = 15
 REBAR_DIVISOR = 130
 REBAR_PER_MID_ANCHOR = 4
 REBAR_PER_END_ANCHOR = 6
+REBAR_ROUNDING_DECIMALS = 1
+"""شيش التسليح يُقرَّب لأقرب عُشر طن لأعلى — 0.18 ← 0.2 (ق-٣٢)."""
 
 CONCRETE_11_LATTICE = 1.0
 CONCRETE_11_ROUND = 0.756
@@ -87,9 +89,15 @@ QUANTITY_ONLY = {M_CONCRETE[0], M_REBAR[0]}
 """مواد تُحسب كمّياً بلا كلفة — كلفتها مضمّنة في أجور النصب (ق-١٧)."""
 
 
-def _roundup(value: float) -> int:
-    """تقريب لأعلى — الزيادة أفضل من النقصان (ق-١٤)."""
-    return math.ceil(round(value, 9))
+def _roundup(value: float, decimals: int = 0) -> float:
+    """تقريب لأعلى — الزيادة أفضل من النقصان (ق-١٤).
+
+    `decimals` يحدّد مرتبة التقريب: 0 (الافتراضي) يقرِّب لأقرب عدد صحيح، و1
+    يقرِّب لأقرب عُشر (0.18 ← 0.2) — تُستخدم لشيش التسليح وحده حتى الآن.
+    """
+    scale = 10 ** decimals
+    result = math.ceil(round(value * scale, 9)) / scale
+    return int(result) if decimals == 0 else result
 
 
 # ────────────────────────── حساب الأعمدة (استرشادي) ──────────────────────────
@@ -428,14 +436,16 @@ def materials_33kv(net: Network33kV) -> list[MaterialLine]:
         add(MaterialLine(*M_CONCRETE, _roundup(concrete),
                          f"أساسات 33 ك.ف ({circ}): {terms} = {concrete:,.3f} ← مقرَّب لأعلى"))
 
-    # شيش التسليح — لا يتغيّر بنوع الدائرة
-    rebar = (
+    # شيش التسليح — لا يتغيّر بنوع الدائرة. يُقرَّب لأقرب عُشر طن لأعلى (ق-٣٢)
+    rebar_raw = (
         net.anchors_mid * REBAR_PER_MID_ANCHOR + net.anchors_end * REBAR_PER_END_ANCHOR
     ) / REBAR_DIVISOR
+    rebar = _roundup(rebar_raw, decimals=REBAR_ROUNDING_DECIMALS)
     if rebar:
         add(MaterialLine(*M_REBAR, rebar,
                          f"تسليح أسس الركائز: ({net.anchors_mid} × {REBAR_PER_MID_ANCHOR}"
-                         f" + {net.anchors_end} × {REBAR_PER_END_ANCHOR}) ÷ {REBAR_DIVISOR}"))
+                         f" + {net.anchors_end} × {REBAR_PER_END_ANCHOR}) ÷ {REBAR_DIVISOR}"
+                         f" = {rebar_raw:.4f} ← مقرَّب لأعلى"))
 
     # ستي رود — 15 م واير لكل طقم على أعمدة 14م
     if net.stay_rod_sets:
