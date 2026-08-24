@@ -15,15 +15,18 @@ from PyQt6.QtWidgets import (
 
 from engine.equipment import (
     CABLE_HEAD_M,
+    CAGES_PER_CABLE_HEAD_POLE,
     M_BRACKET_21,
     CABLE_MID_NETWORK_M,
     ISOLATOR_KITS,
     TRANSFORMER_KITS,
     TRANSFORMER_OUTPUTS,
     TransformerSize,
+    suggest_lattice_cages,
 )
 from engine.lowvoltage import conductor_quantity, count_poles_lv
 from engine.underground import (
+    BOXES_PER_END_SET_33,
     cable_count_33,
     cable_quantity,
     cable_quantity_33,
@@ -617,11 +620,13 @@ class PanelEquipment(QWidget):
         form.addRow(self.isolator_hint)
         layout.addWidget(box)
 
-        box, form = section("متفرقات")
-        self.cages = number_field(0, 100_000, 0)
-        form.addRow("عدد أقفاص العمود المشبك:", self.cages)
+        box, form = section("قفيص العمود المشبك  —  استرشادي وغير مُلزِم")
         self.cage_hint = HintLabel()
         form.addRow(self.cage_hint)
+        self.adopt_cages = QPushButton("اعتماد القيمة المقترحة  ↓")
+        form.addRow(self.adopt_cages)
+        self.cages = number_field(0, 100_000, 0)
+        form.addRow("عدد أقفاص العمود المشبك:", self.cages)
         layout.addWidget(box)
 
         layout.addStretch(1)
@@ -636,6 +641,10 @@ class PanelEquipment(QWidget):
     def _connect(self) -> None:
         for w in (self.cages, *self.transformers.values(), *self.isolators.values()):
             w.valueChanged.connect(self._on_change)
+        self.adopt_cages.clicked.connect(self._adopt_cages)
+
+    def _adopt_cages(self) -> None:
+        self.cages.setValue(suggest_lattice_cages(self.equipment()))
 
     def _on_change(self) -> None:
         self.refresh_hints()
@@ -701,8 +710,13 @@ class PanelEquipment(QWidget):
         )
         self.isolator_hint.setText("<br>".join(rows))
 
+        heads = eq.onload_11_head + eq.isolator_33_head
+        suggested = suggest_lattice_cages(eq)
         self.cage_hint.setText(
-            "كمية يدخلها المستخدم مباشرة — بلا ملحقات وبلا أجر مستقل."
+            f"<b>{CAGES_PER_CABLE_HEAD_POLE}</b> أقفاص لكل عمود مشبك عليه رأس قابلو."
+            f"<br>أعمدة رأس القابلو = الفواصل على رأس القابلو في الجهدين:"
+            f" <b>{heads}</b> ← المقترح <b>{suggested} قفيص</b>."
+            "<br>بلا ملحقات وبلا أجر مستقل — يُركَّب مع العمود."
         )
 
 
@@ -887,11 +901,13 @@ class PanelUnderground33kV(QWidget):
         form.addRow("عدد الصناديق المستقيمة:", self.straight_boxes)
         layout.addWidget(box)
 
-        box, form = section("صناديق النهاية  —  إدخال يدوي بحت")
+        box, form = section("صناديق النهاية  —  إدخال يدوي، والسيت 3 صناديق")
         self.end_internal = number_field(0, 10_000, 0)
         self.end_external = number_field(0, 10_000, 0)
-        form.addRow("صندوق نهاية داخلي (لمحطة/محولة أرضية):", self.end_internal)
-        form.addRow("صندوق نهاية خارجي (لشبكة هوائية):", self.end_external)
+        form.addRow("نهايات داخلية (سيت — لمحطة/محولة أرضية):", self.end_internal)
+        form.addRow("نهايات خارجية (سيت — لشبكة هوائية):", self.end_external)
+        self.end_box_hint = HintLabel()
+        form.addRow(self.end_box_hint)
         layout.addWidget(box)
 
         layout.addStretch(1)
@@ -967,4 +983,12 @@ class PanelUnderground33kV(QWidget):
         self.box_hint.setText(
             f"لكل كابل (طور): ⌈{net.route_length_m:,.0f} ÷ {net.drum_length_m:,.0f}⌉ − 1،"
             f" × {cables} كابل = <b>{suggested} صندوق</b> مقترح"
+        )
+
+        internal = net.end_boxes_internal * BOXES_PER_END_SET_33
+        external = net.end_boxes_external * BOXES_PER_END_SET_33
+        self.end_box_hint.setText(
+            f"السيت الواحد <b>{BOXES_PER_END_SET_33} صناديق</b> — صندوق لكل طور."
+            f"<br>داخلية: {net.end_boxes_internal} سيت ← <b>{internal} صندوق</b>"
+            f" &nbsp;|&nbsp; خارجية: {net.end_boxes_external} سيت ← <b>{external} صندوق</b>"
         )

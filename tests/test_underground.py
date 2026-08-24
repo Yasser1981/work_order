@@ -415,11 +415,44 @@ def test_materials_match_the_prices_from_the_original_file(catalog):
     assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["السعر"] == 471000
 
 
-def test_end_boxes_are_seat_units_not_count(catalog):
-    """صناديق النهاية 33 ك.ف بوحدة «سيت» — كما في الملف الأصلي، لا «عدد»."""
+def test_end_boxes_are_counted_per_piece_not_per_set(catalog):
+    """الوحدة «عدد» لا «سيت» — والسعر سعر الصندوق الواحد (ق-٣٥).
+
+    خلافاً للملف الأصلي الذي كان يسمّيها «سيت» بينما سعره سعر المفرد — فكان
+    يحسب ثلث الكلفة الحقيقية.
+    """
     prices = catalog["المواد"]
-    assert prices["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "سيت"
-    assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "سيت"
+    assert prices["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "عدد"
+    assert prices["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"]["الوحدة"] == "عدد"
+
+
+def test_one_end_set_generates_three_boxes():
+    """السيت الواحد 3 صناديق — صندوق لكل طور (ق-٣٥)."""
+    from engine.underground import BOXES_PER_END_SET_33
+
+    assert BOXES_PER_END_SET_33 == 3
+    lines = materials_underground33(Underground33kV(route_length_m=1, end_boxes_internal=1))
+    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف") == 3
+
+
+def test_end_box_cost_triples_versus_the_old_per_set_reading(catalog):
+    """أثر مالي مقصود: كلفة نقطة النهاية الواحدة تصير ثلاثة أضعاف ما كانت."""
+    net = Underground33kV(route_length_m=1, end_boxes_internal=1)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    row = next(m for m in result["المواد"]
+               if m["المادة"] == "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف")
+    assert row["الكمية"] == 3
+    assert row["سعر الوحدة"] == 408_000          # سعر الصندوق الواحد بلا تغيير
+    assert row["الكلفة"] == 3 * 408_000
+
+
+def test_eleven_kv_end_boxes_are_not_multiplied():
+    """11 ك.ف كابله ثلاثي القلب فنهايته صندوق واحد — لا ×3 (ق-٣٥)."""
+    lines = materials_underground11(
+        Underground11kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
+    )
+    assert qty(lines, "صندوق نهاية داخلي 3×150 ملم2 جهد 11 ك.ف") == 2
+    assert qty(lines, "صندوق نهاية خارجي 3×150 ملم2 جهد 11 ك.ف") == 3
 
 
 def test_trench_materials_are_shared_with_11kv_and_route_length_based():
@@ -431,11 +464,11 @@ def test_trench_materials_are_shared_with_11kv_and_route_length_based():
 
 
 def test_end_boxes_manual_no_advisory_33(catalog):
-    """صناديق النهاية 33 ك.ف يدوية بحتة — بتأكيد المستخدم صراحةً، كما 11 ك.ف."""
+    """صناديق النهاية 33 ك.ف يدوية بحتة — والمُدخَل سيتات تُضرب ×3 (ق-٣٥)."""
     net = Underground33kV(route_length_m=500, end_boxes_internal=3, end_boxes_external=2)
     lines = materials_underground33(net)
-    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف") == 3
-    assert qty(lines, "صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف") == 2
+    assert qty(lines, "صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف") == 9
+    assert qty(lines, "صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف") == 6
 
 
 # ─────────────────── الأجور ───────────────────

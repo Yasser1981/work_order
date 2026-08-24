@@ -216,6 +216,23 @@ def isolator_kit(
     return kit
 
 
+CAGES_PER_CABLE_HEAD_POLE = 6
+"""قفيص عمود مشبك: **6 لكل عمود مشبك عليه رأس قابلو** (ق-٣٥).
+
+وعدد أعمدة رأس القابلو يُستنتج من عدد الفواصل على رأس القابلو — لكل فاصل عمود.
+الكمية **استرشادية** كبقية الاقتراحات: تُعتمد أو تُعدَّل يدوياً (ق-١٠)."""
+
+
+def suggest_lattice_cages(eq: Equipment) -> int:
+    """الاقتراح الاسترشادي لأقفاص العمود المشبك.
+
+    6 أقفاص لكل عمود مشبك عليه رأس قابلو، وعدد تلك الأعمدة = مجموع الفواصل
+    على رأس القابلو في الجهدين معاً.
+    """
+    cable_head_poles = eq.onload_11_head + eq.isolator_33_head
+    return cable_head_poles * CAGES_PER_CABLE_HEAD_POLE
+
+
 ISOLATORS = [
     ("onload_11_mid", IsolatorVoltage.KV11, IsolatorPosition.MID_NETWORK),
     ("onload_11_head", IsolatorVoltage.KV11, IsolatorPosition.CABLE_HEAD),

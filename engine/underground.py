@@ -234,13 +234,20 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
 
 M_CABLE_33 = ("قابلو 1×400 ملم2 جهد 33 ك.ف", "متر")
 M_BOX_STRAIGHT_33 = ("صندوق مستقيم 1×400 ملم2 جهد 33 ك.ف", "عدد")
-M_BOX_END_INTERNAL_33 = ("صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف", "سيت")
-M_BOX_END_EXTERNAL_33 = ("صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف", "سيت")
+M_BOX_END_INTERNAL_33 = ("صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف", "عدد")
+M_BOX_END_EXTERNAL_33 = ("صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف", "عدد")
 
 PHASES_PER_CIRCUIT_33 = 3
 """قابلو 33 ك.ف أحادي القلب — كل دائرة (مغذٍّ) تحتاج ثلاثة كابلات منفصلة، طور
 لكل كابل. لا نظير لهذا في 11 ك.ف حيث الكابل الواحد ثلاثي القلب يحمل الأطوار
 الثلاثة معاً."""
+
+BOXES_PER_END_SET_33 = PHASES_PER_CIRCUIT_33
+"""صناديق النهاية 33 ك.ف: السيت الواحد **ثلاثة صناديق**، صندوق لكل طور (ق-٣٥).
+
+المستخدم يُدخل عدد **نقاط النهاية** (السيتات)، والمحرك يضربها ×3 فتصير الكمية
+بوحدة «عدد» مطابقةً للسعر المثبت وهو **سعر الصندوق الواحد** لا سعر السيت.
+لا نظير لهذا في 11 ك.ف — كابله ثلاثي القلب فنهايته صندوق واحد."""
 
 DRUM_LENGTH_DEFAULT_KEY_33 = "طول_بكرة_القابلو_33ك.ف"
 
@@ -294,20 +301,23 @@ def materials_underground33(net: Underground33kV) -> list[MaterialLine]:
                 f"صناديق مستقيمة: {net.straight_boxes}",
             )
         )
+    # السيت الواحد ثلاثة صناديق — صندوق لكل طور (ق-٣٥)
     if net.end_boxes_internal:
         add(
             MaterialLine(
                 *M_BOX_END_INTERNAL_33,
-                net.end_boxes_internal,
-                f"صناديق نهاية داخلية: {net.end_boxes_internal}",
+                net.end_boxes_internal * BOXES_PER_END_SET_33,
+                f"نهايات داخلية: {net.end_boxes_internal} سيت"
+                f" × {BOXES_PER_END_SET_33} صناديق (طور لكل صندوق)",
             )
         )
     if net.end_boxes_external:
         add(
             MaterialLine(
                 *M_BOX_END_EXTERNAL_33,
-                net.end_boxes_external,
-                f"صناديق نهاية خارجية: {net.end_boxes_external}",
+                net.end_boxes_external * BOXES_PER_END_SET_33,
+                f"نهايات خارجية: {net.end_boxes_external} سيت"
+                f" × {BOXES_PER_END_SET_33} صناديق (طور لكل صندوق)",
             )
         )
 

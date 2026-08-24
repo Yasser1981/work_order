@@ -634,3 +634,50 @@ def test_11kv_and_33kv_underground_segments_together_in_the_ui(window):
     names = {m["المادة"] for m in window.result["المواد"]}
     assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names
     assert "قابلو 1×400 ملم2 جهد 33 ك.ف" in names
+
+
+# ═══════════════════ قفيص العمود المشبك — استرشادي (ق-٣٥) ═══════════════════
+
+
+def test_cage_advisory_is_six_per_cable_head_isolator(window, pequip):
+    """6 أقفاص لكل عمود مشبك عليه رأس قابلو، وأعمدة رأس القابلو = الفواصل عليه."""
+    pequip.onload_11_head.setValue(1)
+    pequip.isolator_33_head.setValue(2)
+    pequip._adopt_cages()
+    assert pequip.cages.value() == 18          # (1 + 2) × 6
+
+
+def test_mid_network_isolators_do_not_add_cages(window, pequip):
+    """فواصل منتصف الشبكة لا رأس قابلو لها — فلا أقفاص."""
+    pequip.onload_11_mid.setValue(4)
+    pequip.isolator_33_mid.setValue(4)
+    pequip._adopt_cages()
+    assert pequip.cages.value() == 0
+
+
+def test_cage_count_stays_editable_after_adopting(window, pequip):
+    """استرشادي غير مُلزِم — التعديل اليدوي بعد الاعتماد يبقى (ق-١٠)."""
+    pequip.onload_11_head.setValue(1)
+    pequip._adopt_cages()
+    assert pequip.cages.value() == 6
+    pequip.cages.setValue(5)
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["قفيص عمود مشبك"] == 5
+
+
+# ═══════════════════ صناديق نهاية 33 ك.ف: السيت 3 صناديق (ق-٣٥) ═══════════════════
+
+
+def test_ug33_end_box_set_becomes_three_boxes_on_screen(window, pug33):
+    pug33.route.setValue(500)
+    pug33.end_internal.setValue(1)
+    pug33.end_external.setValue(2)
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["صندوق نهاية داخلي 1×400 ملم2 جهد 33 ك.ف"] == 3
+    assert quantities["صندوق نهاية خارجي 1×400 ملم2 جهد 33 ك.ف"] == 6
+
+
+def test_ug33_end_box_hint_shows_the_resulting_count(window, pug33):
+    """اللافتة تُظهر العدد الفعلي كي لا يظنّ المستخدم أن مُدخَله هو الكمية."""
+    pug33.end_internal.setValue(2)
+    assert "6 صندوق" in pug33.end_box_hint.text()
