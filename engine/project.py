@@ -32,7 +32,9 @@ from .types import (
     NetworkLV,
     Project,
     Segment,
+    Underground11kV,
 )
+from .underground import labour_underground11, materials_underground11
 
 
 def _tag(lines: list, label: str) -> list:
@@ -53,14 +55,21 @@ def materials_of(segment: Segment) -> list[MaterialLine]:
         lines = materials_lv(content)
     elif isinstance(content, Equipment):
         lines = materials_equipment(content)
+    elif isinstance(content, Underground11kV):
+        lines = materials_underground11(content)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)
 
 
-def labour_of(segment: Segment, rates: dict) -> list[LabourLine]:
-    """أسطر أجور مقطع واحد، موسومة باسمه."""
+def labour_of(segment: Segment, catalog: dict) -> list[LabourLine]:
+    """أسطر أجور مقطع واحد، موسومة باسمه.
+
+    يستقبل نسخة الأسعار كاملة لا قسم الأجور وحده — الشبكة الأرضية تحتاج أيضاً
+    جدول «تعرفة الأعمال المدنية» (ق-٣٠).
+    """
     content = segment.content
+    rates = catalog["أجور_العمل"]
     if isinstance(content, Network11kV):
         lines = labour_11kv(content, rates)
     elif isinstance(content, Network33kV):
@@ -69,6 +78,8 @@ def labour_of(segment: Segment, rates: dict) -> list[LabourLine]:
         lines = labour_lv(content, rates)
     elif isinstance(content, Equipment):
         lines = labour_equipment(content, rates)
+    elif isinstance(content, Underground11kV):
+        lines = labour_underground11(content, catalog)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)
@@ -109,7 +120,17 @@ def compute_project(project: Project, catalog: dict) -> dict:
     labour_raw: list[LabourLine] = []
     for segment in project.segments:
         raw += materials_of(segment)
-        labour_raw += labour_of(segment, rates)
+        labour_raw += labour_of(segment, catalog)
+
+    # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠)
+    for field_name, label in (
+        ("street_crossing_secondary_m", "عبور الشوارع الفرعية"),
+        ("street_crossing_main_m", "عبور الشوارع الرئيسية – حفر مخفي"),
+    ):
+        length = getattr(project, field_name)
+        if length:
+            entry = rates[label]
+            labour_raw.append(LabourLine(label, entry["الوحدة"], length, entry["السعر"]))
 
     totals = aggregate(raw)
 

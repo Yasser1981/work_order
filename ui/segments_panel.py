@@ -28,17 +28,19 @@ from engine.types import (
     NetworkLV,
     Segment,
     SegmentKind,
+    Underground11kV,
     segment_default_name,
 )
 
-from .panels import Panel11kV, Panel33kV, PanelEquipment, PanelLV
-from .widgets import HintLabel
+from .panels import Panel11kV, Panel33kV, PanelEquipment, PanelLV, PanelUnderground11kV
+from .widgets import HintLabel, number_field, section
 
 EDITORS = {
     SegmentKind.HV11: Panel11kV,
     SegmentKind.HV33: Panel33kV,
     SegmentKind.LV: PanelLV,
     SegmentKind.EQUIPMENT: PanelEquipment,
+    SegmentKind.UG11: PanelUnderground11kV,
 }
 
 JUNCTION_NOTE = (
@@ -111,6 +113,14 @@ class SegmentsPanel(QWidget):
         self.note = HintLabel(JUNCTION_NOTE)
         outer.addWidget(self.note)
 
+        # عبور الشوارع: رقم إجمالي للمشروع كله لا لكل مقطع (بطلب المستخدم، ق-٣٠)
+        box, form = section("عبور الشوارع  —  إجمالي للمشروع كله")
+        self.street_secondary = number_field(0, 100_000, 0, suffix="م")
+        self.street_main = number_field(0, 100_000, 0, suffix="م")
+        form.addRow("طول عبور الشوارع الفرعية:", self.street_secondary)
+        form.addRow("طول عبور الشوارع الرئيسية (حفر مخفي):", self.street_main)
+        outer.addWidget(box)
+
         self._sync_controls()
 
     def _connect(self) -> None:
@@ -118,6 +128,8 @@ class SegmentsPanel(QWidget):
         self.remove.clicked.connect(self._remove_segment)
         self.up.clicked.connect(lambda: self._move(-1))
         self.down.clicked.connect(lambda: self._move(+1))
+        self.street_secondary.valueChanged.connect(self.changed)
+        self.street_main.valueChanged.connect(self.changed)
         self.list.currentRowChanged.connect(self._on_selection)
         self.name.textEdited.connect(self._rename_current)
 
@@ -214,3 +226,7 @@ class SegmentsPanel(QWidget):
             Segment(self._names[row], self.editor(row).content())
             for row in range(len(self._names))
         ]
+
+    def street_crossings(self) -> tuple[float, float]:
+        """(طول عبور الشوارع الفرعية، طول عبور الشوارع الرئيسية) — للمشروع كله."""
+        return self.street_secondary.value(), self.street_main.value()

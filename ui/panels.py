@@ -23,6 +23,7 @@ from engine.equipment import (
     TransformerSize,
 )
 from engine.lowvoltage import conductor_quantity, count_poles_lv
+from engine.underground import cable_quantity, civil_works_rate, suggest_straight_boxes
 from engine.overhead import (
     resolve_spans,
     suggest_poles_11kv,
@@ -37,7 +38,9 @@ from engine.types import (
     Network11kV,
     Network33kV,
     NetworkLV,
+    SidewalkType,
     SupplyForm,
+    Underground11kV,
 )
 
 from .widgets import HintLabel, number_field, scroll_body, section
@@ -692,4 +695,134 @@ class PanelEquipment(QWidget):
 
         self.cage_hint.setText(
             "كمية يدخلها المستخدم مباشرة — بلا ملحقات وبلا أجر مستقل."
+        )
+
+
+class PanelUnderground11kV(QWidget):
+    """مدخلات مقطع شبكة أرضية 11 ك.ف — قابلو 3×150 ملم² (ق-٣٠).
+
+    التمييز الجوهري الذي تعرضه الحقول: **طول المسار** وحده يحدّد الأعمال المدنية
+    وموادّ الخندق، و**طول المسار × عدد المغذيات** يحدّد كمية القابلو وأجر مدّه.
+    """
+
+    changed = pyqtSignal()
+
+    def __init__(self, catalog: dict) -> None:
+        super().__init__()
+        self.catalog = catalog
+        self._build()
+        self._connect()
+        self.refresh_hints()
+
+    def _build(self) -> None:
+        body, layout = scroll_body()
+
+        box, form = section("المسار والمغذيات")
+        self.route = number_field(0, 500_000, 0, suffix="م")
+        self.feeders = number_field(1, 100, 1)
+        self.waste_included = QCheckBox("الطول المُدخل يشمل نسبة الزيادة")
+        self.waste_pct = number_field(0, 100, 10, decimals=1, step=0.5, suffix="%")
+        form.addRow("طول المسار (طول الخندق):", self.route)
+        form.addRow("عدد المغذيات في هذا الخندق:", self.feeders)
+        form.addRow("", self.waste_included)
+        form.addRow("نسبة الزيادة:", self.waste_pct)
+        self.cable_hint = HintLabel()
+        form.addRow(self.cable_hint)
+        layout.addWidget(box)
+
+        box, form = section("الأعمال المدنية — تعتمد على طول المسار وحده")
+        self.sidewalk = _combo(list(SidewalkType))
+        form.addRow("نوع الرصيف:", self.sidewalk)
+        self.civil_hint = HintLabel()
+        form.addRow(self.civil_hint)
+        layout.addWidget(box)
+
+        box, form = section("الصندوق المستقيم  —  استرشادي لكل مغذٍّ على حدة")
+        self.drum_length = number_field(1, 5000, 250, suffix="م")
+        form.addRow("طول بكرة القابلو:", self.drum_length)
+        self.box_hint = HintLabel()
+        form.addRow(self.box_hint)
+        self.adopt = QPushButton("اعتماد القيم المقترحة  ↓")
+        form.addRow(self.adopt)
+        self.straight_boxes = number_field(0, 10_000, 0)
+        form.addRow("عدد الصناديق المستقيمة:", self.straight_boxes)
+        layout.addWidget(box)
+
+        box, form = section("صناديق النهاية  —  إدخال يدوي بحت")
+        self.end_internal = number_field(0, 10_000, 0)
+        self.end_external = number_field(0, 10_000, 0)
+        form.addRow("صندوق نهاية داخلي (لمحطة/محولة أرضية):", self.end_internal)
+        form.addRow("صندوق نهاية خارجي (لشبكة هوائية):", self.end_external)
+        layout.addWidget(box)
+
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+
+    def _connect(self) -> None:
+        for w in (self.route, self.feeders, self.waste_pct, self.drum_length,
+                  self.straight_boxes, self.end_internal, self.end_external):
+            w.valueChanged.connect(self._on_change)
+        self.sidewalk.currentIndexChanged.connect(self._on_change)
+        self.waste_included.toggled.connect(self._on_change)
+        self.adopt.clicked.connect(self._adopt_suggestion)
+
+    def _on_change(self) -> None:
+        self.refresh_hints()
+        self.changed.emit()
+
+    def _adopt_suggestion(self) -> None:
+        self.straight_boxes.setValue(
+            suggest_straight_boxes(
+                self.route.value(), self.feeders.value(), self.drum_length.value()
+            )
+        )
+
+    def content(self) -> Underground11kV:
+        return Underground11kV(
+            route_length_m=self.route.value(),
+            feeder_count=self.feeders.value(),
+            sidewalk_type=self.sidewalk.currentData(),
+            length_includes_waste=self.waste_included.isChecked(),
+            waste_pct=self.waste_pct.value() / 100.0,
+            drum_length_m=self.drum_length.value(),
+            straight_boxes=self.straight_boxes.value(),
+            end_boxes_internal=self.end_internal.value(),
+            end_boxes_external=self.end_external.value(),
+        )
+
+    def refresh_hints(self) -> None:
+        net = self.content()
+        self.waste_pct.setEnabled(not net.length_includes_waste)
+
+        waste = 1.0 if net.length_includes_waste else 1.0 + net.waste_pct
+        qty = cable_quantity(net)
+        self.cable_hint.setText(
+            f"قابلو 3×150: {net.route_length_m:,.0f} × {net.feeder_count} مغذٍّ"
+            f" × {waste:g} زيادة = <b>{qty:,} م</b>"
+        )
+
+        rate = civil_works_rate(net, self.catalog)
+        if rate is None:
+            self.civil_hint.setText(
+                f"⚠️ لا تعرفة لـ «{net.sidewalk_type.value} × {net.feeder_count} مغذٍّ»"
+                " — عدد المغذيات خارج الجدول (1 إلى 5)."
+            )
+        else:
+            self.civil_hint.setText(
+                f"{net.route_length_m:,.0f} م × {rate:,.0f} د/م ="
+                f" <b>{net.route_length_m * rate:,.0f} د</b>"
+            )
+
+        suggested = suggest_straight_boxes(
+            net.route_length_m, net.feeder_count, net.drum_length_m
+        )
+        self.box_hint.setText(
+            f"لكل مغذٍّ: ⌈{net.route_length_m:,.0f} ÷ {net.drum_length_m:,.0f}⌉ − 1،"
+            f" × {net.feeder_count} مغذٍّ = <b>{suggested} صندوق</b> مقترح"
         )

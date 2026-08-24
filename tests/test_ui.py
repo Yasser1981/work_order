@@ -41,6 +41,11 @@ def pequip(window):
     return window.add_segment(SegmentKind.EQUIPMENT)
 
 
+@pytest.fixture
+def pug11(window):
+    return window.add_segment(SegmentKind.UG11)
+
+
 # ═══════════════════ المقاطع ═══════════════════
 
 
@@ -479,3 +484,90 @@ def test_labour_rows_merge_across_segments(window):
         window.labour.item(r, 0).text() for r in range(window.labour.rowCount())
     ]
     assert rows.count("نصب عمود مشبك 11م") == 1
+
+
+# ═══════════════════ مقطع الشبكة الأرضية 11 ك.ف ═══════════════════
+
+
+def test_ug11_segment_is_empty_by_default(window, pug11):
+    """لا قابلو ولا صناديق ما لم يُدخلها المستخدم."""
+    assert not any(
+        m["المادة"].startswith("قابلو 3×150") for m in window.result["المواد"]
+    )
+
+
+def test_ug11_cable_quantity_matches_the_users_example(window, pug11):
+    """طول المسار × عدد المغذيات × 1.1 — يصل فعلاً إلى جدول المواد."""
+    pug11.route.setValue(600)
+    pug11.feeders.setValue(2)
+    cable = next(
+        m for m in window.result["المواد"] if m["المادة"].startswith("قابلو 3×150")
+    )
+    assert cable["الكمية"] == 1320
+
+
+def test_ug11_adopt_button_matches_the_engine_suggestion(window, pug11):
+    """350÷250 → 1، و600÷250 → 2 — نفس مثالَي المستخدم، عبر الواجهة لا المحرك مباشرة."""
+    pug11.route.setValue(350)
+    pug11.feeders.setValue(1)
+    pug11._adopt_suggestion()
+    assert pug11.straight_boxes.value() == 1
+
+    pug11.route.setValue(600)
+    pug11._adopt_suggestion()
+    assert pug11.straight_boxes.value() == 2
+
+
+def test_ug11_civil_works_depends_on_route_length_only(window, pug11):
+    """الأعمال المدنية من طول المسار وحده — لا كمية القابلو المضروبة بالمغذيات."""
+    pug11.route.setValue(400)
+    pug11.feeders.setValue(3)
+    civil = next(
+        l for l in window.result["أجور_العمل"] if l.name.startswith("الأعمال المدنية")
+    )
+    assert civil.qty == 400
+
+
+def test_ug11_trench_materials_do_not_multiply_with_feeder_count(window, pug11):
+    pug11.route.setValue(500)
+    pug11.feeders.setValue(1)
+    staker_one = next(m["الكمية"] for m in window.result["المواد"] if m["المادة"] == "شتايكر 50×50×5 سم")
+    pug11.feeders.setValue(4)
+    staker_four = next(m["الكمية"] for m in window.result["المواد"] if m["المادة"] == "شتايكر 50×50×5 سم")
+    assert staker_one == staker_four
+
+
+def test_ug11_civil_rate_warns_when_feeder_count_exceeds_the_table(window, pug11):
+    pug11.route.setValue(100)
+    pug11.feeders.setValue(6)
+    assert "⚠️" in pug11.civil_hint.text()
+
+
+def test_street_crossings_are_project_wide_fields_not_per_segment(window, pug11):
+    """حقلا عبور الشوارع في لوحة المقاطع نفسها — لا داخل محرّر أي مقطع."""
+    window.segments.street_secondary.setValue(50)
+    window.segments.street_main.setValue(20)
+    names = {l.name for l in window.result["أجور_العمل"]}
+    assert "عبور الشوارع الفرعية" in names
+    assert "عبور الشوارع الرئيسية – حفر مخفي" in names
+
+
+def test_end_boxes_are_purely_manual_with_no_adopt_button_effect(window, pug11):
+    pug11.route.setValue(500)
+    pug11.end_internal.setValue(2)
+    pug11.end_external.setValue(3)
+    pug11._adopt_suggestion()          # يمسّ الصندوق المستقيم فقط
+    assert pug11.end_internal.value() == 2
+    assert pug11.end_external.value() == 3
+
+
+def test_mixing_overhead_and_underground_segments_in_the_ui(window):
+    """مشروع فيه شبكة هوائية وأرضية معاً في الواجهة نفسها."""
+    hv = window.add_segment(SegmentKind.HV11)
+    hv.route.setValue(500)
+    hv._adopt_suggestion()
+    ug = window.add_segment(SegmentKind.UG11)
+    ug.route.setValue(300)
+    names = {m["المادة"] for m in window.result["المواد"]}
+    assert "عمود 11م مشبك" in names
+    assert "قابلو 3×150 ملم2 جهد 11 ك.ف" in names

@@ -197,3 +197,44 @@ def test_the_simple_project_shows_no_segments_table(order, result):
 def test_every_template_handles_a_segmented_project(key, order, segmented_result, tmp_path, qapp):
     path = printing.get(key).write_pdf(order, segmented_result, str(tmp_path / f"{key}.pdf"))
     assert (tmp_path / f"{key}.pdf").read_bytes().startswith(b"%PDF")
+
+
+# ═══════════════════ الشبكة الأرضية 11 ك.ف ═══════════════════
+
+
+@pytest.fixture(scope="module")
+def underground_result():
+    """مشروع أرضي فيه بند أجر بلا سعر — عدد مغذيات خارج جدول التعرفة."""
+    from engine.project import compute_project
+    from engine.types import Project, Segment, SidewalkType, Underground11kV
+
+    project = Project(
+        "مشروع أرضي",
+        [
+            Segment(
+                "المقطع الأول",
+                Underground11kV(
+                    route_length_m=400, feeder_count=6, sidewalk_type=SidewalkType.EARTH,
+                    straight_boxes=2, end_boxes_internal=1,
+                ),
+            ),
+        ],
+        street_crossing_secondary_m=30,
+        street_crossing_main_m=10,
+    )
+    return compute_project(project, load_catalog())
+
+
+@pytest.mark.parametrize("key", ["iso", "audit"])
+def test_every_template_survives_an_underground_segment_with_a_missing_rate(
+    key, order, underground_result, tmp_path, qapp
+):
+    """أهمّ اختبار: عدد مغذيات خارج جدول التعرفة يُنتج أجراً بلا سعر — لا انهيار (ق-٣٠)."""
+    path = printing.get(key).write_pdf(order, underground_result, str(tmp_path / f"{key}.pdf"))
+    assert (tmp_path / f"{key}.pdf").read_bytes().startswith(b"%PDF")
+
+
+def test_audit_warns_about_the_out_of_table_civil_rate(order, underground_result):
+    html = printing.get("audit").build_html(order, underground_result)
+    assert "الأعمال المدنية" in html
+    assert "بلا أجر" in html

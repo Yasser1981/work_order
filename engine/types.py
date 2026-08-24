@@ -280,6 +280,7 @@ class SegmentKind(Enum):
     HV33 = "شبكة هوائية 33 ك.ف"
     LV = "شبكة ضغط واطئ"
     EQUIPMENT = "تجهيزات"
+    UG11 = "شبكة أرضية 11 ك.ف"
 
 
 SegmentContent = "Network11kV | Network33kV | NetworkLV | Equipment"
@@ -308,6 +309,8 @@ class Segment:
             return SegmentKind.LV
         if isinstance(self.content, Equipment):
             return SegmentKind.EQUIPMENT
+        if isinstance(self.content, Underground11kV):
+            return SegmentKind.UG11
         raise TypeError(f"محتوى مقطع غير معروف: {type(self.content).__name__}")
 
 
@@ -317,6 +320,12 @@ class Project:
 
     name: str = ""
     segments: list = field(default_factory=list)
+
+    street_crossing_secondary_m: float = 0.0
+    """عبور الشوارع الفرعية — إجمالي للمشروع كله، لا لكل مقطع (بطلب المستخدم)."""
+
+    street_crossing_main_m: float = 0.0
+    """عبور الشوارع الرئيسية (حفر مخفي) — إجمالي للمشروع كله."""
 
     def of_kind(self, kind: SegmentKind) -> list:
         return [s for s in self.segments if s.kind is kind]
@@ -335,3 +344,45 @@ def segment_default_name(index: int) -> str:
     if index < len(ORDINALS):
         return f"المقطع {ORDINALS[index]}"
     return f"المقطع {index + 1}"
+
+
+class SidewalkType(Enum):
+    """نوع الرصيف الذي يمرّ فيه خندق القابلو الأرضي — يحدّد تعرفة الأعمال المدنية."""
+
+    EARTH = "ترابي"
+    PAVED = "مبلط"
+    TERRAZZO = "مقرنص"
+
+
+@dataclass
+class Underground11kV:
+    """مدخلات مقطع شبكة أرضية 11 ك.ف — قابلو 3×150 ملم² (ق-٣٠).
+
+    التمييز الجوهري: **طول المسار** وحده يحدّد الأعمال المدنية وموادّ الخندق
+    (الحفر خندق واحد بصرف النظر عن عدد المغذيات المارّة فيه)، بينما **طول المسار ×
+    عدد المغذيات** يحدّد كمية القابلو نفسه وأجر مدّه (كل مغذٍّ يحتاج طوله الكامل).
+    """
+
+    route_length_m: float = 0.0
+    """طول الخندق الجغرافي — يحدّد الأعمال المدنية وموادّ الخندق وحده."""
+
+    feeder_count: int = 1
+    """عدد المغذيات (القابلوات) المارّة في هذا الخندق — يضاعف كمية القابلو،
+    ويحدّد تعرفة الأعمال المدنية (خندق أعرض كلما زاد العدد)."""
+
+    sidewalk_type: SidewalkType = SidewalkType.EARTH
+
+    length_includes_waste: bool = False
+    waste_pct: float = 0.10
+
+    drum_length_m: float | None = None
+    """طول بكرة القابلو القياسي (م). None ← من الافتراضيات (ق-٢٠)."""
+
+    straight_boxes: int = 0
+    """صندوق مستقيم — استرشادي قابل للاعتماد: لكل مغذٍّ صناديقه الخاصة به."""
+
+    end_boxes_internal: int = 0
+    """صندوق نهاية داخلي — يدوي بحت، يربط نهاية القابلو بمحطة أو محولة أرضية."""
+
+    end_boxes_external: int = 0
+    """صندوق نهاية خارجي — يدوي بحت، يربط نهاية القابلو بشبكة هوائية."""
