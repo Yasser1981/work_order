@@ -18,7 +18,7 @@
 """
 
 from engine import load_catalog
-from engine.equipment import TransformerSize
+from engine.equipment import TRANSFORMER_KITS
 from engine.project import compute_project
 from engine.types import (
     CircuitType,
@@ -121,7 +121,7 @@ def all_labour_the_engine_can_produce() -> set[str]:
             poles_round=1, consumers=1)))
 
     segments.append(Segment("", Equipment(
-        transformers={s: 1 for s in TransformerSize},
+        transformers={k: 1 for k in TRANSFORMER_KITS},
         onload_11_mid=1, onload_11_head=1,
         isolator_33_mid=1, isolator_33_head=1, lattice_cages=1)))
 

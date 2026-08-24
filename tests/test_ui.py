@@ -433,21 +433,49 @@ def test_equipment_segment_is_empty_by_default(window, pequip):
 
 
 def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
-    from engine.equipment import TransformerSize
+    from engine.equipment import TransformerSize, TransformerVoltage
 
-    pequip.transformers[TransformerSize.KVA400].setValue(1)
+    pequip.transformers[
+        (TransformerVoltage.KV11, TransformerSize.KVA400)
+    ].setValue(1)
     names = [m["المادة"] for m in window.result["المواد"]]
     assert "محولة 400 KVA جهد 11/0.4 ك.ف" in names
     assert "فاصل فيوز 11 ك.ف مع السلك" in names
     assert "نصب المحولة" in [l.name for l in window.result["أجور_العمل"]]
 
 
+def test_the_33kv_transformer_has_its_own_field_and_its_own_accessories(window, pequip):
+    """محولة 33/0.4: مانعة وفاصل فيوز 33 ك.ف، والقاطع يبقى 400 أمبير (ق-٣٧)."""
+    from engine.equipment import TransformerSize, TransformerVoltage
+
+    pequip.transformers[
+        (TransformerVoltage.KV33, TransformerSize.KVA400)
+    ].setValue(1)
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["محولة 400 KVA جهد 33/0.4 ك.ف"] == 1
+    assert quantities["مانعة صواعق 33 ك.ف"] == 1
+    assert quantities["فاصل فيوز 33 ك.ف مع السلك"] == 1
+    assert quantities["قاطع دورة 400 أمبير مع المتسعة"] == 2   # لا يتبع الجهد
+    assert quantities["قاعدة مانعة صواعق مع الملحقات"] == 1    # واحدة مهما اختلف الجهد
+    assert "مانعة صواعق 11 KV" not in quantities
+    assert "فاصل فيوز 11 ك.ف مع السلك" not in quantities
+
+
+def test_250_kva_is_offered_at_11kv_only(pequip):
+    """33/0.4 سعتان فقط: 400 و630 — لا حقل لـ250 (ق-٣٧)."""
+    from engine.equipment import TransformerSize, TransformerVoltage
+
+    assert (TransformerVoltage.KV11, TransformerSize.KVA250) in pequip.transformers
+    assert (TransformerVoltage.KV33, TransformerSize.KVA250) not in pequip.transformers
+    assert len(pequip.transformers) == 5
+
+
 def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip):
     """عدد المخارج يحكم القاطع والقابلو (ق-٢٧)."""
-    from engine.equipment import TransformerSize
+    from engine.equipment import TransformerSize, TransformerVoltage
 
     for size in TransformerSize:
-        pequip.transformers[size].setValue(1)
+        pequip.transformers[(TransformerVoltage.KV11, size)].setValue(1)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
     for size in TransformerSize:
         assert quantities[f"محولة {size.value} KVA جهد 11/0.4 ك.ف"] == 1
@@ -488,23 +516,23 @@ def test_mid_network_isolator_pulls_no_arrester_on_screen(window, pequip):
 
 def test_equipment_hint_lists_the_kit_so_the_checker_sees_it(pequip):
     """المستخدم يرى ما تجرّه المحولة قبل الطباعة لا بعدها."""
-    from engine.equipment import TransformerSize
+    from engine.equipment import TransformerSize, TransformerVoltage
 
-    pequip.transformers[TransformerSize.KVA400].setValue(2)
+    pequip.transformers[
+        (TransformerVoltage.KV11, TransformerSize.KVA400)
+    ].setValue(2)
     text = pequip.transformer_hint.text()
     assert "قاطع دورة 400 أمبير مع المتسعة: <b>4</b>" in text
     assert "ترمنل 150 ملم²: <b>60</b>" in text
 
 
 def test_equipment_totals_reach_the_screen(window, pequip):
-    """كل السعات مسعّرة بعد ق-٣٦ — لا تحذير مع أيٍّ منها."""
-    from engine.equipment import TransformerSize
-
-    for size in TransformerSize:
-        pequip.transformers[size].setValue(1)
+    """كل السعات في الجهدين مسعّرة بعد ق-٣٦ و ق-٣٧ — لا تحذير مع أيٍّ منها."""
+    for key, field in pequip.transformers.items():
+        field.setValue(1)
         assert f"{window.result['الكلفة_الكلية']:,.0f}" in window.total_all.text()
-        assert not window.warning.text()
-        pequip.transformers[size].setValue(0)
+        assert not window.warning.text(), key
+        field.setValue(0)
 
 
 def test_labour_rows_merge_across_segments(window):

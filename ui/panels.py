@@ -21,7 +21,8 @@ from engine.equipment import (
     ISOLATOR_KITS,
     TRANSFORMER_KITS,
     TRANSFORMER_OUTPUTS,
-    TransformerSize,
+    TRANSFORMER_SIZES_BY_VOLTAGE,
+    TransformerVoltage,
     suggest_lattice_cages,
 )
 from engine.lowvoltage import conductor_quantity, count_poles_lv
@@ -588,17 +589,30 @@ class PanelEquipment(QWidget):
     def _build(self) -> None:
         body, layout = scroll_body()
 
-        # سعة لكل صفّ — قاطع الدورة يتبع السعة رقماً برقم (ق-٢٦)
-        box, form = section("المحولات")
+        # صندوق لكل جهد تحويلي، وسعة لكل صفّ داخله (ق-٣٧).
+        # قاطع الدورة يتبع السعة رقماً برقم ولا يتبع الجهد (ق-٢٦).
         self.transformers = {}
-        for size in TransformerSize:
-            outputs, amps = TRANSFORMER_OUTPUTS[size]
-            field = number_field(0, 1000, 0)
-            self.transformers[size] = field
-            form.addRow(
-                f"عدد محولات {size.label}   ({outputs} × قاطع {amps} أمبير):", field
-            )
+        for voltage, sizes in TRANSFORMER_SIZES_BY_VOLTAGE.items():
+            box, form = section(f"المحولات  —  جهد {voltage.value}")
+            for size in sizes:
+                outputs, amps = TRANSFORMER_OUTPUTS[size]
+                field = number_field(0, 1000, 0)
+                self.transformers[(voltage, size)] = field
+                form.addRow(
+                    f"عدد محولات {size.label}   ({outputs} × قاطع {amps} أمبير):",
+                    field,
+                )
+            if voltage is TransformerVoltage.KV33:
+                form.addRow(
+                    HintLabel(
+                        "سعة 250 KVA غير متاحة بجهد 33/0.4 ك.ف.<br>"
+                        "مانعة الصواعق وفاصل الفيوز <b>33 ك.ف</b>، "
+                        "أما قاعدة المانعة وقواطع الدورة فهي نفسها."
+                    )
+                )
+            layout.addWidget(box)
         self.transformer_hint = HintLabel()
+        box, form = section("ملحقات المحولات")
         form.addRow(self.transformer_hint)
         layout.addWidget(box)
 
@@ -656,8 +670,8 @@ class PanelEquipment(QWidget):
     def equipment(self) -> Equipment:
         return Equipment(
             transformers={
-                size: field.value()
-                for size, field in self.transformers.items()
+                key: field.value()
+                for key, field in self.transformers.items()
                 if field.value()
             },
             lattice_cages=self.cages.value(),
@@ -675,8 +689,8 @@ class PanelEquipment(QWidget):
         eq = self.equipment()
 
         rows = []
-        for size, count in eq.transformers.items():
-            kit, label = TRANSFORMER_KITS[size]
+        for key, count in eq.transformers.items():
+            kit, label = TRANSFORMER_KITS[key]
             rows.append(f"<b>{label} × {count}</b><br>" + self._kit_text(kit, count))
         if not rows:
             rows.append(

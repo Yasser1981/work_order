@@ -17,6 +17,7 @@ from engine.equipment import (
     IsolatorPosition,
     IsolatorVoltage,
     TransformerSize,
+    TransformerVoltage,
     transformer_kit,
     isolator_kit,
     labour_equipment,
@@ -38,11 +39,13 @@ def qty(lines, name):
 # ═══════════════════ المحولة ═══════════════════
 
 KVA400 = TransformerSize.KVA400
+KV11 = TransformerVoltage.KV11
+KV33 = TransformerVoltage.KV33
 
 
 def test_transformer_kit_matches_the_original_file():
     """14 مادة — الملف الأصلي 15، وجهاز الإنارة ملغى منها (ق-٢٦)."""
-    lines = materials_equipment(Equipment(transformers={KVA400: 1}))
+    lines = materials_equipment(Equipment(transformers={(KV11, KVA400): 1}))
     expected = {
         "محولة 400 KVA جهد 11/0.4 ك.ف": 1,
         "قاطع دورة 400 أمبير مع المتسعة": 2,
@@ -126,7 +129,7 @@ def test_every_rating_is_priced_after_the_update(catalog):
 
 
 def test_transformer_quantities_scale_linearly():
-    lines = materials_equipment(Equipment(transformers={KVA400: 3}))
+    lines = materials_equipment(Equipment(transformers={(KV11, KVA400): 3}))
     assert qty(lines, "محولة 400 KVA جهد 11/0.4 ك.ف") == 3
     assert qty(lines, "قابلو نحاس 1×150 ملم²") == 240   # 3 × مخرجين × 40
     assert qty(lines, "ترمنل 150 ملم²") == 90
@@ -135,7 +138,9 @@ def test_transformer_quantities_scale_linearly():
 def test_mixed_ratings_share_the_common_accessories():
     """محولتان بسعتين مختلفتين: المحولة والقاطع منفصلان، والملحقات تُجمَّع."""
     lines = materials_equipment(
-        Equipment(transformers={TransformerSize.KVA250: 2, KVA400: 1})
+        Equipment(
+            transformers={(KV11, TransformerSize.KVA250): 2, (KV11, KVA400): 1}
+        )
     )
     assert qty(lines, "محولة 250 KVA جهد 11/0.4 ك.ف") == 2
     assert qty(lines, "محولة 400 KVA جهد 11/0.4 ك.ف") == 1
@@ -147,12 +152,86 @@ def test_mixed_ratings_share_the_common_accessories():
 def test_transformer_accessories_have_no_separate_labour(catalog):
     """أجر واحد للمحولة يشمل ملحقاتها كلها — بكل السعات معاً."""
     labour = labour_equipment(
-        Equipment(transformers={TransformerSize.KVA250: 1, KVA400: 1}),
+        Equipment(transformers={(KV11, TransformerSize.KVA250): 1, (KV11, KVA400): 1}),
         catalog["أجور_العمل"],
     )
     assert [l.name for l in labour] == ["نصب المحولة"]
     assert labour[0].qty == 2
     assert labour[0].cost == 700_000
+
+
+# ═══════════════════ جهد المحولة التحويلي 33/0.4 ك.ف (ق-٣٧) ═══════════════════
+
+
+def test_the_33kv_transformer_swaps_only_the_arrester_and_the_fuse():
+    """الجهد يغيّر مانعة الصواعق وفاصل الفيوز — لا شيء غيرهما.
+
+    قاطع الدورة يبقى 400 أمبير لأن الضغط الواطئ 0.4 ك.ف في الحالتين، وقاعدة
+    مانعة الصواعق واحدة مهما اختلف الجهد — بنصّ تعليماتك.
+    """
+    kit11 = dict(transformer_kit(KVA400, KV11))
+    kit33 = dict(transformer_kit(KVA400, KV33))
+
+    assert set(kit11) - set(kit33) == {
+        ("محولة 400 KVA جهد 11/0.4 ك.ف", "عدد"),
+        ("مانعة صواعق 11 KV", "سيت"),
+        ("فاصل فيوز 11 ك.ف مع السلك", "سيت"),
+    }
+    assert set(kit33) - set(kit11) == {
+        ("محولة 400 KVA جهد 33/0.4 ك.ف", "عدد"),
+        ("مانعة صواعق 33 ك.ف", "سيت"),
+        ("فاصل فيوز 33 ك.ف مع السلك", "سيت"),
+    }
+    # ما بقي متطابق كمّاً لا اسماً فقط
+    for material in set(kit11) & set(kit33):
+        assert kit11[material] == kit33[material], material
+
+    assert kit33[("قاطع دورة 400 أمبير مع المتسعة", "عدد")] == 2
+    assert kit33[("قاعدة مانعة صواعق مع الملحقات", "عدد")] == 1
+
+
+def test_the_630_exception_survives_the_voltage_change():
+    """630 بجهد 33/0.4: أربعة مخارج بقاطع 400 أمبير و160 م قابلو — كما في 11 (ق-٢٧)."""
+    kit = dict(transformer_kit(TransformerSize.KVA630, KV33))
+    assert kit[("قاطع دورة 400 أمبير مع المتسعة", "عدد")] == 4
+    assert kit[("قابلو نحاس 1×150 ملم²", "متر")] == 160
+
+
+def test_250_kva_has_no_33kv_variant():
+    """السعة 250 لا تُصنَّع بجهد 33/0.4 — تُرفض صراحةً لا تُنتَج بصمت (ق-٣٧)."""
+    with pytest.raises(ValueError):
+        transformer_kit(TransformerSize.KVA250, KV33)
+    assert (KV33, TransformerSize.KVA250) not in TRANSFORMER_KITS
+    assert len(TRANSFORMER_KITS) == 5
+
+
+def test_both_voltages_share_the_one_labour_line(catalog):
+    """أجر «نصب المحولة» واحد للجهدين معاً — العمل نفسه."""
+    labour = labour_equipment(
+        Equipment(transformers={(KV11, KVA400): 1, (KV33, KVA400): 2}),
+        catalog["أجور_العمل"],
+    )
+    assert [l.name for l in labour] == ["نصب المحولة"]
+    assert labour[0].qty == 3
+
+
+def test_the_two_voltages_do_not_merge_into_one_material():
+    """محولة 400 بجهدين: مادتان منفصلتان، والملحقات المشتركة تُجمَّع."""
+    lines = materials_equipment(
+        Equipment(transformers={(KV11, KVA400): 1, (KV33, KVA400): 1})
+    )
+    assert qty(lines, "محولة 400 KVA جهد 11/0.4 ك.ف") == 1
+    assert qty(lines, "محولة 400 KVA جهد 33/0.4 ك.ف") == 1
+    assert qty(lines, "قاعدة محولة مع الملحقات") == 2       # مشترك
+    assert qty(lines, "قاعدة مانعة صواعق مع الملحقات") == 2  # واحدة لكل محولة
+    assert qty(lines, "مانعة صواعق 11 KV") == 1
+    assert qty(lines, "مانعة صواعق 33 ك.ف") == 1
+
+
+def test_an_unkeyed_transformer_is_rejected_not_silently_dropped():
+    """مفتاح بالسعة وحدها (بلا جهد) يرفع خطأ — إهماله يخفي ملايين الدنانير (ق-٣٧)."""
+    with pytest.raises(KeyError):
+        materials_equipment(Equipment(transformers={KVA400: 1}))
 
 
 # ═══════════════════ الفاصل هوائي 11 ك.ف ON LOAD: مصفوفة الجهد × الموقع ═══════════════════
@@ -194,7 +273,8 @@ def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
         "قابلو 1×185 ملم²": 20,
         "ترمنل 185 ملم²": 6,
         "براكيت جنل 2.1م مفرد": 1,
-        "معدات ربط ألمنيوم – نحاس": 6,
+        # 210 ملم² لا العادية — السلك المتّصل 210/35 (ق-٣٧)
+        "معدات ربط ألمنيوم – نحاس 210 ملم²": 6,
     }
 
 
@@ -206,7 +286,7 @@ def test_33kv_cable_head_matches_the_original_file_except_the_cable():
         "قابلو 1×185 ملم²": 10,
         "ترمنل 185 ملم²": 6,
         "براكيت جنل 2.1م مفرد": 1,
-        "معدات ربط ألمنيوم – نحاس": 6,
+        "معدات ربط ألمنيوم – نحاس 210 ملم²": 6,
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 1,
@@ -303,7 +383,7 @@ def test_equipment_merges_into_project_totals(catalog):
 
     project = OverheadProject(
         net11=Network11kV(route_length_m=500, poles_lattice=5, poles_round=20),
-        equipment=Equipment(transformers={KVA400: 1}),
+        equipment=Equipment(transformers={(KV11, KVA400): 1}),
     )
     result = compute(project, catalog)
     earth = next(m for m in result["المواد"] if m["المادة"] == "سلك نحاس 50 ملم²")
@@ -317,7 +397,7 @@ def test_equipment_merges_into_project_totals(catalog):
 def test_every_equipment_material_has_an_entry_in_the_catalog(catalog):
     """حارس: كل مادة يولّدها المحرك لها صف في نسخة الأسعار — بسعر أو بتنبيه."""
     eq = Equipment(
-        transformers={s: 1 for s in TransformerSize},
+        transformers={k: 1 for k in TRANSFORMER_KITS},
         onload_11_mid=1, onload_11_head=1,
         isolator_33_mid=1, isolator_33_head=1, lattice_cages=1,
     )
@@ -331,7 +411,7 @@ def test_no_equipment_material_is_left_unpriced(catalog):
     """بعد تحديث الأسعار (ق-٣٦) لم تبقَ مادة تجهيزات بلا سعر."""
     result = compute(
         OverheadProject(equipment=Equipment(
-            transformers={s: 1 for s in TransformerSize},
+            transformers={k: 1 for k in TRANSFORMER_KITS},
             onload_11_mid=1, onload_11_head=1,
             isolator_33_mid=1, isolator_33_head=1, lattice_cages=1)),
         catalog,
@@ -341,7 +421,9 @@ def test_no_equipment_material_is_left_unpriced(catalog):
 
 def test_transformer_cost_is_the_heaviest_single_line(catalog):
     """المحولة وحدها 17 مليوناً — رقم يستحق أن يُثبَّت باختبار."""
-    result = compute(OverheadProject(equipment=Equipment(transformers={KVA400: 1})), catalog)
+    result = compute(
+        OverheadProject(equipment=Equipment(transformers={(KV11, KVA400): 1})), catalog
+    )
     transformer = next(m for m in result["المواد"] if m["المادة"] == "محولة 400 KVA جهد 11/0.4 ك.ف")
     assert transformer["الكلفة"] == 17_000_000
     # قاطع الدورة 400 نزل من 1,145,000 إلى 650,000 وقاعدة المانعة صعدت إلى 150,000 (ق-٣٦)

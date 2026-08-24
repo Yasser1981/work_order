@@ -371,7 +371,7 @@ def test_33kv_anchor_items(circuit, b25, pin, disc, fittings):
     assert qty_of(lines, "براكيت 2.5 متر") == b25
     assert qty_of(lines, "عازل دبوسي 33 ك.ف مع السبندل") == pin
     assert qty_of(lines, "عازل قرصي 33 ك.ف مع الملحقات") == disc
-    assert qty_of(lines, "معدات ربط المنيوم - المنيوم 210 ملم²") == fittings
+    assert qty_of(lines, "معدات ربط ألمنيوم – ألمنيوم 210 ملم²") == fittings
 
 
 def test_suspension_pole_gets_no_disc_insulator():

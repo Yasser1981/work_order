@@ -5,7 +5,7 @@
 
 | التجهيز | المُدخَل | الأجر |
 |---|---|---|
-| محولة 250 / 400 / 630 KVA | عدد لكل سعة | نصب المحولة |
+| محولة 250 / 400 / 630 KVA بجهد 11/0.4 أو 33/0.4 ك.ف | عدد لكل (جهد، سعة) | نصب المحولة |
 | فاصل هوائي 11 ك.ف ON LOAD — منتصف الشبكة / رأس القابلو | عدد | نصب الفاصل ON-LOAD |
 | فاصل هوائي 33 ك.ف ON LOAD — منتصف الشبكة / رأس القابلو | عدد | نصب فاصل هوائي 33 ك.ف |
 | قفيص عمود مشبك | عدد | بلا أجر |
@@ -52,11 +52,24 @@ TRANSFORMER_OUTPUTS = {
 
 عدد المخارج = عدد قواطع الدورة، ولا قاطع رئيسي."""
 
-TRANSFORMER_VOLTAGE = "11/0.4 ك.ف"
-"""جهد المحولة. سعات 33/0.4 ك.ف موجودة في نسخة الأسعار لكنها لم تُربط بعد — س-١٢."""
+class TransformerVoltage(Enum):
+    """جهد المحولة التحويلي — بعض المشاريع 33/0.4 ك.ف لا 11/0.4 (ق-٣٧)."""
+
+    KV11 = "11/0.4 ك.ف"
+    KV33 = "33/0.4 ك.ف"
+
+
+TRANSFORMER_SIZES_BY_VOLTAGE = {
+    TransformerVoltage.KV11: [TransformerSize.KVA250, TransformerSize.KVA400,
+                              TransformerSize.KVA630],
+    # 33/0.4: سعتان فقط — لا 250 (ق-٣٧)
+    TransformerVoltage.KV33: [TransformerSize.KVA400, TransformerSize.KVA630],
+}
 
 M_TRANSFORMER = {
-    s: (f"محولة {s.value} KVA جهد {TRANSFORMER_VOLTAGE}", "عدد") for s in TransformerSize
+    (v, s): (f"محولة {s.value} KVA جهد {v.value}", "عدد")
+    for v, sizes in TRANSFORMER_SIZES_BY_VOLTAGE.items()
+    for s in sizes
 }
 M_BREAKER = {
     s: (f"قاطع دورة {amps} أمبير مع المتسعة", "عدد")
@@ -64,6 +77,7 @@ M_BREAKER = {
 }
 M_TRANSFORMER_BASE = ("قاعدة محولة مع الملحقات", "سيت")
 M_FUSE_LINK = ("فاصل فيوز 11 ك.ف مع السلك", "سيت")
+M_FUSE_LINK_33 = ("فاصل فيوز 33 ك.ف مع السلك", "سيت")
 M_FUSE_LINK_BASE = ("قاعدة لنك فيوز مع الملحقات", "عدد")
 M_EARTH_ROD = ("قضيب تأريض 1.5 متر مع القفيص", "عدد")
 M_CU_CABLE_50 = ("قابلو نحاس 1×50 ملم²", "متر")
@@ -72,6 +86,7 @@ M_ARRESTER_11 = ("مانعة صواعق 11 KV", "سيت")
 M_ARRESTER_BASE = ("قاعدة مانعة صواعق مع الملحقات", "عدد")
 M_TERMINAL_150 = ("ترمنل 150 ملم²", "عدد")
 M_AL_FITTINGS_CU = ("معدات ربط ألمنيوم – نحاس", "عدد")
+M_AL_FITTINGS_CU_210 = ("معدات ربط ألمنيوم – نحاس 210 ملم²", "عدد")
 M_ONLOAD = ("فاصل هوائي 11 ك.ف ON LOAD", "عدد")
 M_AIR_ISOLATOR_33 = ("فاصل هوائي 33 ك.ف ON LOAD", "عدد")
 M_ARRESTER_33 = ("مانعة صواعق 33 ك.ف", "سيت")
@@ -92,38 +107,52 @@ CU_CABLE_150_PER_OUTPUT_M = 40
 
 TRANSFORMER_COMMON_KIT = [
     (M_TRANSFORMER_BASE, 1),
-    (M_FUSE_LINK, 1),
     (M_FUSE_LINK_BASE, 1),
     (M_EARTH_ROD, 3),
     (M_EARTH_WIRE, 15),
     (M_CU_CABLE_50, 25),
-    (M_ARRESTER_11, 1),
     (M_ARRESTER_BASE, 1),
     (M_AL_FITTINGS_CU, 15),
     (M_EARTH_TERMINAL, 15),
     (M_TERMINAL_150, 30),
 ]
-"""ما لا يتغيّر بسعة المحولة. المتغيّر: المحولة نفسها وقاطع دورتها.
+"""ما لا يتغيّر بسعة المحولة **ولا بجهدها**.
 
+**قاعدة مانعة الصواعق منها** — واحدة مهما اختلف الجهد (ق-٣٧).
 **جهاز الإنارة ملغى تماماً** — كان في الملف الأصلي بكمية 2 وسعر صفر (ق-٢٦)."""
 
+TRANSFORMER_VOLTAGE_KIT = {
+    # ما يتبع جهد المحولة: مانعة الصواعق وفاصل الفيوز (ق-٣٧)
+    TransformerVoltage.KV11: [(M_ARRESTER_11, 1), (M_FUSE_LINK, 1)],
+    TransformerVoltage.KV33: [(M_ARRESTER_33, 1), (M_FUSE_LINK_33, 1)],
+}
 
-def transformer_kit(size: TransformerSize) -> list[tuple[tuple[str, str], float]]:
-    """مواد محولة واحدة بسعتها.
 
-    المتغيّر بالسعة ثلاثة: المحولة نفسها، وقاطع الدورة (سعةً وعدداً)، وطول قابلو
-    الضغط الواطئ التابع لعدد المخارج. وما عدا ذلك مشترك لا يتغيّر.
+def transformer_kit(
+    size: TransformerSize, voltage: TransformerVoltage = TransformerVoltage.KV11
+) -> list[tuple[tuple[str, str], float]]:
+    """مواد محولة واحدة بسعتها وجهدها.
+
+    **المتغيّر بالسعة:** المحولة نفسها، وقاطع الدورة (سعةً وعدداً)، وطول قابلو
+    الضغط الواطئ التابع لعدد المخارج.
+    **المتغيّر بالجهد:** مانعة الصواعق وفاصل الفيوز (ق-٣٧).
+    **قاطع الدورة لا يتبع الجهد** — الضغط الواطئ 0.4 ك.ف في الحالتين.
+    وما عدا ذلك مشترك لا يتغيّر بأيٍّ منهما.
     """
+    if size not in TRANSFORMER_SIZES_BY_VOLTAGE[voltage]:
+        raise ValueError(f"سعة {size.label} غير متاحة لجهد {voltage.value}")
     outputs, _amps = TRANSFORMER_OUTPUTS[size]
     return [
-        (M_TRANSFORMER[size], 1),
+        (M_TRANSFORMER[(voltage, size)], 1),
         (M_BREAKER[size], outputs),
         (M_CU_CABLE_150, outputs * CU_CABLE_150_PER_OUTPUT_M),
-    ] + TRANSFORMER_COMMON_KIT
+    ] + TRANSFORMER_VOLTAGE_KIT[voltage] + TRANSFORMER_COMMON_KIT
 
 
 TRANSFORMER_KITS = {
-    size: (transformer_kit(size), f"محولة {size.label}") for size in TransformerSize
+    (voltage, size): (transformer_kit(size, voltage), f"محولة {size.label} {voltage.value}")
+    for voltage, sizes in TRANSFORMER_SIZES_BY_VOLTAGE.items()
+    for size in sizes
 }
 
 # ─────────────────── الفاصل هوائي 11 ك.ف ON LOAD: مصفوفة الجهد × الموقع ───────────────────
@@ -195,8 +224,9 @@ ISOLATOR_PARTS = {
         "cable": M_CABLE_185,
         "lug": M_TERMINAL_185,
         "arrester": M_ARRESTER_33,
-        # الملف الأصلي أغفلها في 33 ك.ف، وأكّدتَ أنها 6 هنا أيضاً (ق-٢٦)
-        "fittings": (M_AL_FITTINGS_CU, FITTINGS_PER_ISOLATOR),
+        # 210 ملم² لا العادية — السلك المتّصل 210/35 (ق-٣٧).
+        # والملف الأصلي أغفلها كلياً في 33 ك.ف، وأكّدتَ أنها 6 (ق-٢٦)
+        "fittings": (M_AL_FITTINGS_CU_210, FITTINGS_PER_ISOLATOR),
         "labour": "نصب فاصل هوائي 33 ك.ف",
     },
 }
@@ -263,6 +293,16 @@ def materials_equipment(eq: Equipment) -> list[MaterialLine]:
     """
     lines: list[MaterialLine] = []
 
+    # مفتاح المحولة ثنائي (الجهد، السعة). مفتاح مجهول يُرفَض صراحةً ولا يُهمَل
+    # بصمت — إهماله يعني محولة بملايين الدنانير تختفي من الجدول (ق-٣٧).
+    unknown = set(eq.transformers) - set(TRANSFORMER_KITS)
+    if unknown:
+        raise KeyError(
+            "مفتاح محولة غير معروف: "
+            + "، ".join(repr(k) for k in sorted(unknown, key=repr))
+            + " — المفتاح المتوقَّع (TransformerVoltage, TransformerSize)"
+        )
+
     def emit(kit, count, label):
         for material, per_unit in kit:
             lines.append(
@@ -271,10 +311,9 @@ def materials_equipment(eq: Equipment) -> list[MaterialLine]:
                 )
             )
 
-    for size in TransformerSize:                 # الترتيب ثابت لا يتبع ترتيب الإدخال
-        count = eq.transformers.get(size, 0)
+    for key, (kit, label) in TRANSFORMER_KITS.items():  # ترتيب ثابت لا يتبع الإدخال
+        count = eq.transformers.get(key, 0)
         if count:
-            kit, label = TRANSFORMER_KITS[size]
             emit(kit, count, label)
 
     for attr, kit, label in KITS:
@@ -298,7 +337,7 @@ def labour_equipment(eq: Equipment, rates: dict) -> list[LabourLine]:
     القفيص بلا أجر مستقل: يُركَّب مع العمود.
     """
     transformers = sum(eq.transformers.values())
-    items = [("نصب المحولة", transformers, "عدد المحولات بكل السعات")]
+    items = [("نصب المحولة", transformers, "عدد المحولات بكل السعات والجهود")]
 
     # الفاصلان في الجهد الواحد يتقاسمان بند الأجر: العمل نفسه، والموقع لا يغيّره.
     for voltage, label in (

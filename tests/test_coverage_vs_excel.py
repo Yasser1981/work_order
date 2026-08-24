@@ -9,7 +9,7 @@
 قائمة الـ61 لقطة مجمَّدة من الملف الأصلي — لا تُعدَّل إلا بقرار مسجَّل (ق-٠).
 """
 
-from engine.equipment import TransformerSize, materials_equipment
+from engine.equipment import TRANSFORMER_KITS, materials_equipment
 from engine.lowvoltage import materials_lv
 from engine.overhead import materials_11kv, materials_33kv
 from engine.types import (
@@ -96,6 +96,9 @@ CANCELLED = {
 RENAMED = {
     # اسم الملف الأصلي ← الاسم المعتمد عندنا. المادة نفسها لا مادة جديدة (ق-٢٩).
     ("براكيت 2.1 متر", "عدد"): ("براكيت جنل 2.1م مفرد", "عدد"),
+    # توحيد إملاء «ألمنيوم» بألف الهمزة وبالشَرطة الطويلة كنظيرتها بطلبك (ق-٣٧)
+    ("معدات ربط المنيوم - المنيوم 210 ملم²", "عدد"):
+        ("معدات ربط ألمنيوم – ألمنيوم 210 ملم²", "عدد"),
     # الوحدة تغيّرت من «سيت» إلى «عدد»: المادة نفسها والسعر نفسه (سعر المفرد)،
     # لكن الكمية صارت تُضرب ×3 لأن السيت ثلاثة صناديق طوراً لكل صندوق (ق-٣٥)
     ("صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف", "سيت"):
@@ -137,7 +140,7 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             produced.add((line.name, line.unit))
 
     equipment = Equipment(
-        transformers={s: 1 for s in TransformerSize},
+        transformers={k: 1 for k in TRANSFORMER_KITS},
         onload_11_mid=1, onload_11_head=1,
         isolator_33_mid=1, isolator_33_head=1, lattice_cages=1,
     )
@@ -213,6 +216,12 @@ def test_engine_extras_beyond_the_excel_table_are_known():
         ("محولة 250 KVA جهد 11/0.4 ك.ف", "عدد"),
         ("قاطع دورة 250 أمبير مع المتسعة", "عدد"),
         ("محولة 630 KVA جهد 11/0.4 ك.ف", "عدد"),
+        # جهد تحويلي 33/0.4 ك.ف لا يعرفه الملف الأصلي إطلاقاً (ق-٣٧)
+        ("محولة 400 KVA جهد 33/0.4 ك.ف", "عدد"),
+        ("محولة 630 KVA جهد 33/0.4 ك.ف", "عدد"),
+        ("فاصل فيوز 33 ك.ف مع السلك", "سيت"),
+        # الملف الأصلي أغفل معدات ربط الفاصل الهوائي 33 ك.ف كلياً (ق-٢٦ و ق-٣٧)
+        ("معدات ربط ألمنيوم – نحاس 210 ملم²", "عدد"),
     }
 
 
