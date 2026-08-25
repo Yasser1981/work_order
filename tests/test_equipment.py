@@ -197,12 +197,22 @@ def test_the_630_exception_survives_the_voltage_change():
     assert kit[("قابلو نحاس 1×150 ملم²", "متر")] == 160
 
 
-def test_250_kva_has_no_33kv_variant():
-    """السعة 250 لا تُصنَّع بجهد 33/0.4 — تُرفض صراحةً لا تُنتَج بصمت (ق-٣٧)."""
-    with pytest.raises(ValueError):
-        transformer_kit(TransformerSize.KVA250, KV33)
-    assert (KV33, TransformerSize.KVA250) not in TRANSFORMER_KITS
-    assert len(TRANSFORMER_KITS) == 5
+def test_250_kva_exists_at_both_voltages():
+    """السعة 250 متاحة بجهد 33/0.4 أيضاً — ولو نادراً، بتصحيحك في ق-٣٨.
+
+    كانت مستبعَدة في ق-٣٧ بناءً على فهمي، فأصلحتَه: «يمكنك إضافة سعة 250 KVA
+    للمحولات جهد 33/0.4 ك.ف، لا بأس من ذلك فهي متوفّرة ولو بصورة نادرة».
+    """
+    kit = dict(transformer_kit(TransformerSize.KVA250, KV33))
+    assert kit[("محولة 250 KVA جهد 33/0.4 ك.ف", "عدد")] == 1
+    assert kit[("قاطع دورة 250 أمبير مع المتسعة", "عدد")] == 2   # يتبع السعة لا الجهد
+    assert kit[("مانعة صواعق 33 ك.ف", "سيت")] == 1
+    assert kit[("فاصل فيوز 33 ك.ف مع السلك", "سيت")] == 1
+    assert len(TRANSFORMER_KITS) == 6   # ثلاث سعات × جهدين
+
+
+def test_the_33kv_250_is_priced(catalog):
+    assert catalog["المواد"]["محولة 250 KVA جهد 33/0.4 ك.ف"]["السعر"] == 16_500_000
 
 
 def test_both_voltages_share_the_one_labour_line(catalog):

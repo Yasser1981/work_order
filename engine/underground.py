@@ -101,14 +101,70 @@ def suggest_straight_boxes(route_length_m: float, feeder_count: int, drum_length
     return feeder_count * per_feeder
 
 
-def _civil_tariff_lookup(sidewalk_type: SidewalkType, count: int, catalog: dict) -> float | None:
-    """تعرفة الأعمال المدنية للمتر — بحسب نوع الرصيف وعدد الوحدات معاً.
+CIVIL_GROUP = "الأعمال المدنية"
+"""وسم يجمع بنود الأعمال المدنية كلها في الطباعة — الحفر وإعادة المسار وعبور
+الشوارع معاً — بنصّ المستخدم: «عبور الشوارع الفرعية والحفر المخفي للشوارع
+الرئيسية أيضاً تُعتبر ضمن الأعمال المدنية وتُضاف إن وُجدت» (ق-٣٨)."""
 
-    `None` إن كان العدد خارج الجدول (أكثر من 5) — يُبلَّغ عنه بدل أن يُخمَّن رقم
-    قد يكون خاطئاً في الاتجاهين. مشتركة بين 11 و33 ك.ف — الجدول واحد (ق-٣١).
+CIVIL_COMPONENTS = ("حفر الخندق", "إعادة المسار")
+"""مكوّنا التعرفة بترتيب تنفيذهما على الأرض (ق-٣٨). كانا رقماً واحداً مجموعاً
+قبل ذلك، وفصّلهما المستخدم بأرقام صريحة لكل نوع رصيف × كل تعدّد مسار."""
+
+ROUTE_MULTIPLICITY = {1: "مفرد", 2: "ثنائي", 3: "ثلاثي"}
+"""تسمية المستخدم لعدد المغذيات في الخندق. المفتاح في الجدول رقمي، والتسمية
+للعرض فقط — 1 مغذٍّ = مسار مفرد، و2 = ثنائي، و3 = ثلاثي."""
+
+
+def route_multiplicity_label(count: int) -> str:
+    return ROUTE_MULTIPLICITY.get(count, f"{count} مغذيات")
+
+
+def civil_tariff_parts(
+    sidewalk_type: SidewalkType, count: int, catalog: dict
+) -> list[tuple[str, float | None]]:
+    """مكوّنات تعرفة الأعمال المدنية للمتر: [(اسم المكوّن، دينار/متر)].
+
+    ثلاث حالات لا رابع لها:
+
+    1. العدد في الجدول المفصَّل (1 أو 2 أو 3) ← **مكوّنان**: حفر الخندق ثم
+       إعادة المسار، كلٌّ بسعره (ق-٣٨).
+    2. العدد في الإجمالي غير المفصَّل (4 أو 5) ← **مكوّن واحد** موسوم بأنه لم
+       يُفصَّل بعد. الرقم القديم من ملف المستخدم محفوظ كما هو ولم يُحذف (ق-٠).
+    3. العدد خارج الجدولين ← مكوّن واحد بسعر `None`، فيُطبع «بلا أجر» ويُبلَّغ
+       عنه بدل أن يُخمَّن رقم قد يكون خاطئاً في الاتجاهين.
+
+    مشتركة بين 11 و33 ك.ف — الجدول واحد (ق-٣١).
     """
     tariff = catalog["تعرفة_الأعمال_المدنية"]
-    return tariff.get(sidewalk_type.value, {}).get(str(count))
+    detailed = tariff.get("مفصَّلة", {})
+    key = str(count)
+
+    parts = [
+        (component, detailed[component][sidewalk_type.value][key])
+        for component in CIVIL_COMPONENTS
+        if key in detailed.get(component, {}).get(sidewalk_type.value, {})
+    ]
+    if len(parts) == len(CIVIL_COMPONENTS):
+        return parts
+
+    lump = tariff.get("إجمالي_غير_مفصَّل", {}).get(sidewalk_type.value, {}).get(key)
+    if lump is not None:
+        return [("الحفر وإعادة المسار — إجمالي غير مفصَّل", lump)]
+
+    return [("الحفر وإعادة المسار", None)]
+
+
+def _civil_tariff_lookup(
+    sidewalk_type: SidewalkType, count: int, catalog: dict
+) -> float | None:
+    """إجمالي التعرفة للمتر — مجموع المكوّنات. `None` إن كان العدد خارج الجدول.
+
+    باقٍ لأن الواجهة والاختبارات تعرضان الإجمالي، والتفصيل يظهر في جدول الأجور.
+    """
+    parts = civil_tariff_parts(sidewalk_type, count, catalog)
+    if any(rate is None for _name, rate in parts):
+        return None
+    return sum(rate for _name, rate in parts)
 
 
 def civil_works_rate(net: Underground11kV, catalog: dict) -> float | None:
@@ -123,6 +179,23 @@ def civil_works_rate_33(net: Underground33kV, catalog: dict) -> float | None:
     مماثل لـ11 ك.ف — بتأكيد المستخدم صراحةً (ق-٣١). نفس الجدول بالضبط.
     """
     return _civil_tariff_lookup(net.sidewalk_type, net.circuit.circuits, catalog)
+
+
+def _civil_labour_lines(
+    sidewalk_type: SidewalkType, count: int, route_length_m: float, catalog: dict
+) -> list[LabourLine]:
+    """سطر أجر لكل مكوّن من مكوّني التعرفة — لا سطراً واحداً مجموعاً (ق-٣٨)."""
+    multiplicity = route_multiplicity_label(count)
+    return [
+        LabourLine(
+            f"{component} — رصيف {sidewalk_type.value}، مسار {multiplicity}",
+            "متر",
+            route_length_m,
+            rate,
+            group=CIVIL_GROUP,
+        )
+        for component, rate in civil_tariff_parts(sidewalk_type, count, catalog)
+    ]
 
 
 def materials_underground11(net: Underground11kV) -> list[MaterialLine]:
@@ -223,9 +296,9 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
         )
 
     if net.route_length_m > 0:
-        rate = civil_works_rate(net, catalog)
-        label = f"الأعمال المدنية — رصيف {net.sidewalk_type.value} × {net.feeder_count} مغذٍّ"
-        out.append(LabourLine(label, "متر", net.route_length_m, rate))
+        out += _civil_labour_lines(
+            net.sidewalk_type, net.feeder_count, net.route_length_m, catalog
+        )
 
     return out
 
@@ -377,8 +450,10 @@ def labour_underground33(net: Underground33kV, catalog: dict) -> list[LabourLine
         )
 
     if net.route_length_m > 0:
-        rate = civil_works_rate_33(net, catalog)
-        label = f"الأعمال المدنية — رصيف {net.sidewalk_type.value} × {net.circuit.value}"
-        out.append(LabourLine(label, "متر", net.route_length_m, rate))
+        # 33 ك.ف: بعدد الدوائر لا عدد الكابلات — المغذي الواحد بكابلاته الثلاثة
+        # يُعامَل معاملة مغذٍّ واحد مماثل لـ11 ك.ف (ق-٣١)
+        out += _civil_labour_lines(
+            net.sidewalk_type, net.circuit.circuits, net.route_length_m, catalog
+        )
 
     return out

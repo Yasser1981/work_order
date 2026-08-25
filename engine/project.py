@@ -36,6 +36,7 @@ from .types import (
     Underground33kV,
 )
 from .underground import (
+    CIVIL_GROUP,
     labour_underground11,
     labour_underground33,
     materials_underground11,
@@ -132,7 +133,8 @@ def compute_project(project: Project, catalog: dict) -> dict:
         raw += materials_of(segment)
         labour_raw += labour_of(segment, catalog)
 
-    # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠)
+    # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠).
+    # وهما **ضمن الأعمال المدنية** بنصّ المستخدم، فيحملان وسمها (ق-٣٨).
     for field_name, label in (
         ("street_crossing_secondary_m", "عبور الشوارع الفرعية"),
         ("street_crossing_main_m", "عبور الشوارع الرئيسية – حفر مخفي"),
@@ -140,7 +142,11 @@ def compute_project(project: Project, catalog: dict) -> dict:
         length = getattr(project, field_name)
         if length:
             entry = rates[label]
-            labour_raw.append(LabourLine(label, entry["الوحدة"], length, entry["السعر"]))
+            labour_raw.append(
+                LabourLine(
+                    label, entry["الوحدة"], length, entry["السعر"], group=CIVIL_GROUP
+                )
+            )
 
     totals = aggregate(raw)
 

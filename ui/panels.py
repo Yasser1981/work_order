@@ -31,8 +31,7 @@ from engine.underground import (
     cable_count_33,
     cable_quantity,
     cable_quantity_33,
-    civil_works_rate,
-    civil_works_rate_33,
+    civil_tariff_parts,
     suggest_straight_boxes,
 )
 from engine.overhead import (
@@ -605,9 +604,9 @@ class PanelEquipment(QWidget):
             if voltage is TransformerVoltage.KV33:
                 form.addRow(
                     HintLabel(
-                        "سعة 250 KVA غير متاحة بجهد 33/0.4 ك.ف.<br>"
-                        "مانعة الصواعق وفاصل الفيوز <b>33 ك.ف</b>، "
-                        "أما قاعدة المانعة وقواطع الدورة فهي نفسها."
+                        "مانعة الصواعق وفاصل الفيوز <b>33 ك.ف</b>، أما قاعدة "
+                        "المانعة وقواطع الدورة فهي نفسها.<br>"
+                        "سعة 250 متاحة بهذا الجهد أيضاً — <b>نادرة</b> لا ممتنعة."
                     )
                 )
             layout.addWidget(box)
@@ -734,6 +733,33 @@ class PanelEquipment(QWidget):
         )
 
 
+def _civil_hint_text(sidewalk_type, count, route_length_m, catalog) -> str:
+    """نصّ تلميح الأعمال المدنية — يعرض **المكوّنين** ومجموعهما لا الإجمالي وحده.
+
+    المقصد أن يرى المستخدم من أين جاء الرقم: حفر الخندق كذا، وإعادة المسار كذا
+    (ق-٣٨). ما دام العدد خارج الجدول يُعرض تحذير بدل رقم مخمَّن.
+    """
+    parts = civil_tariff_parts(sidewalk_type, count, catalog)
+    if any(rate is None for _name, rate in parts):
+        return (
+            f"⚠️ لا تعرفة لـ «{sidewalk_type.value} × {count}» — "
+            "عدد المغذيات خارج الجدول (1 إلى 5)."
+        )
+    rows = [
+        f"&nbsp;&nbsp;– {name}: {route_length_m:,.0f} م × {rate:,.0f} د/م = "
+        f"<b>{route_length_m * rate:,.0f} د</b>"
+        for name, rate in parts
+    ]
+    total = sum(rate for _name, rate in parts)
+    rows.append(
+        f"&nbsp;&nbsp;<b>المجموع: {total:,.0f} د/م = "
+        f"{route_length_m * total:,.0f} د</b>"
+    )
+    if len(parts) == 1:
+        rows.insert(0, "⚠️ لم يصلنا تفصيل هذا العدد إلى «حفر» و«إعادة مسار» بعد:")
+    return "<br>".join(rows)
+
+
 class PanelUnderground11kV(QWidget):
     """مدخلات مقطع شبكة أرضية 11 ك.ف — قابلو 3×150 ملم² (ق-٣٠).
 
@@ -843,17 +869,11 @@ class PanelUnderground11kV(QWidget):
             f" × {waste:g} زيادة = <b>{qty:,} م</b>"
         )
 
-        rate = civil_works_rate(net, self.catalog)
-        if rate is None:
-            self.civil_hint.setText(
-                f"⚠️ لا تعرفة لـ «{net.sidewalk_type.value} × {net.feeder_count} مغذٍّ»"
-                " — عدد المغذيات خارج الجدول (1 إلى 5)."
+        self.civil_hint.setText(
+            _civil_hint_text(
+                net.sidewalk_type, net.feeder_count, net.route_length_m, self.catalog
             )
-        else:
-            self.civil_hint.setText(
-                f"{net.route_length_m:,.0f} م × {rate:,.0f} د/م ="
-                f" <b>{net.route_length_m * rate:,.0f} د</b>"
-            )
+        )
 
         suggested = suggest_straight_boxes(
             net.route_length_m, net.feeder_count, net.drum_length_m
@@ -980,18 +1000,15 @@ class PanelUnderground33kV(QWidget):
             "<br>أحادي القلب — كل دائرة 3 كابلات منفصلة، طور لكل كابل."
         )
 
-        rate = civil_works_rate_33(net, self.catalog)
-        if rate is None:
-            self.civil_hint.setText(
-                f"⚠️ لا تعرفة لـ «{net.sidewalk_type.value} × {net.circuit.circuits}» "
-                "— خارج الجدول (1 إلى 5)."
+        self.civil_hint.setText(
+            "المغذي الواحد يُعامَل معاملة مغذٍّ واحد مماثل لـ11 ك.ف:<br>"
+            + _civil_hint_text(
+                net.sidewalk_type,
+                net.circuit.circuits,
+                net.route_length_m,
+                self.catalog,
             )
-        else:
-            self.civil_hint.setText(
-                f"المغذي الواحد يُعامَل معاملة مغذٍّ واحد مماثل لـ11 ك.ف: "
-                f"{net.route_length_m:,.0f} م × {rate:,.0f} د/م ="
-                f" <b>{net.route_length_m * rate:,.0f} د</b>"
-            )
+        )
 
         suggested = suggest_straight_boxes(net.route_length_m, cables, net.drum_length_m)
         self.box_hint.setText(

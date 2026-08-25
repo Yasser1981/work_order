@@ -257,3 +257,42 @@ def test_audit_warns_about_the_out_of_table_civil_rate(order, underground_result
     html = printing.get("audit").build_html(order, underground_result)
     assert "الأعمال المدنية" in html
     assert "بلا أجر" in html
+
+
+def test_audit_groups_the_labour_table_into_electrical_and_civil(underground_result, order):
+    """جدول الأجور مبوّب: الكهربائية ثم المدنية، ولكل باب مجموعه (ق-٣٨)."""
+    html = printing.get("audit").build_html(order, underground_result)
+    electrical = html.index("الأعمال الكهربائية")
+    civil = html.index("<b>الأعمال المدنية</b>")
+    assert electrical < civil                      # الكهربائية هي الأصل فتتصدّر
+    assert "مجموع الأعمال المدنية" in html
+    assert "مجموع الأعمال الكهربائية" in html
+
+
+def test_the_civil_subtotal_equals_the_sum_of_its_lines(underground_result, order):
+    """حارس مالي: مجموع الباب المطبوع = مجموع أسطره فعلاً لا رقماً مستقلاً."""
+    from engine.underground import CIVIL_GROUP
+
+    html = printing.get("audit").build_html(order, underground_result)
+    expected = sum(
+        l.cost for l in underground_result["أجور_العمل"] if l.group == CIVIL_GROUP
+    )
+    assert f"مجموع الأعمال المدنية</td>\n      <td" not in html   # التنسيق قد يتغيّر
+    assert f"{expected:,.0f}" in html
+
+
+def test_a_single_group_prints_no_group_headers(order):
+    """مشروع بلا أعمال مدنية: لا معنى لتبويب جدول من باب واحد."""
+    from engine import load_catalog
+    from engine.project import compute_project
+    from engine.types import Equipment, Project, Segment
+    from engine.equipment import TransformerSize, TransformerVoltage
+
+    result = compute_project(
+        Project(segments=[Segment("تجهيزات", Equipment(
+            transformers={(TransformerVoltage.KV11, TransformerSize.KVA400): 1}))]),
+        load_catalog(),
+    )
+    html = printing.get("audit").build_html(order, result)
+    assert "الأعمال الكهربائية" not in html
+    assert "مجموع أجور التنفيذ" in html

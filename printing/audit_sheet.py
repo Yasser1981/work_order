@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from engine.workorder import WorkOrder
 
 from .iso_form import _CSS, _esc, _fmt_date, _fmt_qty, _TABLE, _rtl_option
@@ -15,8 +17,48 @@ from .iso_form import _CSS, _esc, _fmt_date, _fmt_qty, _TABLE, _rtl_option
 _EXTRA_CSS = _CSS + """
 .src   { font-size: 9pt; color: #444; }
 .tot   { font-weight: bold; background-color: #f0f0f0; }
+.grp   { font-weight: bold; background-color: #e8e8e8; }
+.sub   { font-weight: bold; }
 .note  { font-size: 9pt; }
 """
+
+
+
+def _labour_table(lines: list) -> str:
+    """صفوف جدول الأجور مبوّبةً بـ `group`، ولكل باب صفّ مجموع.
+
+    البنود بلا وسم هي **الأعمال الكهربائية** وهي الأصل، فتتصدّر. الأبواب الموسومة
+    تليها بترتيب أول ظهورها. الباب الواحد لا يُطبع عنوانه إن كان الوحيد — لا معنى
+    لتبويب جدول من باب واحد.
+    """
+    groups: "OrderedDict[str, list]" = OrderedDict()
+    for line in lines:
+        groups.setdefault(line.group or "الأعمال الكهربائية", []).append(line)
+
+    rows: list[str] = []
+    index = 0
+    for name, members in groups.items():
+        if len(groups) > 1:
+            rows.append(f'<tr class="grp"><td colspan="5" align="right">'
+                        f'<b>{_esc(name)}</b></td></tr>')
+        for line in members:
+            index += 1
+            rows.append(
+                f'<tr><td align="center">{index}</td>'
+                f'<td align="right">{_esc(line.name)}</td>'
+                f'<td align="center">{_fmt_qty(line.qty)} {_esc(line.unit)}</td>'
+                # الأجر المفقود يُطبع نصّاً لا صفراً — الصفر يوهم بأن البند مجّاني
+                f'<td align="center">'
+                f'{"بلا أجر" if line.rate_missing else f"{line.rate:,.0f}"}</td>'
+                f'<td align="center">'
+                f'{"—" if line.rate_missing else f"{line.cost:,.0f}"}</td></tr>'
+            )
+        if len(groups) > 1:
+            subtotal = sum(line.cost for line in members)
+            rows.append(f'<tr class="sub"><td colspan="4" align="left">'
+                        f'مجموع {_esc(name)}</td>'
+                        f'<td align="center">{subtotal:,.0f}</td></tr>')
+    return "\n".join(rows)
 
 
 def build_html(order: WorkOrder, result: dict) -> str:
@@ -50,14 +92,9 @@ def build_html(order: WorkOrder, result: dict) -> str:
                 f'<td align="right" class="src">{_esc(part["المصدر"])}</td></tr>'
             )
 
-    labour_rows = "\n".join(
-        f'<tr><td align="center">{i}</td><td align="right">{_esc(line.name)}</td>'
-        f'<td align="center">{_fmt_qty(line.qty)} {_esc(line.unit)}</td>'
-        # الأجر المفقود يُطبع نصّاً لا صفراً — الصفر يوهم بأن البند مجّاني
-        f'<td align="center">{"بلا أجر" if line.rate_missing else f"{line.rate:,.0f}"}</td>'
-        f'<td align="center">{"—" if line.rate_missing else f"{line.cost:,.0f}"}</td></tr>'
-        for i, line in enumerate(result["أجور_العمل"], start=1)
-    )
+    # فقرات العمل مبوّبة: الأعمال الكهربائية أولاً ثم الأعمال المدنية، ولكل باب
+    # مجموعه. عبور الشوارع ضمن المدنية بنصّ المستخدم (ق-٣٨).
+    labour_rows = _labour_table(result["أجور_العمل"])
 
     notes = []
     if result["أسعار_مفقودة"]:

@@ -19,6 +19,7 @@
 
 from engine import load_catalog
 from engine.equipment import TRANSFORMER_KITS
+from engine.underground import CIVIL_GROUP
 from engine.project import compute_project
 from engine.types import (
     CircuitType,
@@ -84,9 +85,11 @@ MERGED = {
     "نصب ركيزة بداية ونهاية (مفرد)": "نصب ركيزة شد بداية ونهاية عمود 14م",
 }
 
-DYNAMIC_PREFIX = {
-    # اسم البند عندنا يحمل نوع الرصيف وعدد المغذيات، فيتغيّر بتغيّرهما (ق-٣٠)
-    "كلفة الاعمال المدنية للشبكة الأرضية": "الأعمال المدنية — ",
+DYNAMIC_GROUP = {
+    # اسم البند عندنا يحمل المكوّن ونوع الرصيف وتعدّد المسار، فيتغيّر بتغيّرها.
+    # بند الملف الأصلي الواحد صار **بندين** بعد التفصيل (ق-٣٨)، فالتعرّف عليه
+    # صار بالوسم `group` لا ببادئة الاسم — أمتن من مطابقة النصّ.
+    "كلفة الاعمال المدنية للشبكة الأرضية": CIVIL_GROUP,
 }
 
 CANCELLED = {
@@ -138,6 +141,25 @@ def all_labour_the_engine_can_produce() -> set[str]:
     return {line.name for line in compute_project(project, catalog)["أجور_العمل"]}
 
 
+def civil_labour_names() -> set[str]:
+    """أسماء بنود الأعمال المدنية — تُعرَف بوسمها لا ببادئة اسمها (ق-٣٨)."""
+    catalog = load_catalog()
+    segments = [
+        Segment("", Underground11kV(route_length_m=100, feeder_count=count,
+                                    sidewalk_type=sidewalk))
+        for sidewalk in SidewalkType
+        for count in range(1, 6)
+    ]
+    project = Project(
+        segments=segments, street_crossing_secondary_m=10, street_crossing_main_m=10
+    )
+    return {
+        line.name
+        for line in compute_project(project, catalog)["أجور_العمل"]
+        if line.group == CIVIL_GROUP
+    }
+
+
 def _is_covered(excel_name: str, produced: set[str]) -> bool:
     """هل البند مغطّى بأي من الخانات الأربع؟"""
     if excel_name in CANCELLED:
@@ -148,8 +170,9 @@ def _is_covered(excel_name: str, produced: set[str]) -> bool:
         return True
     if MERGED.get(excel_name) in produced:
         return True
-    prefix = DYNAMIC_PREFIX.get(excel_name)
-    return bool(prefix) and any(name.startswith(prefix) for name in produced)
+    if DYNAMIC_GROUP.get(excel_name) == CIVIL_GROUP:
+        return bool(civil_labour_names() & produced)
+    return False
 
 
 # ═══════════════════ الحارس نفسه ═══════════════════
@@ -190,11 +213,7 @@ def test_engine_extras_beyond_the_excel_sheet_are_known():
     """ما يولّده المحرك ولا نظير له في الملف الأصلي — كله مقصود ومسجَّل."""
     produced = all_labour_the_engine_can_produce()
     mapped = set(EXCEL_LABOUR) | set(RENAMED.values()) | set(MERGED.values())
-    extras = {
-        name for name in produced
-        if name not in mapped
-        and not name.startswith(DYNAMIC_PREFIX["كلفة الاعمال المدنية للشبكة الأرضية"])
-    }
+    extras = {name for name in produced if name not in mapped} - civil_labour_names()
     assert extras == set(), f"بنود أجور جديدة غير مسجَّلة: {extras}"
 
 
@@ -208,9 +227,11 @@ def test_every_produced_labour_item_has_a_row_in_the_catalog():
     لا من قسم «أجور_العمل».
     """
     rates = load_catalog()["أجور_العمل"]
-    civil_prefix = DYNAMIC_PREFIX["كلفة الاعمال المدنية للشبكة الأرضية"]
+    # عبور الشوارع ضمن الأعمال المدنية بالوسم، لكن سعره في «أجور_العمل» فعلاً —
+    # المستثنى هو ما يأتي سعره من جدول التعرفة وحده
+    from_tariff = civil_labour_names() - set(rates)
     for name in sorted(all_labour_the_engine_can_produce()):
-        if name.startswith(civil_prefix):
+        if name in from_tariff:
             continue
         assert name in rates, f"بند أجر بلا صف في نسخة الأسعار: {name}"
 

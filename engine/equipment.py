@@ -62,8 +62,9 @@ class TransformerVoltage(Enum):
 TRANSFORMER_SIZES_BY_VOLTAGE = {
     TransformerVoltage.KV11: [TransformerSize.KVA250, TransformerSize.KVA400,
                               TransformerSize.KVA630],
-    # 33/0.4: سعتان فقط — لا 250 (ق-٣٧)
-    TransformerVoltage.KV33: [TransformerSize.KVA400, TransformerSize.KVA630],
+    # 33/0.4: السعات الثلاث كلها — 250 متوفّرة ولو نادراً (ق-٣٨؛ كانت مستبعَدة في ق-٣٧)
+    TransformerVoltage.KV33: [TransformerSize.KVA250, TransformerSize.KVA400,
+                              TransformerSize.KVA630],
 }
 
 M_TRANSFORMER = {

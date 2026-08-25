@@ -461,13 +461,14 @@ def test_the_33kv_transformer_has_its_own_field_and_its_own_accessories(window, 
     assert "فاصل فيوز 11 ك.ف مع السلك" not in quantities
 
 
-def test_250_kva_is_offered_at_11kv_only(pequip):
-    """33/0.4 سعتان فقط: 400 و630 — لا حقل لـ250 (ق-٣٧)."""
+def test_every_rating_is_offered_at_both_voltages(pequip):
+    """ستة حقول: ثلاث سعات × جهدين — 250 متاحة بالجهدين معاً (ق-٣٨)."""
     from engine.equipment import TransformerSize, TransformerVoltage
 
-    assert (TransformerVoltage.KV11, TransformerSize.KVA250) in pequip.transformers
-    assert (TransformerVoltage.KV33, TransformerSize.KVA250) not in pequip.transformers
-    assert len(pequip.transformers) == 5
+    assert len(pequip.transformers) == 6
+    for voltage in TransformerVoltage:
+        for size in TransformerSize:
+            assert (voltage, size) in pequip.transformers
 
 
 def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip):
@@ -581,12 +582,17 @@ def test_ug11_adopt_button_matches_the_engine_suggestion(window, pug11):
 
 def test_ug11_civil_works_depends_on_route_length_only(window, pug11):
     """الأعمال المدنية من طول المسار وحده — لا كمية القابلو المضروبة بالمغذيات."""
+    from engine.underground import CIVIL_GROUP
+
     pug11.route.setValue(400)
     pug11.feeders.setValue(3)
-    civil = next(
-        l for l in window.result["أجور_العمل"] if l.name.startswith("الأعمال المدنية")
-    )
-    assert civil.qty == 400
+    civil = [l for l in window.result["أجور_العمل"] if l.group == CIVIL_GROUP]
+    # بندان بعد التفصيل: حفر الخندق وإعادة المسار (ق-٣٨)
+    assert [l.name for l in civil] == [
+        "حفر الخندق — رصيف ترابي، مسار ثلاثي",
+        "إعادة المسار — رصيف ترابي، مسار ثلاثي",
+    ]
+    assert all(l.qty == 400 for l in civil)
 
 
 def test_ug11_trench_materials_do_not_multiply_with_feeder_count(window, pug11):
@@ -658,10 +664,14 @@ def test_ug33_single_circuit_is_half_of_double(window, pug33):
 
 def test_ug33_civil_works_treats_one_feeder_like_11kv(window, pug33):
     """المغذي الواحد (3 كابلات) يُعامَل معاملة مغذٍّ واحد — لا 3 — في الأعمال المدنية."""
+    from engine.underground import CIVIL_GROUP
+
     pug33.route.setValue(500)
     pug33.circuit.setCurrentIndex(0)          # مفردة = مغذٍّ واحد
-    civil = next(l for l in window.result["أجور_العمل"] if l.name.startswith("الأعمال المدنية"))
-    assert civil.rate == 20000                # تعرفة "1" — نفس عمود 11 ك.ف الأول
+    civil = [l for l in window.result["أجور_العمل"] if l.group == CIVIL_GROUP]
+    # تعرفة "1" — نفس عمود 11 ك.ف الأول: 7,000 حفر + 13,000 إعادة = 20,000
+    assert [l.rate for l in civil] == [7000, 13000]
+    assert sum(l.cost for l in civil) == 500 * 20000
 
 
 def test_ug33_adopt_button_uses_the_cable_count(window, pug33):

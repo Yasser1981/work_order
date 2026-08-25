@@ -72,6 +72,10 @@ class LabourLine:
 
     source: str = ""
 
+    group: str = ""
+    """باب يجمع البنود المتقاربة في الطباعة. الفارغ يعني «الأعمال الكهربائية»
+    وهو الأصل؛ و«الأعمال المدنية» تجمع الحفر وإعادة المسار وعبور الشوارع (ق-٣٨)."""
+
     @property
     def rate_missing(self) -> bool:
         return self.rate is None

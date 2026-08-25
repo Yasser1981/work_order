@@ -12,6 +12,8 @@ from engine.project import compute_project
 from engine.types import Project, Segment, SidewalkType, Underground11kV
 from engine.underground import (
     cable_quantity,
+    CIVIL_GROUP,
+    civil_tariff_parts,
     civil_works_rate,
     materials_underground11,
     resolve_drum_length,
@@ -152,16 +154,22 @@ def test_no_route_length_means_no_trench_materials():
 
 def test_civil_works_rate_depends_on_sidewalk_and_feeder_count(catalog):
     net = Underground11kV(sidewalk_type=SidewalkType.TERRAZZO, feeder_count=3)
-    assert civil_works_rate(net, catalog) == 37000
+    assert civil_works_rate(net, catalog) == 38000   # 13,000 حفر + 25,000 إعادة (ت-٨)
 
 
 def test_civil_works_rate_all_fifteen_combinations_match_the_original_file(catalog):
+    """الإجماليات الخمسة عشر — أربعة عشر كما في الملف الأصلي، وواحد بـ ت-٨.
+
+    التفصيل إلى «حفر» و«إعادة مسار» (ق-٣٨) **لا يغيّر الإجمالي** في ثماني خلايا
+    من تسع. الخلية التاسعة (مقرنص ثلاثي) صارت 38,000 بدل 37,000 لأن المكوّنين
+    اللذين أعطاهما المستخدم يجمعان إليها — تعارض مسجَّل في ت-٨.
+    """
     expected = {
         ("ترابي", 1): 20000, ("ترابي", 2): 26000, ("ترابي", 3): 31000,
         ("ترابي", 4): 36000, ("ترابي", 5): 39000,
         ("مبلط", 1): 18000, ("مبلط", 2): 22000, ("مبلط", 3): 26000,
         ("مبلط", 4): 30000, ("مبلط", 5): 34000,
-        ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 37000,
+        ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 38000,
         ("مقرنص", 4): 41000, ("مقرنص", 5): 45000,
     }
     for sidewalk in SidewalkType:
@@ -170,23 +178,99 @@ def test_civil_works_rate_all_fifteen_combinations_match_the_original_file(catal
             assert civil_works_rate(net, catalog) == expected[(sidewalk.value, count)]
 
 
+CIVIL_DETAIL = {
+    # (الرصيف، تعدّد المسار): (حفر الخندق، إعادة المسار) — بنصّ المستخدم (ق-٣٨)
+    ("ترابي", 1): (7000, 13000), ("ترابي", 2): (9000, 17000), ("ترابي", 3): (11000, 20000),
+    ("مبلط", 1): (10000, 8000), ("مبلط", 2): (12000, 10000), ("مبلط", 3): (14000, 12000),
+    ("مقرنص", 1): (9000, 25000), ("مقرنص", 2): (11000, 25000), ("مقرنص", 3): (13000, 25000),
+}
+
+
+def test_the_two_civil_components_match_the_user_numbers(catalog):
+    """كل خلية من التسع: مكوّنان بالاسم والسعر كما أملاهما المستخدم."""
+    for (sidewalk_value, count), (dig, restore) in CIVIL_DETAIL.items():
+        sidewalk = next(s for s in SidewalkType if s.value == sidewalk_value)
+        parts = civil_tariff_parts(sidewalk, count, catalog)
+        assert parts == [("حفر الخندق", dig), ("إعادة المسار", restore)]
+
+
+def test_the_detailed_components_sum_to_the_previous_total_except_one(catalog):
+    """حارس ت-٨: التفصيل لا يحرّك الإجمالي إلا في خلية واحدة معروفة.
+
+    لو حرّك خليةً أخرى — بخطأ إدخال أو تعديل لاحق — يسقط هذا الاختبار.
+    """
+    previous_totals = {
+        ("ترابي", 1): 20000, ("ترابي", 2): 26000, ("ترابي", 3): 31000,
+        ("مبلط", 1): 18000, ("مبلط", 2): 22000, ("مبلط", 3): 26000,
+        ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 37000,
+    }
+    moved = {}
+    for key, (dig, restore) in CIVIL_DETAIL.items():
+        if dig + restore != previous_totals[key]:
+            moved[key] = (previous_totals[key], dig + restore)
+    assert moved == {("مقرنص", 3): (37000, 38000)}
+
+
+def test_the_undetailed_totals_for_four_and_five_are_kept_not_dropped(catalog):
+    """4 و5 مغذيات: الإجمالي القديم محفوظ كما هو وموسوم بأنه غير مفصَّل (ق-٠)."""
+    for count, expected in ((4, 30000), (5, 34000)):
+        parts = civil_tariff_parts(SidewalkType.PAVED, count, catalog)
+        assert len(parts) == 1
+        name, rate = parts[0]
+        assert "غير مفصَّل" in name
+        assert rate == expected
+
+
 def test_civil_works_rate_beyond_the_table_is_reported_not_guessed(catalog):
     """6 مغذيات خارج الجدول (1-5 فقط) — يُبلَّغ عنه لا يُخمَّن."""
     net = Underground11kV(route_length_m=100, feeder_count=6)
     assert civil_works_rate(net, catalog) is None
 
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    assert "الأعمال المدنية — رصيف ترابي × 6 مغذٍّ" in result["أجور_مفقودة"]
+    assert "الحفر وإعادة المسار — رصيف ترابي، مسار 6 مغذيات" in result["أجور_مفقودة"]
 
 
 def test_civil_works_cost_is_route_length_times_rate_not_cable_quantity(catalog):
     """المدنية تُحسب من طول المسار — لا من كمية القابلو المضروبة بالمغذيات."""
     net = Underground11kV(route_length_m=400, feeder_count=3, sidewalk_type=SidewalkType.EARTH)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    civil = next(l for l in result["أجور_العمل"] if l.name.startswith("الأعمال المدنية"))
-    assert civil.qty == 400                # لا 1320 (طول القابلو)
-    assert civil.rate == 31000
-    assert civil.cost == 400 * 31000
+    civil = [l for l in result["أجور_العمل"] if l.group == CIVIL_GROUP]
+    assert [l.name for l in civil] == [
+        "حفر الخندق — رصيف ترابي، مسار ثلاثي",
+        "إعادة المسار — رصيف ترابي، مسار ثلاثي",
+    ]
+    assert all(l.qty == 400 for l in civil)      # لا 1320 (طول القابلو)
+    assert [l.rate for l in civil] == [11000, 20000]
+    assert sum(l.cost for l in civil) == 400 * 31000
+
+
+def test_street_crossings_are_tagged_as_civil_works(catalog):
+    """عبور الشوارع ضمن الأعمال المدنية بنصّ المستخدم — لا باب مستقل (ق-٣٨).
+
+    وسعرهما من «أجور_العمل» لا من جدول التعرفة: 100,000 للفرعية و200,000
+    للحفر المخفي في الرئيسية.
+    """
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
+        street_crossing_secondary_m=10,
+        street_crossing_main_m=5,
+    )
+    result = compute_project(project, catalog)
+    crossings = [
+        l for l in result["أجور_العمل"] if l.name.startswith("عبور الشوارع")
+    ]
+    assert len(crossings) == 2
+    assert all(l.group == CIVIL_GROUP for l in crossings)
+    assert sum(l.cost for l in crossings) == 10 * 100_000 + 5 * 200_000
+
+
+def test_a_project_without_underground_has_no_civil_lines(catalog):
+    """المشروع الهوائي الخالص لا يُنتج باب أعمال مدنية أصلاً."""
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=0, feeder_count=1))]
+    )
+    result = compute_project(project, catalog)
+    assert not [l for l in result["أجور_العمل"] if l.group == CIVIL_GROUP]
 
 
 # ═══════════════════ الأجور الأخرى ═══════════════════
@@ -399,9 +483,10 @@ def test_civil_works_cost_is_route_length_not_cable_quantity_33(catalog):
     net = Underground33kV(route_length_m=500, circuit=CircuitType.DOUBLE,
                            sidewalk_type=SidewalkType.EARTH)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
-    civil = next(l for l in result["أجور_العمل"] if l.name.startswith("الأعمال المدنية"))
-    assert civil.qty == 500                # لا 3300 (كمية القابلو)
-    assert civil.rate == 26000
+    civil = [l for l in result["أجور_العمل"] if l.group == CIVIL_GROUP]
+    assert all(l.qty == 500 for l in civil)      # لا 3300 (كمية القابلو)
+    assert [l.rate for l in civil] == [9000, 17000]
+    assert sum(l.cost for l in civil) == 500 * 26000
 
 
 # ─────────────────── المواد ───────────────────
