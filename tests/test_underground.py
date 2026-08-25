@@ -154,22 +154,22 @@ def test_no_route_length_means_no_trench_materials():
 
 def test_civil_works_rate_depends_on_sidewalk_and_feeder_count(catalog):
     net = Underground11kV(sidewalk_type=SidewalkType.TERRAZZO, feeder_count=3)
-    assert civil_works_rate(net, catalog) == 38000   # 13,000 حفر + 25,000 إعادة (ت-٨)
+    assert civil_works_rate(net, catalog) == 37000   # 12,000 حفر + 25,000 إعادة
 
 
 def test_civil_works_rate_all_fifteen_combinations_match_the_original_file(catalog):
-    """الإجماليات الخمسة عشر — أربعة عشر كما في الملف الأصلي، وواحد بـ ت-٨.
+    """الإجماليات الخمسة عشر كلها كما في الملف الأصلي بلا استثناء.
 
-    التفصيل إلى «حفر» و«إعادة مسار» (ق-٣٨) **لا يغيّر الإجمالي** في ثماني خلايا
-    من تسع. الخلية التاسعة (مقرنص ثلاثي) صارت 38,000 بدل 37,000 لأن المكوّنين
-    اللذين أعطاهما المستخدم يجمعان إليها — تعارض مسجَّل في ت-٨.
+    التفصيل إلى «حفر» و«إعادة مسار» (ق-٣٨) **لا يغيّر أي إجمالي**. كانت خلية
+    واحدة تتحرّك (مقرنص ثلاثي) فحُسمت في ق-٣٩ لصالح الملف الأصلي: الحفر 12,000
+    لا 13,000، فعاد المجموع 37,000.
     """
     expected = {
         ("ترابي", 1): 20000, ("ترابي", 2): 26000, ("ترابي", 3): 31000,
         ("ترابي", 4): 36000, ("ترابي", 5): 39000,
         ("مبلط", 1): 18000, ("مبلط", 2): 22000, ("مبلط", 3): 26000,
         ("مبلط", 4): 30000, ("مبلط", 5): 34000,
-        ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 38000,
+        ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 37000,
         ("مقرنص", 4): 41000, ("مقرنص", 5): 45000,
     }
     for sidewalk in SidewalkType:
@@ -182,7 +182,7 @@ CIVIL_DETAIL = {
     # (الرصيف، تعدّد المسار): (حفر الخندق، إعادة المسار) — بنصّ المستخدم (ق-٣٨)
     ("ترابي", 1): (7000, 13000), ("ترابي", 2): (9000, 17000), ("ترابي", 3): (11000, 20000),
     ("مبلط", 1): (10000, 8000), ("مبلط", 2): (12000, 10000), ("مبلط", 3): (14000, 12000),
-    ("مقرنص", 1): (9000, 25000), ("مقرنص", 2): (11000, 25000), ("مقرنص", 3): (13000, 25000),
+    ("مقرنص", 1): (9000, 25000), ("مقرنص", 2): (11000, 25000), ("مقرنص", 3): (12000, 25000),
 }
 
 
@@ -194,21 +194,22 @@ def test_the_two_civil_components_match_the_user_numbers(catalog):
         assert parts == [("حفر الخندق", dig), ("إعادة المسار", restore)]
 
 
-def test_the_detailed_components_sum_to_the_previous_total_except_one(catalog):
-    """حارس ت-٨: التفصيل لا يحرّك الإجمالي إلا في خلية واحدة معروفة.
+def test_the_detailed_components_sum_to_the_previous_totals_exactly(catalog):
+    """حارس ت-٨ بعد حسمه: التفصيل لا يحرّك أي إجمالي إطلاقاً (ق-٣٩).
 
-    لو حرّك خليةً أخرى — بخطأ إدخال أو تعديل لاحق — يسقط هذا الاختبار.
+    لو حرّك خليةً — بخطأ إدخال أو تعديل لاحق — يسقط هذا الاختبار ويسمّيها.
     """
     previous_totals = {
         ("ترابي", 1): 20000, ("ترابي", 2): 26000, ("ترابي", 3): 31000,
         ("مبلط", 1): 18000, ("مبلط", 2): 22000, ("مبلط", 3): 26000,
         ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 37000,
     }
-    moved = {}
-    for key, (dig, restore) in CIVIL_DETAIL.items():
-        if dig + restore != previous_totals[key]:
-            moved[key] = (previous_totals[key], dig + restore)
-    assert moved == {("مقرنص", 3): (37000, 38000)}
+    moved = {
+        key: (previous_totals[key], dig + restore)
+        for key, (dig, restore) in CIVIL_DETAIL.items()
+        if dig + restore != previous_totals[key]
+    }
+    assert moved == {}, f"خلايا تحرّك إجماليها عن الملف الأصلي: {moved}"
 
 
 def test_the_undetailed_totals_for_four_and_five_are_kept_not_dropped(catalog):
