@@ -184,6 +184,9 @@ def compute_project(project: Project, catalog: dict) -> dict:
 
     return {
         "raw": raw,
+        # نسخة الأسعار التي أنتجت هذه الأرقام — تُطبع على الورقة وتُحفظ مع
+        # المشروع لاحقاً، فلا تتغيّر كلفة أمر عمل قديم بتحديث الأسعار (ق-٤٠).
+        "نسخة_الأسعار": catalog.get("نسخة", ""),
         "المقاطع": list(project.segments),
         "المواد": materials,
         "أجور_العمل": labour,

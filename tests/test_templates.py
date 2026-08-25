@@ -259,6 +259,21 @@ def test_audit_warns_about_the_out_of_table_civil_rate(order, underground_result
     assert "بلا أجر" in html
 
 
+def test_the_audit_sheet_states_which_price_version_produced_it(order, underground_result):
+    """المدقّق يرى بأي أسعار حُسبت الورقة — ورقتان بنسختين مختلفتين ورقتان (ق-٤٠)."""
+    html = printing.get("audit").build_html(order, underground_result)
+    assert f"محسوبة بنسخة الأسعار: {underground_result['نسخة_الأسعار']}" in html
+    assert underground_result["نسخة_الأسعار"]          # ليست فارغة
+
+
+def test_a_result_without_a_price_version_is_flagged_not_hidden(order, underground_result):
+    """نتيجة بلا نسخة أسعار تُطبع بتحذير ظاهر — لا بسطر فارغ صامت."""
+    stripped = dict(underground_result)
+    stripped["نسخة_الأسعار"] = ""
+    html = printing.get("audit").build_html(order, stripped)
+    assert "نسخة الأسعار غير مسجَّلة" in html
+
+
 def test_audit_groups_the_labour_table_into_electrical_and_civil(underground_result, order):
     """جدول الأجور مبوّب: الكهربائية ثم المدنية، ولكل باب مجموعه (ق-٣٨)."""
     html = printing.get("audit").build_html(order, underground_result)

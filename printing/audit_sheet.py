@@ -24,6 +24,19 @@ _EXTRA_CSS = _CSS + """
 
 
 
+
+def _price_version_line(result: dict) -> str:
+    """سطر نسخة الأسعار — يجيب سؤال المدقّق «بأي أسعار حُسبت هذه الورقة؟».
+
+    ورقتان بالأرقام نفسها وبنسختَي أسعار مختلفتين ورقتان مختلفتان. بلا هذا السطر
+    لا سبيل لمعرفة أيّهما، ولا لإعادة إنتاج الورقة بعد تحديث الأسعار (ق-٤٠).
+    """
+    version = result.get("نسخة_الأسعار") or ""
+    if not version:
+        return "⚠ نسخة الأسعار غير مسجَّلة في هذه النتيجة"
+    return f"محسوبة بنسخة الأسعار: {_esc(version)}"
+
+
 def _labour_table(lines: list) -> str:
     """صفوف جدول الأجور مبوّبةً بـ `group`، ولكل باب صفّ مجموع.
 
@@ -131,6 +144,7 @@ def build_html(order: WorkOrder, result: dict) -> str:
 <p align="center" class="h2">{_esc(order.project_name)}</p>
 <p align="center" class="note">أمر عمل رقم {_esc(order.number)} &nbsp;·&nbsp;
    {_fmt_date(order.order_date)} &nbsp;·&nbsp; للمراجعة الداخلية لا للتسليم الرسمي</p>
+<p align="center" class="note">{_price_version_line(result)}</p>
 
 {segments_block}
 <p class="section">أ - المواد وتفصيل مصادر كمياتها</p>
