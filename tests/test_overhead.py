@@ -277,8 +277,8 @@ def test_extra_brackets_added_11kv():
         poles_lattice=10, lattice_supply=WITHOUT, extra_bracket_14=7
     )
     assert (
-        qty_of(materials_11kv(with_extra), "براكيت 1.4 م مع الملحقات")
-        - qty_of(materials_11kv(base), "براكيت 1.4 م مع الملحقات")
+        qty_of(materials_11kv(with_extra), "براكيت جنل 1.4 م مع الملحقات")
+        - qty_of(materials_11kv(base), "براكيت جنل 1.4 م مع الملحقات")
         == 7
     )
 
@@ -339,7 +339,7 @@ def test_bracket_2m_pooling(circuit, supply, expected):
         poles_suspension=30, anchors_mid=3, anchors_end=2,
         circuit=circuit, pole_supply=supply,
     )
-    assert qty_of(materials_33kv(net), "براكيت 2 متر") == expected
+    assert qty_of(materials_33kv(net), "براكيت جنل 2 متر") == expected
 
 
 def test_bracket_2m_pooling_saves_ten_brackets():
@@ -348,7 +348,7 @@ def test_bracket_2m_pooling_saves_ten_brackets():
         poles_suspension=30, anchors_mid=3, anchors_end=2,
         circuit=DOUBLE, pole_supply=WITH,
     )
-    pooled = qty_of(materials_33kv(net), "براكيت 2 متر")
+    pooled = qty_of(materials_33kv(net), "براكيت جنل 2 متر")
     naive = 30 * 3 - 30  # الحاجة ناقص المرفق مع أعمدة التعليق وحدها
     assert naive - pooled == 10
 
@@ -368,7 +368,7 @@ def test_33kv_anchor_items(circuit, b25, pin, disc, fittings):
     """30 عمود تعليق و5 ركائز — أرقام جدول التصحيح في المواصفة ١٠."""
     net = Network33kV(poles_suspension=30, anchors_mid=3, anchors_end=2, circuit=circuit)
     lines = materials_33kv(net)
-    assert qty_of(lines, "براكيت 2.5 متر") == b25
+    assert qty_of(lines, "براكيت جنل 2.5 متر") == b25
     assert qty_of(lines, "عازل دبوسي 33 ك.ف مع السبندل") == pin
     assert qty_of(lines, "عازل قرصي 33 ك.ف مع الملحقات") == disc
     assert qty_of(lines, "معدات ربط ألمنيوم – ألمنيوم 210 ملم²") == fittings
@@ -632,7 +632,7 @@ def test_bracket_breakdown_separates_each_contributor(catalog):
         lattice_supply=WITH, round_supply=WITH, extra_bracket_14=3,
     )
     result = compute(OverheadProject(net11=net), catalog)
-    row = next(r for r in result["المواد"] if r["المادة"] == "براكيت 1.4 م مع الملحقات")
+    row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
     assert row["مجمَّع"] is True
     assert len(row["تفصيل"]) == 3
     # مشبك 5×5=25 (ق-٢١) + مدوّر 16×1 + إضافي 3
@@ -646,7 +646,7 @@ def test_breakdown_shows_the_deduction_of_included_bracket(catalog):
     """المصدر يذكر خصم البراكيت المرفق مع العمود، لا الرقم النهائي وحده."""
     net = Network11kV(poles_lattice=5, lattice_supply=WITH)
     result = compute(OverheadProject(net11=net), catalog)
-    row = next(r for r in result["المواد"] if r["المادة"] == "براكيت 1.4 م مع الملحقات")
+    row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
     assert "مرفق مع العمود" in row["تفصيل"][0]["المصدر"]
 
 

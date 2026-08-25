@@ -127,8 +127,8 @@ class Panel11kV(QWidget):
         form.addRow("نمط البراكيت (للمزدوجة):", self.pattern)
         self.bracket_hint = HintLabel()
         form.addRow(self.bracket_hint)
-        form.addRow("براكيت 1.2م إضافي:", self.extra_12)
-        form.addRow("براكيت 1.4م إضافي:", self.extra_14)
+        form.addRow("براكيت جنل 1.2م إضافي:", self.extra_12)
+        form.addRow("براكيت جنل 1.4م إضافي:", self.extra_14)
         layout.addWidget(box)
 
         # ستي رود
@@ -288,8 +288,8 @@ class Panel33kV(QWidget):
         form.addRow("شكل عمود مشبك 14م:", self.supply)
         self.bracket_hint = HintLabel()
         form.addRow(self.bracket_hint)
-        form.addRow("براكيت 2م إضافي:", self.extra_2)
-        form.addRow("براكيت 2.5م إضافي:", self.extra_25)
+        form.addRow("براكيت جنل 2م إضافي:", self.extra_2)
+        form.addRow("براكيت جنل 2.5م إضافي:", self.extra_25)
         layout.addWidget(box)
 
         box, form = section("ستي رود")
@@ -375,7 +375,7 @@ class Panel33kV(QWidget):
             if net.pole_supply.includes_bracket else 0
         buy = max(0, need - included)
         self.bracket_hint.setText(
-            f"براكيت 2م: الحاجة {need} − المرفق {included} = <b>{buy}</b> للشراء"
+            f"براكيت جنل 2م: الحاجة {need} − المرفق {included} = <b>{buy}</b> للشراء"
             + (f" (فائض {included - need} مُهمَل)" if included > need else "")
         )
         self.stay_hint.setText(
