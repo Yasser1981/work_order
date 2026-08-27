@@ -337,8 +337,16 @@ class Project:
     street_crossing_secondary_m: float = 0.0
     """عبور الشوارع الفرعية — إجمالي للمشروع كله، لا لكل مقطع (بطلب المستخدم)."""
 
+    street_crossing_secondary_feeders: int = 1
+    """عدد المغذيات العابرة في الشوارع الفرعية.
+
+    التعرفة **لمغذٍّ واحد ولمتر واحد** (ق-٤٥)، فالكلفة = التعرفة × الطول × العدد."""
+
     street_crossing_main_m: float = 0.0
     """عبور الشوارع الرئيسية (حفر مخفي) — إجمالي للمشروع كله."""
+
+    street_crossing_main_feeders: int = 1
+    """عدد المغذيات العابرة في الشوارع الرئيسية — كنظيره الفرعي (ق-٤٥)."""
 
     def of_kind(self, kind: SegmentKind) -> list:
         return [s for s in self.segments if s.kind is kind]

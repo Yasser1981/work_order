@@ -423,6 +423,31 @@ def test_warning_renders_as_rich_text_not_raw_markup(window):
     assert window.warning.textFormat() == Qt.TextFormat.RichText
 
 
+def test_street_crossing_feeders_reach_the_engine(window):
+    """حقول المغذيات موصولة فعلاً — التعرفة لمغذٍّ ولمتر (ق-٤٥)."""
+    window.segments.street_main.setValue(10)
+    window.segments.street_main_feeders.setValue(3)
+    line = next(l for l in window.result["أجور_العمل"] if "الرئيسية" in l.name)
+    assert line.qty == 30 and line.cost == 6_000_000
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["أنبوب 8 انج 10 بار"] == 2       # ⌈10 ÷ 6⌉، بلا ضرب بالمغذيات
+
+
+def test_the_street_hint_shows_the_multiplication_and_the_pipes(window):
+    window.segments.street_secondary.setValue(24)
+    window.segments.street_secondary_feeders.setValue(2)
+    text = window.segments.street_hint.text()
+    assert "24 م × 2 مغذيات × 100,000 = <b>4,800,000 د</b>" in text
+    assert "لا يُضرب بعدد المغذيات" in text
+
+
+def test_the_unpriced_pipe_is_reported_not_counted_as_free(window):
+    """سعر الأنبوب لم يصل — يُبلَّغ عنه ولا يُحتسب صفراً بصمت (ت-١٠)."""
+    window.segments.street_main.setValue(10)
+    assert "أنبوب 8 انج 10 بار" in window.result["أسعار_مفقودة"]
+    assert window.warning.text()
+
+
 # ═══════════════════ مقطع التجهيزات ═══════════════════
 
 

@@ -249,13 +249,12 @@ class MainWindow(QMainWindow):
         return self.segments.editor(row)
 
     def recalculate(self) -> None:
-        secondary, main = self.segments.street_crossings()
         project = Project(
             self.order_panel.project_name.text(),
             self.segments.segments(),
-            street_crossing_secondary_m=secondary,
-            street_crossing_main_m=main,
+            **self.segments.street_crossings(),
         )
+        self.segments.refresh_street_hint(self.catalog)
         result = compute_project(project, self.catalog)
         self.result = result
 

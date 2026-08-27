@@ -37,6 +37,7 @@ from .types import (
 )
 from .underground import (
     CIVIL_GROUP,
+    street_crossing_pipes,
     labour_underground11,
     labour_underground33,
     materials_underground11,
@@ -138,18 +139,29 @@ def compute_project(project: Project, catalog: dict) -> dict:
 
     # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠).
     # وهما **ضمن الأعمال المدنية** بنصّ المستخدم، فيحملان وسمها (ق-٣٨).
-    for field_name, label in (
-        ("street_crossing_secondary_m", "عبور الشوارع الفرعية"),
-        ("street_crossing_main_m", "عبور الشوارع الرئيسية – حفر مخفي"),
+    # والتعرفة **لمغذٍّ واحد ولمتر واحد**، فتُضرب بالطول وبعدد المغذيات (ق-٤٥).
+    for length_field, feeders_field, label in (
+        ("street_crossing_secondary_m", "street_crossing_secondary_feeders",
+         "عبور الشوارع الفرعية"),
+        ("street_crossing_main_m", "street_crossing_main_feeders",
+         "عبور الشوارع الرئيسية – حفر مخفي"),
     ):
-        length = getattr(project, field_name)
-        if length:
-            entry = rates[label]
-            labour_raw.append(
-                LabourLine(
-                    label, entry["الوحدة"], length, entry["السعر"], group=CIVIL_GROUP
-                )
+        length = getattr(project, length_field)
+        feeders = getattr(project, feeders_field)
+        if not (length and feeders):
+            continue
+        entry = rates[label]
+        labour_raw.append(
+            LabourLine(
+                label,
+                entry["الوحدة"],
+                length * feeders,
+                entry["السعر"],
+                source=f"شارع {length:,.0f} م × {feeders} مغذيات",
+                group=CIVIL_GROUP,
             )
+        )
+        raw += street_crossing_pipes(length, label)
 
     totals = aggregate(raw)
 

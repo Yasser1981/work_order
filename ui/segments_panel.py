@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import math
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -125,9 +127,15 @@ class SegmentsPanel(QWidget):
         # عبور الشوارع: رقم إجمالي للمشروع كله لا لكل مقطع (بطلب المستخدم، ق-٣٠)
         box, form = section("عبور الشوارع  —  إجمالي للمشروع كله")
         self.street_secondary = number_field(0, 100_000, 0, suffix="م")
+        self.street_secondary_feeders = number_field(1, 100, 1)
         self.street_main = number_field(0, 100_000, 0, suffix="م")
+        self.street_main_feeders = number_field(1, 100, 1)
         form.addRow("طول عبور الشوارع الفرعية:", self.street_secondary)
+        form.addRow("عدد المغذيات العابرة (فرعية):", self.street_secondary_feeders)
         form.addRow("طول عبور الشوارع الرئيسية (حفر مخفي):", self.street_main)
+        form.addRow("عدد المغذيات العابرة (رئيسية):", self.street_main_feeders)
+        self.street_hint = HintLabel()
+        form.addRow(self.street_hint)
         outer.addWidget(box)
 
         self._sync_controls()
@@ -137,8 +145,11 @@ class SegmentsPanel(QWidget):
         self.remove.clicked.connect(self._remove_segment)
         self.up.clicked.connect(lambda: self._move(-1))
         self.down.clicked.connect(lambda: self._move(+1))
-        self.street_secondary.valueChanged.connect(self.changed)
-        self.street_main.valueChanged.connect(self.changed)
+        for widget in (
+            self.street_secondary, self.street_secondary_feeders,
+            self.street_main, self.street_main_feeders,
+        ):
+            widget.valueChanged.connect(self.changed)
         self.list.currentRowChanged.connect(self._on_selection)
         self.name.textEdited.connect(self._rename_current)
 
@@ -236,6 +247,38 @@ class SegmentsPanel(QWidget):
             for row in range(len(self._names))
         ]
 
-    def street_crossings(self) -> tuple[float, float]:
-        """(طول عبور الشوارع الفرعية، طول عبور الشوارع الرئيسية) — للمشروع كله."""
-        return self.street_secondary.value(), self.street_main.value()
+    def street_crossings(self) -> dict:
+        """أطوال عبور الشوارع وأعداد مغذياتها — للمشروع كله (ق-٣٠، ق-٤٥)."""
+        return {
+            "street_crossing_secondary_m": self.street_secondary.value(),
+            "street_crossing_secondary_feeders": self.street_secondary_feeders.value(),
+            "street_crossing_main_m": self.street_main.value(),
+            "street_crossing_main_feeders": self.street_main_feeders.value(),
+        }
+
+    def refresh_street_hint(self, catalog: dict) -> None:
+        """يُظهر أن التعرفة **لمغذٍّ ولمتر**، وأن الأنبوب لا يتبع المغذيات (ق-٤٥)."""
+        from engine.underground import PIPE_LENGTH_M
+
+        rates = catalog["أجور_العمل"]
+        rows = []
+        for length, feeders, label in (
+            (self.street_secondary.value(), self.street_secondary_feeders.value(),
+             "عبور الشوارع الفرعية"),
+            (self.street_main.value(), self.street_main_feeders.value(),
+             "عبور الشوارع الرئيسية – حفر مخفي"),
+        ):
+            if not (length and feeders):
+                continue
+            rate = rates[label]["السعر"]
+            pipes = math.ceil(round(length / PIPE_LENGTH_M, 9))
+            rows.append(
+                f"<b>{label}</b>: {length:,.0f} م × {feeders} مغذيات"
+                f" × {rate:,.0f} = <b>{length * feeders * rate:,.0f} د</b><br>"
+                f"&nbsp;&nbsp;– أنبوب 8 انج: ⌈{length:,.0f} ÷ {PIPE_LENGTH_M}⌉ ="
+                f" <b>{pipes}</b> &nbsp;<i>(لا يُضرب بعدد المغذيات — ت-١٠)</i>"
+            )
+        self.street_hint.setText(
+            "<br>".join(rows)
+            or "التعرفة <b>لمغذٍّ واحد ولمتر واحد</b> — تُضرب بالطول وبعدد المغذيات."
+        )

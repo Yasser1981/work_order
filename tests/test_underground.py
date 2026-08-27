@@ -15,6 +15,7 @@ from engine.underground import (
     CIVIL_GROUP,
     civil_tariff_parts,
     civil_works_rate,
+    street_crossing_pipes,
     materials_underground11,
     resolve_drum_length,
     suggest_straight_boxes,
@@ -360,6 +361,78 @@ def test_street_crossings_are_tagged_as_civil_works(catalog):
     assert len(crossings) == 2
     assert all(l.group == CIVIL_GROUP for l in crossings)
     assert sum(l.cost for l in crossings) == 10 * 100_000 + 5 * 200_000
+
+
+# ═══════════════════ عبور الشوارع — تعرفة لمغذٍّ ولمتر (ق-٤٥) ═══════════════════
+
+
+def test_the_crossing_rate_is_per_feeder_per_metre(catalog):
+    """مثال المستخدم حرفياً: رئيسية 10 م × 3 مغذيات × 200,000 = 6,000,000."""
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=3))],
+        street_crossing_main_m=10,
+        street_crossing_main_feeders=3,
+    )
+    result = compute_project(project, catalog)
+    line = next(l for l in result["أجور_العمل"] if "الرئيسية" in l.name)
+    assert line.qty == 30                       # 10 م × 3 مغذيات
+    assert line.cost == 6_000_000
+    assert line.source == "شارع 10 م × 3 مغذيات"
+
+
+def test_one_feeder_keeps_the_old_result(catalog):
+    """مغذٍّ واحد: الكلفة كما كانت قبل ق-٤٥ — الإضافة لا تحرّك الحالة القائمة."""
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
+        street_crossing_secondary_m=30,
+    )
+    line = next(
+        l for l in compute_project(project, catalog)["أجور_العمل"] if "الفرعية" in l.name
+    )
+    assert line.qty == 30 and line.cost == 3_000_000
+
+
+def test_the_pipe_count_divides_the_street_length_by_six(catalog):
+    """⌈طول الشارع ÷ 6⌉ — لأن طول الأنبوب 6 م (ق-٤٥)."""
+    for length, pipes in ((6, 1), (7, 2), (10, 2), (12, 2), (13, 3), (24, 4)):
+        lines = street_crossing_pipes(length, "عبور")
+        assert lines[0].qty == pipes, length
+
+
+def test_the_pipe_does_not_multiply_by_the_feeders(catalog):
+    """التعرفة تُضرب بعدد المغذيات والأنبوب لا يُضرب — فارق مقصود مسجَّل (ت-١٠)."""
+    def pipes(feeders):
+        project = Project(
+            segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
+            street_crossing_main_m=12,
+            street_crossing_main_feeders=feeders,
+        )
+        result = compute_project(project, catalog)
+        return next(m["الكمية"] for m in result["المواد"] if "أنبوب" in m["المادة"])
+
+    assert pipes(1) == pipes(5) == 2
+
+
+def test_the_pipes_of_both_crossings_aggregate_into_one_row(catalog):
+    """أنبوب الفرعية وأنبوب الرئيسية مادة واحدة — يُجمَّعان ويبقى تفصيلهما."""
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
+        street_crossing_secondary_m=24, street_crossing_main_m=10,
+    )
+    row = next(
+        m for m in compute_project(project, catalog)["المواد"] if "أنبوب" in m["المادة"]
+    )
+    assert row["الكمية"] == 6                   # ⌈24/6⌉ + ⌈10/6⌉ = 4 + 2
+    assert len(row["تفصيل"]) == 2               # سطر لكل نوع عبور
+
+
+def test_no_crossing_means_no_pipes_and_no_labour(catalog):
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))]
+    )
+    result = compute_project(project, catalog)
+    assert not any("أنبوب" in m["المادة"] for m in result["المواد"])
+    assert not any("عبور" in l.name for l in result["أجور_العمل"])
 
 
 def test_a_project_without_underground_has_no_civil_lines(catalog):

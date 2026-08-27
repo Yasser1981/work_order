@@ -23,7 +23,11 @@ from engine.types import (
     Underground11kV,
     Underground33kV,
 )
-from engine.underground import materials_underground11, materials_underground33
+from engine.underground import (
+    materials_underground11,
+    materials_underground33,
+    street_crossing_pipes,
+)
 
 EXCEL_MATERIALS = [
     ("سلك ألمنيوم 120/20 ملم²", "متر"),
@@ -116,9 +120,9 @@ RENAMED = {
         ("صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف", "عدد"),
 }
 
-DEFERRED = {
-    # 11 و33 ك.ف صارا داخل النطاق بـ ق-٣٠ و ق-٣١ — يُولَّدان فعلاً
-    ("أنبوب 8 انج 10 بار", "روطة"): "عبور الشوارع بالأنابيب (ق-١٢)",
+DEFERRED: dict[tuple[str, str], str] = {
+    # لم يبقَ مؤجَّل: «أنبوب 8 انج 10 بار» كان آخرها، ورُبط بالمحرك في ق-٤٥
+    # (عدد الأنابيب = ⌈طول الشارع ÷ 6⌉).
 }
 
 
@@ -174,6 +178,11 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
         )
         for line in materials_underground33(ug33, catalog):
             produced.add((line.name, line.unit))
+
+    # عبور الشوارع بند على مستوى المشروع لا داخل مقطع (ق-٣٠)، وأنبوبه مادة
+    # لا يولّدها أي مقطع — فلولا هذا السطر لفات الحارسَ (ق-٤٥)
+    for line in street_crossing_pipes(30, "عبور الشوارع الفرعية"):
+        produced.add((line.name, line.unit))
 
     return produced
 

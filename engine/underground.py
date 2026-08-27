@@ -242,6 +242,30 @@ def _civil_labour_lines(
     ]
 
 
+M_CROSSING_PIPE = ("أنبوب 8 انج 10 بار", "روطة")
+
+PIPE_LENGTH_M = 6
+"""طول الأنبوب الواحد (م). عدد الأنابيب = ⌈طول الشارع ÷ 6⌉ (ق-٤٥)."""
+
+
+def street_crossing_pipes(street_length_m: float, label: str) -> list[MaterialLine]:
+    """أنابيب عبور الشارع = ⌈طول الشارع ÷ 6⌉ (ق-٤٥).
+
+    **الطول هنا طول الشارع المعبور، لا طول المسار.** والعدد **لا يُضرب بعدد
+    المغذيات** — هكذا أملاه المستخدم حرفياً، خلافاً للتعرفة التي تُضرب بها.
+    وهذا فارق مقصود مسجَّل، لا سهو: انظر ت-١٠ في سجل القرارات.
+    """
+    if street_length_m <= 0:
+        return []
+    return [
+        MaterialLine(
+            *M_CROSSING_PIPE,
+            _roundup(street_length_m / PIPE_LENGTH_M),
+            f"{label}: شارع {street_length_m:,.0f} م ÷ {PIPE_LENGTH_M} م للأنبوب",
+        )
+    ]
+
+
 def trench_materials(
     route_length_m: float, feeder_count: int, catalog: dict
 ) -> list[MaterialLine]:
