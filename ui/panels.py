@@ -765,13 +765,13 @@ def _civil_hint_text(sidewalk_type, count, route_length_m, catalog) -> str:
     """نصّ تلميح الأعمال المدنية — يعرض **المكوّنين** ومجموعهما لا الإجمالي وحده.
 
     المقصد أن يرى المستخدم من أين جاء الرقم: حفر الخندق كذا، وإعادة المسار كذا
-    (ق-٣٨). ما دام العدد خارج الجدول يُعرض تحذير بدل رقم مخمَّن.
+    (ق-٣٨). وما زاد على 5 مغذيات يُعرض بامتداده المحسوب (ق-٤٤).
     """
     parts = civil_tariff_parts(sidewalk_type, count, catalog)
     if any(rate is None for _name, rate in parts):
         return (
             f"⚠️ لا تعرفة لـ «{sidewalk_type.value} × {count}» — "
-            "عدد المغذيات خارج الجدول (1 إلى 5)."
+            "راجع جدول «تعرفة_الأعمال_المدنية» في نسخة الأسعار."
         )
     rows = [
         f"&nbsp;&nbsp;– {name}: {route_length_m:,.0f} م × {rate:,.0f} د/م = "
@@ -784,7 +784,7 @@ def _civil_hint_text(sidewalk_type, count, route_length_m, catalog) -> str:
         f"{route_length_m * total:,.0f} د</b>"
     )
     if len(parts) == 1:
-        rows.insert(0, "⚠️ لم يصلنا تفصيل هذا العدد إلى «حفر» و«إعادة مسار» بعد:")
+        rows.insert(0, "⚠️ لم يصل تفصيل هذا العدد إلى «حفر» و«إعادة مسار» بعد:")
     return "<br>".join(rows)
 
 

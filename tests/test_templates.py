@@ -179,19 +179,15 @@ def segmented_result():
     return compute_project(project, load_catalog())
 
 
-def test_audit_survives_a_labour_item_with_no_rate(order, underground_result):
-    """كان القالب ينهار على أي أجر بلا سعر — الأجر None لا يُنسَّق كرقم.
-
-    المصدر الطبيعي الوحيد لأجر مفقود بعد ق-٣٦ هو تعرفة أعمال مدنية خارج الجدول
-    (أكثر من 5 مغذيات)، وهو ما يبنيه `underground_result`.
-    """
-    html = printing.get("audit").build_html(order, underground_result)
-    assert underground_result["أجور_مفقودة"]
+def test_audit_survives_a_labour_item_with_no_rate(order, underground_result_missing_rate):
+    """كان القالب ينهار على أي أجر بلا سعر — الأجر None لا يُنسَّق كرقم (خ-١)."""
+    html = printing.get("audit").build_html(order, underground_result_missing_rate)
+    assert underground_result_missing_rate["أجور_مفقودة"]
     assert "بلا أجر" in html
 
 
-def test_audit_warns_about_missing_rates_too(order, underground_result):
-    html = printing.get("audit").build_html(order, underground_result)
+def test_audit_warns_about_missing_rates_too(order, underground_result_missing_rate):
+    html = printing.get("audit").build_html(order, underground_result_missing_rate)
     assert "بنود بلا أجر" in html
 
 
@@ -218,16 +214,10 @@ def test_every_template_handles_a_segmented_project(key, order, segmented_result
 # ═══════════════════ الشبكة الأرضية 11 ك.ف ═══════════════════
 
 
-@pytest.fixture(scope="module")
-def underground_result():
-    """مشروع أرضي فيه بند أجر بلا سعر — عدد مغذيات خارج جدول التعرفة.
-
-    التعرفة خارج الجدول تبقى المصدر الطبيعي الوحيد لأجر مفقود بعد ق-٣٦.
-    """
-    from engine.project import compute_project
+def _underground_project():
     from engine.types import Project, Segment, SidewalkType, Underground11kV
 
-    project = Project(
+    return Project(
         "مشروع أرضي",
         [
             Segment(
@@ -241,22 +231,50 @@ def underground_result():
         street_crossing_secondary_m=30,
         street_crossing_main_m=10,
     )
-    return compute_project(project, load_catalog())
+
+
+@pytest.fixture(scope="module")
+def underground_result():
+    """مشروع أرضي كامل التسعير — 6 مغذيات صارت مسعّرة بعد ق-٤٤."""
+    from engine.project import compute_project
+
+    return compute_project(_underground_project(), load_catalog())
+
+
+@pytest.fixture(scope="module")
+def underground_result_missing_rate():
+    """المشروع نفسه وقد حُذفت تعرفة الأعمال المدنية من نسخة الأسعار.
+
+    لم يعد للأجر المفقود مصدر طبيعي بعد ق-٤٤ — كل عدد مغذيات صار مسعّراً.
+    فيُحقَن الغياب في **نسخة** من الأسعار بدل بناء الاختبار على ثغرة مسدودة
+    (نفس نهج ق-٣٦ مع المواد بلا سعر).
+    """
+    import copy
+
+    from engine.project import compute_project
+
+    catalog = copy.deepcopy(load_catalog())
+    catalog["تعرفة_الأعمال_المدنية"] = {}
+    return compute_project(_underground_project(), catalog)
 
 
 @pytest.mark.parametrize("key", ["iso", "audit"])
 def test_every_template_survives_an_underground_segment_with_a_missing_rate(
-    key, order, underground_result, tmp_path, qapp
+    key, order, underground_result_missing_rate, tmp_path, qapp
 ):
-    """أهمّ اختبار: عدد مغذيات خارج جدول التعرفة يُنتج أجراً بلا سعر — لا انهيار (ق-٣٠)."""
-    path = printing.get(key).write_pdf(order, underground_result, str(tmp_path / f"{key}.pdf"))
+    """أهمّ اختبار: أجر بلا سعر لا يُسقط الطباعة (ق-٣٠، خ-١)."""
+    path = printing.get(key).write_pdf(
+        order, underground_result_missing_rate, str(tmp_path / f"{key}.pdf")
+    )
     assert (tmp_path / f"{key}.pdf").read_bytes().startswith(b"%PDF")
 
 
-def test_audit_warns_about_the_out_of_table_civil_rate(order, underground_result):
+def test_audit_prints_the_extended_civil_rate_not_a_blank(order, underground_result):
+    """6 مغذيات: تعرفة ممتدّة مسعّرة (ق-٤٤)، لا «بلا أجر» كما كان."""
     html = printing.get("audit").build_html(order, underground_result)
     assert "الأعمال المدنية" in html
-    assert "بلا أجر" in html
+    assert not underground_result["أجور_مفقودة"]
+    assert "43,000" in html          # ترابي: 39,000 + مغذٍّ واحد × 4,000
 
 
 def test_the_audit_sheet_states_which_price_version_produced_it(order, underground_result):

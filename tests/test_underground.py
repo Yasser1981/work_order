@@ -266,6 +266,41 @@ def test_the_detailed_components_sum_to_the_previous_totals_exactly(catalog):
     assert moved == {}, f"خلايا تحرّك إجماليها عن الملف الأصلي: {moved}"
 
 
+def test_beyond_five_feeders_the_tariff_extends_by_a_fixed_step(catalog):
+    """ما زاد على 5 مغذيات: +4,000 د/م لكل مغذٍّ إضافي بنصّك (ق-٤٤).
+
+    كانت 6 مغذيات فأكثر تُطبع «بلا أجر» — ثغرة فتحها جدول عرض الخندق الذي
+    يبلغ 8 بينما تقف التعرفة عند 5.
+    """
+    expected = {
+        "ترابي": {5: 39000, 6: 43000, 7: 47000, 8: 51000, 12: 67000},
+        "مبلط": {5: 34000, 6: 38000, 7: 42000, 8: 46000, 12: 62000},
+        "مقرنص": {5: 45000, 6: 49000, 7: 53000, 8: 57000, 12: 73000},
+    }
+    for sidewalk_value, rows in expected.items():
+        sidewalk = next(s for s in SidewalkType if s.value == sidewalk_value)
+        for count, total in rows.items():
+            parts = civil_tariff_parts(sidewalk, count, catalog)
+            assert sum(rate for _name, rate in parts) == total, (sidewalk_value, count)
+
+
+def test_the_extended_tariff_is_flagged_as_undetailed(catalog):
+    """الامتداد مبنيّ على تعرفة الخمسة وهي إجمالٌ غير مفصَّل — فيرث وسمها."""
+    parts = civil_tariff_parts(SidewalkType.PAVED, 7, catalog)
+    assert len(parts) == 1
+    name, _rate = parts[0]
+    assert "غير مفصَّل" in name
+    assert "5 مغذيات + 2 ×" in name        # المصدر يُظهر الحساب لا النتيجة
+
+
+def test_no_feeder_count_is_left_without_a_civil_rate(catalog):
+    """حارس الثغرة: كل عدد مغذيات يُنتج تعرفة — لا «بلا أجر» بعد ق-٤٤."""
+    for sidewalk in SidewalkType:
+        for count in range(1, 21):
+            parts = civil_tariff_parts(sidewalk, count, catalog)
+            assert all(rate is not None for _name, rate in parts), (sidewalk, count)
+
+
 def test_the_undetailed_totals_for_four_and_five_are_kept_not_dropped(catalog):
     """4 و5 مغذيات: الإجمالي القديم محفوظ كما هو وموسوم بأنه غير مفصَّل (ق-٠)."""
     for count, expected in ((4, 30000), (5, 34000)):
@@ -276,12 +311,20 @@ def test_the_undetailed_totals_for_four_and_five_are_kept_not_dropped(catalog):
         assert rate == expected
 
 
-def test_civil_works_rate_beyond_the_table_is_reported_not_guessed(catalog):
-    """6 مغذيات خارج الجدول (1-5 فقط) — يُبلَّغ عنه لا يُخمَّن."""
-    net = Underground11kV(route_length_m=100, feeder_count=6)
-    assert civil_works_rate(net, catalog) is None
+def test_a_missing_tariff_table_is_reported_not_guessed(catalog):
+    """بلا جدول تعرفة أصلاً: يُبلَّغ عنه ولا يُخمَّن رقم (ق-٣٠).
 
-    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    كانت 6 مغذيات هي الحالة الطبيعية لهذا — وسُدّت في ق-٤٤ بامتداد التعرفة،
+    فصار الغياب يُحقَن في **نسخة** من الأسعار كما في ق-٣٦.
+    """
+    import copy
+
+    stripped = copy.deepcopy(catalog)
+    stripped["تعرفة_الأعمال_المدنية"] = {}
+    net = Underground11kV(route_length_m=100, feeder_count=6)
+    assert civil_works_rate(net, stripped) is None
+
+    result = compute_project(Project(segments=[Segment("م", net)]), stripped)
     assert "الحفر وإعادة المسار — رصيف ترابي، مسار 6 مغذيات" in result["أجور_مفقودة"]
 
 
