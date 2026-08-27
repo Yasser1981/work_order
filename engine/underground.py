@@ -248,20 +248,32 @@ PIPE_LENGTH_M = 6
 """طول الأنبوب الواحد (م). عدد الأنابيب = ⌈طول الشارع ÷ 6⌉ (ق-٤٥)."""
 
 
-def street_crossing_pipes(street_length_m: float, label: str) -> list[MaterialLine]:
-    """أنابيب عبور الشارع = ⌈طول الشارع ÷ 6⌉ (ق-٤٥).
+def street_crossing_pipes(
+    street_length_m: float, feeder_count: int, label: str
+) -> list[MaterialLine]:
+    """أنابيب عبور الشارع — **للشوارع الفرعية وحدها** (ق-٤٦).
 
-    **الطول هنا طول الشارع المعبور، لا طول المسار.** والعدد **لا يُضرب بعدد
-    المغذيات** — هكذا أملاه المستخدم حرفياً، خلافاً للتعرفة التي تُضرب بها.
-    وهذا فارق مقصود مسجَّل، لا سهو: انظر ت-١٠ في سجل القرارات.
+    ```
+    العدد = ⌈طول الشارع ÷ 6⌉ × عدد المغذيات العابرة
+    ```
+
+    **لكل مغذٍّ أنبوبه الخاص** بتصحيح المستخدم في ق-٤٦ — كان لا يُضرب بعددهم
+    في ق-٤٥ فصُحّح.
+
+    **والطول هنا طول الشارع المعبور، لا طول المسار.**
+
+    **ولا أنبوب للشوارع الرئيسية** — عبورها «حفر مخفي»، والأنبوب يُحسب للفرعية
+    فقط بنصّ المستخدم. فالمناداة على هذه الدالة مسؤولية المستدعي.
     """
-    if street_length_m <= 0:
+    if street_length_m <= 0 or feeder_count <= 0:
         return []
+    per_feeder = _roundup(street_length_m / PIPE_LENGTH_M)
     return [
         MaterialLine(
             *M_CROSSING_PIPE,
-            _roundup(street_length_m / PIPE_LENGTH_M),
-            f"{label}: شارع {street_length_m:,.0f} م ÷ {PIPE_LENGTH_M} م للأنبوب",
+            per_feeder * feeder_count,
+            f"{label}: ⌈شارع {street_length_m:,.0f} م ÷ {PIPE_LENGTH_M} م⌉"
+            f" × {feeder_count} مغذيات",
         )
     ]
 

@@ -429,8 +429,13 @@ def test_street_crossing_feeders_reach_the_engine(window):
     window.segments.street_main_feeders.setValue(3)
     line = next(l for l in window.result["أجور_العمل"] if "الرئيسية" in l.name)
     assert line.qty == 30 and line.cost == 6_000_000
+    # ولا أنبوب للرئيسية — حفر مخفي (ق-٤٦)
+    assert not any("أنبوب" in m["المادة"] for m in window.result["المواد"])
+
+    window.segments.street_secondary.setValue(10)
+    window.segments.street_secondary_feeders.setValue(3)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
-    assert quantities["أنبوب 8 انج 10 بار"] == 2       # ⌈10 ÷ 6⌉، بلا ضرب بالمغذيات
+    assert quantities["أنبوب 8 انج 10 بار"] == 6       # ⌈10 ÷ 6⌉ × 3 مغذيات
 
 
 def test_the_street_hint_shows_the_multiplication_and_the_pipes(window):
@@ -438,14 +443,16 @@ def test_the_street_hint_shows_the_multiplication_and_the_pipes(window):
     window.segments.street_secondary_feeders.setValue(2)
     text = window.segments.street_hint.text()
     assert "24 م × 2 مغذيات × 100,000 = <b>4,800,000 د</b>" in text
-    assert "لا يُضرب بعدد المغذيات" in text
+    assert "⌈24 ÷ 6⌉ × 2 = <b>8</b>" in text
 
 
-def test_the_unpriced_pipe_is_reported_not_counted_as_free(window):
-    """سعر الأنبوب لم يصل — يُبلَّغ عنه ولا يُحتسب صفراً بصمت (ت-١٠)."""
-    window.segments.street_main.setValue(10)
-    assert "أنبوب 8 انج 10 بار" in window.result["أسعار_مفقودة"]
-    assert window.warning.text()
+def test_the_pipe_is_quantity_only_and_raises_no_warning(window):
+    """كلفة الأنبوب ضمن أجر العبور — كمية بلا كلفة، ولا تحذير أصفر (ق-٤٦)."""
+    window.segments.street_secondary.setValue(10)
+    row = next(m for m in window.result["المواد"] if "أنبوب" in m["المادة"])
+    assert row["كمية_فقط"] is True and row["الكلفة"] == 0
+    assert not window.result["أسعار_مفقودة"]
+    assert not window.warning.text()
 
 
 # ═══════════════════ مقطع التجهيزات ═══════════════════

@@ -140,11 +140,12 @@ def compute_project(project: Project, catalog: dict) -> dict:
     # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠).
     # وهما **ضمن الأعمال المدنية** بنصّ المستخدم، فيحملان وسمها (ق-٣٨).
     # والتعرفة **لمغذٍّ واحد ولمتر واحد**، فتُضرب بالطول وبعدد المغذيات (ق-٤٥).
-    for length_field, feeders_field, label in (
+    # والأنبوب **للفرعية وحدها** — الرئيسية حفر مخفي بلا أنبوب (ق-٤٦)
+    for length_field, feeders_field, label, has_pipes in (
         ("street_crossing_secondary_m", "street_crossing_secondary_feeders",
-         "عبور الشوارع الفرعية"),
+         "عبور الشوارع الفرعية", True),
         ("street_crossing_main_m", "street_crossing_main_feeders",
-         "عبور الشوارع الرئيسية – حفر مخفي"),
+         "عبور الشوارع الرئيسية – حفر مخفي", False),
     ):
         length = getattr(project, length_field)
         feeders = getattr(project, feeders_field)
@@ -161,7 +162,8 @@ def compute_project(project: Project, catalog: dict) -> dict:
                 group=CIVIL_GROUP,
             )
         )
-        raw += street_crossing_pipes(length, label)
+        if has_pipes:
+            raw += street_crossing_pipes(length, feeders, label)
 
     totals = aggregate(raw)
 

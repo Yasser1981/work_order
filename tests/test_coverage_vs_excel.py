@@ -181,7 +181,7 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
 
     # عبور الشوارع بند على مستوى المشروع لا داخل مقطع (ق-٣٠)، وأنبوبه مادة
     # لا يولّدها أي مقطع — فلولا هذا السطر لفات الحارسَ (ق-٤٥)
-    for line in street_crossing_pipes(30, "عبور الشوارع الفرعية"):
+    for line in street_crossing_pipes(30, 1, "عبور الشوارع الفرعية"):
         produced.add((line.name, line.unit))
 
     return produced

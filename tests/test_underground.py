@@ -393,37 +393,65 @@ def test_one_feeder_keeps_the_old_result(catalog):
 
 
 def test_the_pipe_count_divides_the_street_length_by_six(catalog):
-    """⌈طول الشارع ÷ 6⌉ — لأن طول الأنبوب 6 م (ق-٤٥)."""
+    """⌈طول الشارع ÷ 6⌉ لكل مغذٍّ — لأن طول الأنبوب 6 م (ق-٤٥، ق-٤٦)."""
     for length, pipes in ((6, 1), (7, 2), (10, 2), (12, 2), (13, 3), (24, 4)):
-        lines = street_crossing_pipes(length, "عبور")
-        assert lines[0].qty == pipes, length
+        assert street_crossing_pipes(length, 1, "عبور")[0].qty == pipes, length
 
 
-def test_the_pipe_does_not_multiply_by_the_feeders(catalog):
-    """التعرفة تُضرب بعدد المغذيات والأنبوب لا يُضرب — فارق مقصود مسجَّل (ت-١٠)."""
+def test_each_feeder_gets_its_own_pipe(catalog):
+    """لكل مغذٍّ أنبوبه الخاص — تصحيح المستخدم في ق-٤٦ لِما نُفِّذ في ق-٤٥."""
     def pipes(feeders):
         project = Project(
             segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
-            street_crossing_main_m=12,
-            street_crossing_main_feeders=feeders,
+            street_crossing_secondary_m=12,
+            street_crossing_secondary_feeders=feeders,
         )
         result = compute_project(project, catalog)
         return next(m["الكمية"] for m in result["المواد"] if "أنبوب" in m["المادة"])
 
-    assert pipes(1) == pipes(5) == 2
+    assert pipes(1) == 2                        # ⌈12 ÷ 6⌉
+    assert pipes(3) == 6                        # × 3 مغذيات
+    assert pipes(5) == 10
 
 
-def test_the_pipes_of_both_crossings_aggregate_into_one_row(catalog):
-    """أنبوب الفرعية وأنبوب الرئيسية مادة واحدة — يُجمَّعان ويبقى تفصيلهما."""
+def test_the_main_street_crossing_has_no_pipes_at_all(catalog):
+    """الرئيسية «حفر مخفي» — الأنبوب للفرعية وحدها بنصّ المستخدم (ق-٤٦)."""
     project = Project(
         segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
-        street_crossing_secondary_m=24, street_crossing_main_m=10,
+        street_crossing_main_m=30, street_crossing_main_feeders=4,
+    )
+    result = compute_project(project, catalog)
+    assert not any("أنبوب" in m["المادة"] for m in result["المواد"])
+    # ومع ذلك أجر العبور محسوب كاملاً
+    assert next(l for l in result["أجور_العمل"] if "الرئيسية" in l.name).cost == 24_000_000
+
+
+def test_only_the_secondary_pipes_are_counted_when_both_exist(catalog):
+    """عبوران معاً: الأنبوب من الفرعية وحدها لا من الاثنين."""
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
+        street_crossing_secondary_m=24, street_crossing_secondary_feeders=2,
+        street_crossing_main_m=30, street_crossing_main_feeders=2,
     )
     row = next(
         m for m in compute_project(project, catalog)["المواد"] if "أنبوب" in m["المادة"]
     )
-    assert row["الكمية"] == 6                   # ⌈24/6⌉ + ⌈10/6⌉ = 4 + 2
-    assert len(row["تفصيل"]) == 2               # سطر لكل نوع عبور
+    assert row["الكمية"] == 8                   # ⌈24/6⌉ × 2 — ولا شيء من الرئيسية
+    assert len(row["تفصيل"]) == 1
+    assert "الفرعية" in row["تفصيل"][0]["المصدر"]
+
+
+def test_the_pipe_is_quantity_only_like_the_trench_materials(catalog):
+    """كلفته ضمن أجر عبور الشوارع الفرعية — كمية بلا كلفة (ق-٤٦)."""
+    assert catalog["المواد"]["أنبوب 8 انج 10 بار"]["كمية_فقط"] is True
+    project = Project(
+        segments=[Segment("م", Underground11kV(route_length_m=100, feeder_count=1))],
+        street_crossing_secondary_m=24,
+    )
+    result = compute_project(project, catalog)
+    row = next(m for m in result["المواد"] if "أنبوب" in m["المادة"])
+    assert row["الكمية"] == 4 and row["الكلفة"] == 0
+    assert not result["أسعار_مفقودة"]           # لا تحذير — لا سعر مفقوداً
 
 
 def test_no_crossing_means_no_pipes_and_no_labour(catalog):

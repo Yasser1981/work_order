@@ -262,22 +262,29 @@ class SegmentsPanel(QWidget):
 
         rates = catalog["أجور_العمل"]
         rows = []
-        for length, feeders, label in (
+        for length, feeders, label, has_pipes in (
             (self.street_secondary.value(), self.street_secondary_feeders.value(),
-             "عبور الشوارع الفرعية"),
+             "عبور الشوارع الفرعية", True),
             (self.street_main.value(), self.street_main_feeders.value(),
-             "عبور الشوارع الرئيسية – حفر مخفي"),
+             "عبور الشوارع الرئيسية – حفر مخفي", False),
         ):
             if not (length and feeders):
                 continue
             rate = rates[label]["السعر"]
-            pipes = math.ceil(round(length / PIPE_LENGTH_M, 9))
-            rows.append(
+            row = (
                 f"<b>{label}</b>: {length:,.0f} م × {feeders} مغذيات"
-                f" × {rate:,.0f} = <b>{length * feeders * rate:,.0f} د</b><br>"
-                f"&nbsp;&nbsp;– أنبوب 8 انج: ⌈{length:,.0f} ÷ {PIPE_LENGTH_M}⌉ ="
-                f" <b>{pipes}</b> &nbsp;<i>(لا يُضرب بعدد المغذيات — ت-١٠)</i>"
+                f" × {rate:,.0f} = <b>{length * feeders * rate:,.0f} د</b>"
             )
+            if has_pipes:
+                per_feeder = math.ceil(round(length / PIPE_LENGTH_M, 9))
+                row += (
+                    f"<br>&nbsp;&nbsp;– أنبوب 8 انج: ⌈{length:,.0f} ÷ {PIPE_LENGTH_M}⌉"
+                    f" × {feeders} = <b>{per_feeder * feeders}</b>"
+                    " &nbsp;<i>(كمية بلا كلفة)</i>"
+                )
+            else:
+                row += "<br>&nbsp;&nbsp;<i>حفر مخفي — بلا أنبوب</i>"
+            rows.append(row)
         self.street_hint.setText(
             "<br>".join(rows)
             or "التعرفة <b>لمغذٍّ واحد ولمتر واحد</b> — تُضرب بالطول وبعدد المغذيات."
