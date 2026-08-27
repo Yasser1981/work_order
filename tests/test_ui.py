@@ -435,7 +435,7 @@ def test_street_crossing_feeders_reach_the_engine(window):
     window.segments.street_secondary.setValue(10)
     window.segments.street_secondary_feeders.setValue(3)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
-    assert quantities["أنبوب 8 انج 10 بار"] == 6       # ⌈10 ÷ 6⌉ × 3 مغذيات
+    assert quantities["أنبوب 8 انج 10 بار"] == 7       # ⌈10÷6⌉ × 3 مغذيات + احتياط
 
 
 def test_the_street_hint_shows_the_multiplication_and_the_pipes(window):
@@ -443,7 +443,7 @@ def test_the_street_hint_shows_the_multiplication_and_the_pipes(window):
     window.segments.street_secondary_feeders.setValue(2)
     text = window.segments.street_hint.text()
     assert "24 م × 2 مغذيات × 100,000 = <b>4,800,000 د</b>" in text
-    assert "⌈24 ÷ 6⌉ × 2 = <b>8</b>" in text
+    assert "⌈24 ÷ 6⌉ × 2 + 1 احتياط = <b>9</b>" in text
 
 
 def test_the_pipe_is_quantity_only_and_raises_no_warning(window):

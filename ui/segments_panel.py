@@ -258,7 +258,7 @@ class SegmentsPanel(QWidget):
 
     def refresh_street_hint(self, catalog: dict) -> None:
         """يُظهر أن التعرفة **لمغذٍّ ولمتر**، وأن الأنبوب لا يتبع المغذيات (ق-٤٥)."""
-        from engine.underground import PIPE_LENGTH_M
+        from engine.underground import PIPE_LENGTH_M, SPARE_PIPES
 
         rates = catalog["أجور_العمل"]
         rows = []
@@ -279,7 +279,8 @@ class SegmentsPanel(QWidget):
                 per_feeder = math.ceil(round(length / PIPE_LENGTH_M, 9))
                 row += (
                     f"<br>&nbsp;&nbsp;– أنبوب 8 انج: ⌈{length:,.0f} ÷ {PIPE_LENGTH_M}⌉"
-                    f" × {feeders} = <b>{per_feeder * feeders}</b>"
+                    f" × {feeders} + {SPARE_PIPES} احتياط ="
+                    f" <b>{per_feeder * feeders + SPARE_PIPES}</b>"
                     " &nbsp;<i>(كمية بلا كلفة)</i>"
                 )
             else:

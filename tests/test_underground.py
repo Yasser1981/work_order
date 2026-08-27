@@ -411,9 +411,17 @@ def test_one_feeder_keeps_the_old_result(catalog):
 
 
 def test_the_pipe_count_divides_the_street_length_by_six(catalog):
-    """⌈طول الشارع ÷ 6⌉ لكل مغذٍّ — لأن طول الأنبوب 6 م (ق-٤٥، ق-٤٦)."""
+    """⌈طول الشارع ÷ 6⌉ لكل مغذٍّ، + أنبوب احتياط (ق-٤٥، ق-٤٦، ق-٤٨)."""
     for length, pipes in ((6, 1), (7, 2), (10, 2), (12, 2), (13, 3), (24, 4)):
-        assert street_crossing_pipes(length, 1, "عبور")[0].qty == pipes, length
+        assert street_crossing_pipes(length, 1, "عبور")[0].qty == pipes + 1, length
+
+
+def test_one_spare_pipe_is_added_once_not_per_feeder(catalog):
+    """الاحتياط **واحد للعبور كلّه** لا لكل مغذٍّ — بصيغة المفرد في نصّك (ق-٤٨)."""
+    for feeders in (1, 3, 8):
+        line = street_crossing_pipes(12, feeders, "عبور")[0]
+        assert line.qty == 2 * feeders + 1, feeders
+        assert "1 احتياط" in line.source
 
 
 def test_each_feeder_gets_its_own_pipe(catalog):
@@ -427,9 +435,9 @@ def test_each_feeder_gets_its_own_pipe(catalog):
         result = compute_project(project, catalog)
         return next(m["الكمية"] for m in result["المواد"] if "أنبوب" in m["المادة"])
 
-    assert pipes(1) == 2                        # ⌈12 ÷ 6⌉
-    assert pipes(3) == 6                        # × 3 مغذيات
-    assert pipes(5) == 10
+    assert pipes(1) == 2 + 1                    # ⌈12 ÷ 6⌉ + احتياط
+    assert pipes(3) == 6 + 1                    # × 3 مغذيات + احتياط
+    assert pipes(5) == 10 + 1
 
 
 def test_the_main_street_crossing_has_no_pipes_at_all(catalog):
@@ -454,7 +462,7 @@ def test_only_the_secondary_pipes_are_counted_when_both_exist(catalog):
     row = next(
         m for m in compute_project(project, catalog)["المواد"] if "أنبوب" in m["المادة"]
     )
-    assert row["الكمية"] == 8                   # ⌈24/6⌉ × 2 — ولا شيء من الرئيسية
+    assert row["الكمية"] == 9                   # ⌈24/6⌉ × 2 + احتياط، ولا شيء من الرئيسية
     assert len(row["تفصيل"]) == 1
     assert "الفرعية" in row["تفصيل"][0]["المصدر"]
 
@@ -468,7 +476,7 @@ def test_the_pipe_is_quantity_only_like_the_trench_materials(catalog):
     )
     result = compute_project(project, catalog)
     row = next(m for m in result["المواد"] if "أنبوب" in m["المادة"])
-    assert row["الكمية"] == 4 and row["الكلفة"] == 0
+    assert row["الكمية"] == 5 and row["الكلفة"] == 0   # ⌈24/6⌉ + احتياط
     assert not result["أسعار_مفقودة"]           # لا تحذير — لا سعر مفقوداً
 
 
