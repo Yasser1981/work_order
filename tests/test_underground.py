@@ -103,38 +103,92 @@ def test_drum_length_user_value_overrides_the_default(catalog):
 # ═══════════════════ المواد ═══════════════════
 
 
-def test_materials_match_the_users_worked_example():
+def test_materials_match_the_users_worked_example(catalog):
     net = Underground11kV(
         route_length_m=600, feeder_count=2, straight_boxes=4,
         end_boxes_internal=1, end_boxes_external=1,
     )
-    lines = materials_underground11(net)
+    lines = materials_underground11(net, catalog)
     assert qty(lines, "قابلو 3×150 ملم² جهد 11 ك.ف") == 1320       # 600×2×1.1
     assert qty(lines, "صندوق مستقيم 3×150 ملم² جهد 11 ك.ف") == 4
     assert qty(lines, "صندوق نهاية داخلي 3×150 ملم² جهد 11 ك.ف") == 1
     assert qty(lines, "صندوق نهاية خارجي 3×150 ملم² جهد 11 ك.ف") == 1
 
 
-def test_trench_materials_depend_on_route_length_only_not_on_feeder_count():
-    """الشتايكر والرمل والشريط لا يتضاعفون بعدد المغذيات — خندق واحد."""
-    single = materials_underground11(Underground11kV(route_length_m=500, feeder_count=1))
-    triple = materials_underground11(Underground11kV(route_length_m=500, feeder_count=3))
-    for name in ("شتايكر 50×50×5 سم", "رمل نهري", "شريط تحذير"):
-        assert qty(single, name) == qty(triple, name)
+def test_the_trench_is_one_trench_but_its_width_follows_the_feeders(catalog):
+    """خندق واحد لا خنادق — لكن عرضه يتّسع بعدد المغذيات، فتتبعه كمية الرمل (ق-٤٣).
+
+    قبل ق-٤٣ كان العرض مثبَّتاً عند 0.6 م (وهو عرض المغذيَّين)، فكانت الكميات
+    الثلاث متطابقة مهما بلغ عدد المغذيات.
+    """
+    one = materials_underground11(Underground11kV(route_length_m=500, feeder_count=1), catalog)
+    three = materials_underground11(Underground11kV(route_length_m=500, feeder_count=3), catalog)
+
+    # الرمل يتّسع: 500 × 0.5 × 0.4 = 100 ← 500 × 0.8 × 0.4 = 160
+    assert qty(one, "رمل نهري") == 100
+    assert qty(three, "رمل نهري") == 160
+
+    # والشتايكر والشريط لا يتضاعفان ما دام العرض دون المتر
+    for name in ("شتايكر 50×50×5 سم", "شريط تحذير"):
+        assert qty(one, name) == qty(three, name)
 
 
-def test_staker_formula():
-    lines = materials_underground11(Underground11kV(route_length_m=1000, feeder_count=1))
+def test_the_wide_trench_doubles_the_staker_and_the_tape(catalog):
+    """العرض متر فأكثر (5 مغذيات فصاعداً) ← قطعتان متجاورتان ولفّتان (ق-٤٣)."""
+    narrow = materials_underground11(Underground11kV(route_length_m=900, feeder_count=4), catalog)
+    wide = materials_underground11(Underground11kV(route_length_m=900, feeder_count=5), catalog)
+
+    assert qty(narrow, "شتايكر 50×50×5 سم") == 1800        # ⌈900 ÷ 0.5⌉
+    assert qty(wide, "شتايكر 50×50×5 سم") == 3600          # × 2
+    assert qty(narrow, "شريط تحذير") == 10                 # ⌈900 ÷ 90⌉
+    assert qty(wide, "شريط تحذير") == 20                   # × 2
+
+
+def test_the_doubling_threshold_is_the_width_not_the_feeder_count(catalog):
+    """4 مغذيات عرضها 0.8 م فلا تتضاعف، و5 عرضها 1.0 م فتتضاعف — الحدّ هو العرض."""
+    from engine.underground import is_wide_trench, trench_width_m
+
+    assert trench_width_m(4, catalog) == 0.8 and not is_wide_trench(trench_width_m(4, catalog))
+    assert trench_width_m(5, catalog) == 1.0 and is_wide_trench(trench_width_m(5, catalog))
+
+
+def test_the_width_table_matches_the_user_numbers(catalog):
+    """الجدول بنصّ المستخدم، وما فوق 8 يأخذ قيمة الثمانية."""
+    from engine.underground import trench_width_m
+
+    expected = {1: 0.5, 2: 0.6, 3: 0.8, 4: 0.8, 5: 1.0, 6: 1.2, 7: 1.5, 8: 1.8}
+    for count, width in expected.items():
+        assert trench_width_m(count, catalog) == width
+    assert trench_width_m(12, catalog) == 1.8
+
+
+def test_an_unknown_width_produces_no_guessed_quantities(catalog):
+    """بلا جدول عرض لا تُخمَّن كمية رمل تُسلَّم للمنفّذ — يُبلَّغ بسطر صفر (ق-٤٣)."""
+    import copy
+
+    stripped = copy.deepcopy(catalog)
+    stripped["عرض_الخندق"] = {}
+    lines = materials_underground11(
+        Underground11kV(route_length_m=500, feeder_count=2), stripped
+    )
+    trench = [l for l in lines if l.name in ("شتايكر 50×50×5 سم", "رمل نهري", "شريط تحذير")]
+    assert len(trench) == 1
+    assert trench[0].qty == 0
+    assert "لا عرض خندق" in trench[0].source
+
+
+def test_staker_formula(catalog):
+    lines = materials_underground11(Underground11kV(route_length_m=1000, feeder_count=1), catalog)
     assert qty(lines, "شتايكر 50×50×5 سم") == 2000        # 1000 / 0.5
 
 
-def test_sand_formula():
-    lines = materials_underground11(Underground11kV(route_length_m=1000, feeder_count=1))
-    assert qty(lines, "رمل نهري") == 240                  # 1000 × 0.6 × 0.4
+def test_sand_formula(catalog):
+    lines = materials_underground11(Underground11kV(route_length_m=1000, feeder_count=1), catalog)
+    assert qty(lines, "رمل نهري") == 200                  # 1000 × عرض 0.5 × سُمك 0.4
 
 
-def test_warning_tape_formula():
-    lines = materials_underground11(Underground11kV(route_length_m=1000, feeder_count=1))
+def test_warning_tape_formula(catalog):
+    lines = materials_underground11(Underground11kV(route_length_m=1000, feeder_count=1), catalog)
     assert qty(lines, "شريط تحذير") == 12                 # ⌈1000/90⌉
 
 
@@ -144,8 +198,8 @@ def test_trench_materials_are_quantity_only(catalog):
         assert prices[name]["كمية_فقط"] is True
 
 
-def test_no_route_length_means_no_trench_materials():
-    lines = materials_underground11(Underground11kV(route_length_m=0, feeder_count=2))
+def test_no_route_length_means_no_trench_materials(catalog):
+    lines = materials_underground11(Underground11kV(route_length_m=0, feeder_count=2), catalog)
     assert not any(l.name in ("شتايكر 50×50×5 سم", "رمل نهري", "شريط تحذير") for l in lines)
 
 
@@ -343,12 +397,12 @@ def test_street_crossings_are_not_duplicated_across_multiple_segments(catalog):
 # ═══════════════════ التكامل والتتبّع ═══════════════════
 
 
-def test_every_underground_material_has_a_traceable_source():
+def test_every_underground_material_has_a_traceable_source(catalog):
     net = Underground11kV(
         route_length_m=300, feeder_count=2, straight_boxes=1,
         end_boxes_internal=1, end_boxes_external=1,
     )
-    for line in materials_underground11(net):
+    for line in materials_underground11(net, catalog):
         assert line.source
 
 
@@ -378,7 +432,7 @@ def test_every_underground_material_is_priced_or_flagged(catalog):
         route_length_m=100, feeder_count=1, straight_boxes=1,
         end_boxes_internal=1, end_boxes_external=1,
     )
-    for line in materials_underground11(net):
+    for line in materials_underground11(net, catalog):
         assert line.name in prices, f"مادة بلا صف في نسخة الأسعار: {line.name}"
         assert prices[line.name]["الوحدة"] == line.unit
 
@@ -512,12 +566,12 @@ def test_end_boxes_are_counted_per_piece_not_per_set(catalog):
     assert prices["صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف"]["الوحدة"] == "عدد"
 
 
-def test_one_end_set_generates_three_boxes():
+def test_one_end_set_generates_three_boxes(catalog):
     """السيت الواحد 3 صناديق — صندوق لكل طور (ق-٣٥)."""
     from engine.underground import BOXES_PER_END_SET_33
 
     assert BOXES_PER_END_SET_33 == 3
-    lines = materials_underground33(Underground33kV(route_length_m=1, end_boxes_internal=1))
+    lines = materials_underground33(Underground33kV(route_length_m=1, end_boxes_internal=1), catalog)
     assert qty(lines, "صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف") == 3
 
 
@@ -537,27 +591,36 @@ def test_end_box_set_cost_is_unchanged_after_the_unit_switch(catalog):
     assert row["الكلفة"] == 408_000              # = كلفة السيت الواحد قبل التحويل
 
 
-def test_eleven_kv_end_boxes_are_not_multiplied():
+def test_eleven_kv_end_boxes_are_not_multiplied(catalog):
     """11 ك.ف كابله ثلاثي القلب فنهايته صندوق واحد — لا ×3 (ق-٣٥)."""
     lines = materials_underground11(
         Underground11kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
-    )
+    , catalog)
     assert qty(lines, "صندوق نهاية داخلي 3×150 ملم² جهد 11 ك.ف") == 2
     assert qty(lines, "صندوق نهاية خارجي 3×150 ملم² جهد 11 ك.ف") == 3
 
 
-def test_trench_materials_are_shared_with_11kv_and_route_length_based():
+def test_trench_materials_are_shared_with_11kv_and_use_the_circuit_count(catalog):
+    """33 ك.ف: عرض الخندق بعدد الدوائر لا عدد الكابلات — كالأعمال المدنية (ق-٣١).
+
+    فالمقطع المزدوج (دائرتان، ستة كابلات) يوازي مغذيَّين في 11 ك.ف لا ستة.
+    """
     net33 = Underground33kV(route_length_m=1000, circuit=CircuitType.DOUBLE)
-    net11 = Underground11kV(route_length_m=1000, feeder_count=1)
-    lines33, lines11 = materials_underground33(net33), materials_underground11(net11)
-    for name in ("شتايكر 50×50×5 سم", "رمل نهري", "شريط تحذير"):
-        assert qty(lines33, name) == qty(lines11, name)
+    lines33 = materials_underground33(net33, catalog)
+    for count, same in ((2, True), (6, False)):
+        net11 = Underground11kV(route_length_m=1000, feeder_count=count)
+        lines11 = materials_underground11(net11, catalog)
+        matches = all(
+            qty(lines33, name) == qty(lines11, name)
+            for name in ("شتايكر 50×50×5 سم", "رمل نهري", "شريط تحذير")
+        )
+        assert matches is same
 
 
 def test_end_boxes_manual_no_advisory_33(catalog):
     """صناديق النهاية 33 ك.ف يدوية بحتة — والمُدخَل سيتات تُضرب ×3 (ق-٣٥)."""
     net = Underground33kV(route_length_m=500, end_boxes_internal=3, end_boxes_external=2)
-    lines = materials_underground33(net)
+    lines = materials_underground33(net, catalog)
     assert qty(lines, "صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف") == 9
     assert qty(lines, "صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف") == 6
 
@@ -615,6 +678,6 @@ def test_every_33kv_material_is_priced_or_flagged(catalog):
         route_length_m=100, circuit=CircuitType.DOUBLE, straight_boxes=1,
         end_boxes_internal=1, end_boxes_external=1,
     )
-    for line in materials_underground33(net):
+    for line in materials_underground33(net, catalog):
         assert line.name in prices, f"مادة بلا صف في نسخة الأسعار: {line.name}"
         assert prices[line.name]["الوحدة"] == line.unit

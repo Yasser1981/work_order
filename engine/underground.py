@@ -59,15 +59,45 @@ QUANTITY_ONLY = {M_STAKER[0], M_RIVER_SAND[0], M_WARNING_TAPE[0]}
 """موادّ الخندق: كمية بلا كلفة — كلفتها ضمن أجر التنفيذ (بتأكيد المستخدم، ق-٣٠)."""
 
 STAKER_DIVISOR_M = 0.5
-"""شتايكر كل نصف متر من طول المسار. تفصيل الخندق العريض (أكثر من 3 مغذيات
-يحتاج شتايكرتين متجاورتين) مؤجَّل بطلب المستخدم — انظر قائمة التذكير."""
+"""شتايكر كل نصف متر من طول المسار."""
 
-SAND_LENGTH_FACTOR = 0.6
-SAND_WIDTH_FACTOR = 0.4
-"""رمل نهري (م³) = طول المسار × 0.6 × 0.4. قد تتغيّر للخنادق العريضة — مؤجَّل."""
+SAND_DEPTH_M = 0.4
+"""سُمك طبقة الرمل النهري (م) — ما يوضع **أسفل المغذي وأعلاه** معاً (ق-٤٣).
+
+هذا هو الرقم 0.4 في الصيغة القديمة `طول × 0.6 × 0.4`. أما 0.6 فكان **عرض
+الخندق** مثبَّتاً، وهو عرض المغذيَّين لا عرضاً عاماً — فصار يُقرأ من جدول
+`عرض_الخندق` بحسب عدد المغذيات."""
+
+WIDE_TRENCH_M = 1.0
+"""العرض الذي يتضاعف عنده الشتايكر وشريط التحذير: **متر فأكثر** (ق-٤٣).
+
+بنصّ المستخدم: «إذا كان عرض الحفر متر فما فوق توضع قطعتان شتايكر متجاورتان»،
+وكذلك «لفّتان متجاورتان» من الشريط. ويبدأ من **5 مغذيات** حيث يبلغ العرض 1.0 م."""
+
+WIDE_TRENCH_MULTIPLIER = 2
+"""قطعتان لا واحدة، ولفّتان لا واحدة، في الخندق العريض (ق-٤٣)."""
 
 WARNING_TAPE_ROLL_M = 90
 """طول لفة شريط التحذير الواحدة (م)."""
+
+
+def trench_width_m(feeder_count: int, catalog: dict) -> float | None:
+    """عرض الخندق (م) بحسب عدد المغذيات فيه — من جدول `عرض_الخندق` (ق-٤٣).
+
+    الجدول يبلغ 8 مغذيات، وما زاد عليها يأخذ قيمة الثمانية بنصّ المستخدم
+    («ثمانية أو أكثر يكون 1.8»). و`None` حين لا جدول أصلاً — يُبلَّغ عنه بدل
+    أن يُخمَّن عرض تُبنى عليه كميةُ رملٍ خاطئة.
+    """
+    table = catalog.get("عرض_الخندق", {})
+    widths = {int(k): v for k, v in table.items() if not k.startswith("_")}
+    if not widths or feeder_count <= 0:
+        return None
+    return widths.get(feeder_count, widths[max(widths)] if feeder_count > max(widths) else None)
+
+
+def is_wide_trench(width_m: float | None) -> bool:
+    """هل الخندق عريض بما يستدعي مضاعفة الشتايكر والشريط؟"""
+    return width_m is not None and width_m >= WIDE_TRENCH_M
 
 DRUM_LENGTH_DEFAULT_KEY = "طول_بكرة_القابلو_11ك.ف"
 
@@ -198,7 +228,70 @@ def _civil_labour_lines(
     ]
 
 
-def materials_underground11(net: Underground11kV) -> list[MaterialLine]:
+def trench_materials(
+    route_length_m: float, feeder_count: int, catalog: dict
+) -> list[MaterialLine]:
+    """موادّ الخندق الثلاث: الشتايكر والرمل النهري وشريط التحذير (ق-٣٠، ق-٤٣).
+
+    الثلاثة **كمية بلا كلفة** بقرارك — تظهر في جدول الكميات ولا تدخل المجموع
+    المالي، لأن كلفتها ضمن أجر الأعمال المدنية.
+
+    **الجديد في ق-٤٣: عرض الخندق يتبع عدد المغذيات**، فيحكم الثلاثة معاً:
+
+    ```
+    الرمل   = طول × عرض الخندق × 0.4          (م³)
+    الشتايكر = ⌈طول ÷ 0.5⌉ × (2 إن كان العرض ≥ 1 م)
+    الشريط   = ⌈طول ÷ 90⌉  × (2 إن كان العرض ≥ 1 م)
+    ```
+
+    وحين لا يُعرف العرض (عدد مغذيات خارج الجدول) تُحسب الثلاثة بأضيق فرض —
+    لا. بل **لا تُولَّد أسطر الخندق إطلاقاً**، ويُولَّد بدلها سطر واحد بكمية صفر
+    ومصدر يشرح السبب: تخمين العرض يعني كمية رمل خاطئة في جدول يُسلَّم للمنفّذ.
+    """
+    if route_length_m <= 0:
+        return []
+
+    width = trench_width_m(feeder_count, catalog)
+    if width is None:
+        return [
+            MaterialLine(
+                *M_RIVER_SAND,
+                0,
+                f"⚠ لا عرض خندق لـ{feeder_count} مغذيات في الجدول — "
+                "الرمل والشتايكر والشريط لم تُحسب",
+            )
+        ]
+
+    wide = is_wide_trench(width)
+    factor = WIDE_TRENCH_MULTIPLIER if wide else 1
+    wide_note = (
+        f" × {WIDE_TRENCH_MULTIPLIER} (العرض {width:g} م ≥ {WIDE_TRENCH_M:g} م)"
+        if wide
+        else ""
+    )
+    length_note = f"خندق بطول {route_length_m:,.0f} م"
+
+    return [
+        MaterialLine(
+            *M_STAKER,
+            _roundup(route_length_m / STAKER_DIVISOR_M) * factor,
+            f"{length_note} ÷ {STAKER_DIVISOR_M:g} م{wide_note}",
+        ),
+        MaterialLine(
+            *M_RIVER_SAND,
+            _roundup(route_length_m * width * SAND_DEPTH_M),
+            f"{length_note} × عرض {width:g} م ({feeder_count} مغذيات)"
+            f" × سُمك {SAND_DEPTH_M:g} م",
+        ),
+        MaterialLine(
+            *M_WARNING_TAPE,
+            _roundup(route_length_m / WARNING_TAPE_ROLL_M) * factor,
+            f"{length_note} ÷ {WARNING_TAPE_ROLL_M} م{wide_note}",
+        ),
+    ]
+
+
+def materials_underground11(net: Underground11kV, catalog: dict) -> list[MaterialLine]:
     """يولّد أسطر مواد مقطع الشبكة الأرضية 11 ك.ف."""
     lines: list[MaterialLine] = []
     add = lines.append
@@ -240,32 +333,7 @@ def materials_underground11(net: Underground11kV) -> list[MaterialLine]:
             )
         )
 
-    if net.route_length_m > 0:
-        staker = _roundup(net.route_length_m / STAKER_DIVISOR_M)
-        add(
-            MaterialLine(
-                *M_STAKER,
-                staker,
-                f"خندق بطول {net.route_length_m:,.0f} م ÷ {STAKER_DIVISOR_M:g} م",
-            )
-        )
-        sand = _roundup(net.route_length_m * SAND_LENGTH_FACTOR * SAND_WIDTH_FACTOR)
-        add(
-            MaterialLine(
-                *M_RIVER_SAND,
-                sand,
-                f"خندق بطول {net.route_length_m:,.0f} م × {SAND_LENGTH_FACTOR:g}"
-                f" × {SAND_WIDTH_FACTOR:g}",
-            )
-        )
-        tape = _roundup(net.route_length_m / WARNING_TAPE_ROLL_M)
-        add(
-            MaterialLine(
-                *M_WARNING_TAPE,
-                tape,
-                f"خندق بطول {net.route_length_m:,.0f} م ÷ {WARNING_TAPE_ROLL_M} م",
-            )
-        )
+    lines += trench_materials(net.route_length_m, net.feeder_count, catalog)
 
     return lines
 
@@ -348,7 +416,7 @@ def cable_quantity_33(net: Underground33kV) -> float:
     return _roundup(net.route_length_m * cable_count_33(net) * waste)
 
 
-def materials_underground33(net: Underground33kV) -> list[MaterialLine]:
+def materials_underground33(net: Underground33kV, catalog: dict) -> list[MaterialLine]:
     """يولّد أسطر مواد مقطع الشبكة الأرضية 33 ك.ف."""
     lines: list[MaterialLine] = []
     add = lines.append
@@ -394,32 +462,9 @@ def materials_underground33(net: Underground33kV) -> list[MaterialLine]:
             )
         )
 
-    if net.route_length_m > 0:
-        staker = _roundup(net.route_length_m / STAKER_DIVISOR_M)
-        add(
-            MaterialLine(
-                *M_STAKER,
-                staker,
-                f"خندق بطول {net.route_length_m:,.0f} م ÷ {STAKER_DIVISOR_M:g} م",
-            )
-        )
-        sand = _roundup(net.route_length_m * SAND_LENGTH_FACTOR * SAND_WIDTH_FACTOR)
-        add(
-            MaterialLine(
-                *M_RIVER_SAND,
-                sand,
-                f"خندق بطول {net.route_length_m:,.0f} م × {SAND_LENGTH_FACTOR:g}"
-                f" × {SAND_WIDTH_FACTOR:g}",
-            )
-        )
-        tape = _roundup(net.route_length_m / WARNING_TAPE_ROLL_M)
-        add(
-            MaterialLine(
-                *M_WARNING_TAPE,
-                tape,
-                f"خندق بطول {net.route_length_m:,.0f} م ÷ {WARNING_TAPE_ROLL_M} م",
-            )
-        )
+    # 33 ك.ف: عرض الخندق بعدد **الدوائر** لا عدد الكابلات — كما الأعمال المدنية
+    # تماماً (ق-٣١): المغذي الواحد بكابلاته الثلاثة مغذٍّ واحد في الخندق.
+    lines += trench_materials(net.route_length_m, net.circuit.circuits, catalog)
 
     return lines
 

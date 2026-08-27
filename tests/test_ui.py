@@ -440,7 +440,7 @@ def test_entering_a_transformer_adds_its_kit_and_its_labour(window, pequip):
     ].setValue(1)
     names = [m["المادة"] for m in window.result["المواد"]]
     assert "محولة 400 KVA جهد 11/0.4 ك.ف" in names
-    assert "فاصل فيوز 11 ك.ف مع السلك" in names
+    assert "لنك فيوز 11 ك.ف مع السلك" in names
     assert "نصب المحولة" in [l.name for l in window.result["أجور_العمل"]]
 
 
@@ -454,11 +454,11 @@ def test_the_33kv_transformer_has_its_own_field_and_its_own_accessories(window, 
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
     assert quantities["محولة 400 KVA جهد 33/0.4 ك.ف"] == 1
     assert quantities["مانعة صواعق 33 ك.ف"] == 1
-    assert quantities["فاصل فيوز 33 ك.ف مع السلك"] == 1
+    assert quantities["لنك فيوز 33 ك.ف مع السلك"] == 1
     assert quantities["قاطع دورة 400 أمبير مع المتسعة"] == 2   # لا يتبع الجهد
     assert quantities["قاعدة مانعة صواعق مع الملحقات"] == 1    # واحدة مهما اختلف الجهد
     assert "مانعة صواعق 11 KV" not in quantities
-    assert "فاصل فيوز 11 ك.ف مع السلك" not in quantities
+    assert "لنك فيوز 11 ك.ف مع السلك" not in quantities
 
 
 def test_every_rating_is_offered_at_both_voltages(pequip):
@@ -524,7 +524,7 @@ def test_equipment_hint_lists_the_kit_so_the_checker_sees_it(pequip):
     ].setValue(2)
     text = pequip.transformer_hint.text()
     assert "قاطع دورة 400 أمبير مع المتسعة: <b>4</b>" in text
-    assert "ترمنل 150 ملم²: <b>60</b>" in text
+    assert "ترمنل 150 ملم²: <b>48</b>" in text   # 12 لكل مخرج × مخرجين × محولتين
 
 
 def test_equipment_totals_reach_the_screen(window, pequip):
@@ -595,13 +595,32 @@ def test_ug11_civil_works_depends_on_route_length_only(window, pug11):
     assert all(l.qty == 400 for l in civil)
 
 
-def test_ug11_trench_materials_do_not_multiply_with_feeder_count(window, pug11):
+def test_ug11_trench_hint_shows_the_width_and_the_quantities(window, pug11):
+    """عرض الخندق رقم لا حقل له، ومع ذلك يحكم الرمل وتضاعف الشتايكر (ق-٤٣)."""
+    pug11.route.setValue(900)
+    pug11.feeders.setValue(5)
+    text = pug11.trench_hint.text()
+    assert "عرض الخندق لـ<b>5</b> مغذيات = <b>1 م</b>" in text
+    assert "عريض" in text                       # التنبيه إلى المضاعفة
+    quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
+    assert quantities["شتايكر 50×50×5 سم"] == 3600      # ⌈900÷0.5⌉ × 2
+    assert quantities["شريط تحذير"] == 20               # ⌈900÷90⌉ × 2
+    assert quantities["رمل نهري"] == 360                # 900 × 1.0 × 0.4
+
+
+def test_ug11_staker_does_not_multiply_below_the_wide_threshold(window, pug11):
+    """1 و4 مغذيات: العرض 0.5 و0.8 م — كلاهما دون المتر فلا مضاعفة (ق-٤٣)."""
+    def staker():
+        return next(m["الكمية"] for m in window.result["المواد"]
+                    if m["المادة"] == "شتايكر 50×50×5 سم")
+
     pug11.route.setValue(500)
     pug11.feeders.setValue(1)
-    staker_one = next(m["الكمية"] for m in window.result["المواد"] if m["المادة"] == "شتايكر 50×50×5 سم")
+    staker_one = staker()
     pug11.feeders.setValue(4)
-    staker_four = next(m["الكمية"] for m in window.result["المواد"] if m["المادة"] == "شتايكر 50×50×5 سم")
-    assert staker_one == staker_four
+    assert staker() == staker_one == 1000
+    pug11.feeders.setValue(5)                 # العرض 1.0 م ← يتضاعف
+    assert staker() == 2000
 
 
 def test_ug11_civil_rate_warns_when_feeder_count_exceeds_the_table(window, pug11):

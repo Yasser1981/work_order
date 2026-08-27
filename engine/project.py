@@ -51,8 +51,11 @@ def _tag(lines: list, label: str) -> list:
     return [replace(line, source=f"{label} ← {line.source}") for line in lines]
 
 
-def materials_of(segment: Segment) -> list[MaterialLine]:
-    """أسطر مواد مقطع واحد، موسومة باسمه."""
+def materials_of(segment: Segment, catalog: dict) -> list[MaterialLine]:
+    """أسطر مواد مقطع واحد، موسومة باسمه.
+
+    يستقبل نسخة الأسعار لأن مقاطع الشبكة الأرضية تحتاج جدول «عرض_الخندق»
+    لحساب الرمل والشتايكر والشريط (ق-٤٣)."""
     content = segment.content
     if isinstance(content, Network11kV):
         lines = materials_11kv(content)
@@ -63,9 +66,9 @@ def materials_of(segment: Segment) -> list[MaterialLine]:
     elif isinstance(content, Equipment):
         lines = materials_equipment(content)
     elif isinstance(content, Underground11kV):
-        lines = materials_underground11(content)
+        lines = materials_underground11(content, catalog)
     elif isinstance(content, Underground33kV):
-        lines = materials_underground33(content)
+        lines = materials_underground33(content, catalog)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)
@@ -130,7 +133,7 @@ def compute_project(project: Project, catalog: dict) -> dict:
     raw: list[MaterialLine] = []
     labour_raw: list[LabourLine] = []
     for segment in project.segments:
-        raw += materials_of(segment)
+        raw += materials_of(segment, catalog)
         labour_raw += labour_of(segment, catalog)
 
     # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠).

@@ -32,6 +32,9 @@ from engine.underground import (
     cable_quantity,
     cable_quantity_33,
     civil_tariff_parts,
+    is_wide_trench,
+    trench_materials,
+    trench_width_m,
     suggest_straight_boxes,
 )
 from engine.overhead import (
@@ -733,6 +736,31 @@ class PanelEquipment(QWidget):
         )
 
 
+def _trench_hint_text(feeder_count, route_length_m, catalog) -> str:
+    """تلميح موادّ الخندق — يُظهر عرض الخندق ومصدر الكميات الثلاث (ق-٤٣).
+
+    العرض هو الرقم الذي لا يراه المستخدم في أي حقل، ومع ذلك يحكم كمية الرمل
+    وتضاعف الشتايكر والشريط. فعرضُه هنا يمنع أن يمرّ خطأ في عدد المغذيات صامتاً.
+    """
+    width = trench_width_m(feeder_count, catalog)
+    if width is None:
+        return f"⚠️ لا عرض خندق لـ{feeder_count} مغذيات في الجدول — الكميات لم تُحسب."
+    lines = [f"عرض الخندق لـ<b>{feeder_count}</b> مغذيات = <b>{width:g} م</b>"]
+    if route_length_m > 0:
+        for line in trench_materials(route_length_m, feeder_count, catalog):
+            lines.append(
+                f"&nbsp;&nbsp;– {line.name}: <b>{line.qty:g}</b> {line.unit}"
+                f" &nbsp;<span style='color:#666'>({line.source})</span>"
+            )
+    if is_wide_trench(width):
+        lines.append(
+            f"الخندق <b>عريض</b> (≥ 1 م): الشتايكر قطعتان متجاورتان، "
+            "والشريط لفّتان."
+        )
+    lines.append("<i>هذه الثلاث كمية بلا كلفة — ضمن أجر الأعمال المدنية.</i>")
+    return "<br>".join(lines)
+
+
 def _civil_hint_text(sidewalk_type, count, route_length_m, catalog) -> str:
     """نصّ تلميح الأعمال المدنية — يعرض **المكوّنين** ومجموعهما لا الإجمالي وحده.
 
@@ -797,6 +825,11 @@ class PanelUnderground11kV(QWidget):
         form.addRow("نوع الرصيف:", self.sidewalk)
         self.civil_hint = HintLabel()
         form.addRow(self.civil_hint)
+        layout.addWidget(box)
+
+        box, form = section("موادّ الخندق  —  كمية بلا كلفة")
+        self.trench_hint = HintLabel()
+        form.addRow(self.trench_hint)
         layout.addWidget(box)
 
         box, form = section("الصندوق المستقيم  —  استرشادي لكل مغذٍّ على حدة")
@@ -874,6 +907,9 @@ class PanelUnderground11kV(QWidget):
                 net.sidewalk_type, net.feeder_count, net.route_length_m, self.catalog
             )
         )
+        self.trench_hint.setText(
+            _trench_hint_text(net.feeder_count, net.route_length_m, self.catalog)
+        )
 
         suggested = suggest_straight_boxes(
             net.route_length_m, net.feeder_count, net.drum_length_m
@@ -922,6 +958,11 @@ class PanelUnderground33kV(QWidget):
         form.addRow("نوع الرصيف:", self.sidewalk)
         self.civil_hint = HintLabel()
         form.addRow(self.civil_hint)
+        layout.addWidget(box)
+
+        box, form = section("موادّ الخندق  —  كمية بلا كلفة")
+        self.trench_hint = HintLabel()
+        form.addRow(self.trench_hint)
         layout.addWidget(box)
 
         box, form = section("الصندوق المستقيم  —  استرشادي لكل كابل (طور) على حدة")
@@ -1000,6 +1041,9 @@ class PanelUnderground33kV(QWidget):
             "<br>أحادي القلب — كل دائرة 3 كابلات منفصلة، طور لكل كابل."
         )
 
+        self.trench_hint.setText(
+            _trench_hint_text(net.circuit.circuits, net.route_length_m, self.catalog)
+        )
         self.civil_hint.setText(
             "المغذي الواحد يُعامَل معاملة مغذٍّ واحد مماثل لـ11 ك.ف:<br>"
             + _civil_hint_text(

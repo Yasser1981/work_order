@@ -69,13 +69,13 @@ def test_default_names_follow_the_users_wording():
 def test_segment_name_is_stamped_on_every_source(catalog):
     """اسم المقطع يظهر في مصدر كل سطر — بلا ذلك يستحيل تدقيق مشروع متعدد المقاطع."""
     segment = Segment("المقطع الثاني", Network11kV(route_length_m=500))
-    assert all(line.source.startswith("المقطع الثاني ← ") for line in materials_of(segment))
+    assert all(line.source.startswith("المقطع الثاني ← ") for line in materials_of(segment, catalog))
 
 
 def test_an_unnamed_segment_adds_no_prefix():
     """المشروع البسيط يمرّ بمقاطع بلا أسماء فلا يتلوّث مصدره بوسم فارغ."""
     segment = Segment("", Network11kV(route_length_m=500))
-    assert not any("←" in line.source for line in materials_of(segment))
+    assert not any("←" in line.source for line in materials_of(segment, catalog))
 
 
 def test_the_breakdown_shows_which_segment_each_number_came_from(catalog):

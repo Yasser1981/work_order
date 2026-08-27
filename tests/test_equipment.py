@@ -50,7 +50,7 @@ def test_transformer_kit_matches_the_original_file():
         "محولة 400 KVA جهد 11/0.4 ك.ف": 1,
         "قاطع دورة 400 أمبير مع المتسعة": 2,
         "قاعدة محولة مع الملحقات": 1,
-        "فاصل فيوز 11 ك.ف مع السلك": 1,
+        "لنك فيوز 11 ك.ف مع السلك": 1,
         "قاعدة لنك فيوز مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 3,
         "سلك نحاس 50 ملم²": 15,
@@ -58,9 +58,9 @@ def test_transformer_kit_matches_the_original_file():
         "قابلو نحاس 1×150 ملم²": 80,
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
-        "معدات ربط ألمنيوم – نحاس": 15,
-        "ترمنل 50 ملم²": 15,
-        "ترمنل 150 ملم²": 30,
+        "معدات ربط ألمنيوم – نحاس": 8,     # 4 لكل مخرج × مخرجين (ق-٤٣)
+        "ترمنل 50 ملم²": 8,                 # ثابت لا يتبع المخارج (ق-٤٣)
+        "ترمنل 150 ملم²": 24,               # 12 لكل مخرج × مخرجين (ق-٤٣)
     }
     assert {l.name: l.qty for l in lines} == expected
 
@@ -105,13 +105,45 @@ def test_the_lv_cable_length_follows_the_number_of_outputs():
 
 
 def test_everything_else_is_shared_across_ratings():
-    """ما عدا المحولة وقاطعها وقابلو الضغط الواطئ: 11 مادة لا تتغيّر بالسعة."""
+    """ما لا يتبع السعة ولا المخارج: تسع مواد لا تتغيّر كمّاً بين السعات الثلاث.
+
+    الثلاثة التابعة للمخارج (القابلو وترمنله ومعدات ربطه) مستثناة — تتغيّر في
+    السعة 630 وحدها لأن مخارجها أربعة (ق-٤٣).
+    """
     kits = {s: dict(transformer_kit(s)) for s in TransformerSize}
     shared = set.intersection(*(set(k) for k in kits.values()))
-    shared -= {("قابلو نحاس 1×150 ملم²", "متر")}
-    assert len(shared) == 11
+    shared -= {
+        ("قابلو نحاس 1×150 ملم²", "متر"),
+        ("ترمنل 150 ملم²", "عدد"),
+        ("معدات ربط ألمنيوم – نحاس", "عدد"),
+    }
+    assert len(shared) == 9
     for material in shared:
         assert len({k[material] for k in kits.values()}) == 1
+
+
+def test_three_items_follow_the_outputs_not_the_rating():
+    """القابلو وترمنله ومعدات ربطه تتبع عدد المخارج معاً — بنسب ثابتة (ق-٤٣)."""
+    for size, (outputs, _amps) in EXPECTED_OUTPUTS.items():
+        kit = dict(transformer_kit(size))
+        assert kit[("قابلو نحاس 1×150 ملم²", "متر")] == outputs * 40
+        assert kit[("ترمنل 150 ملم²", "عدد")] == outputs * 12
+        assert kit[("معدات ربط ألمنيوم – نحاس", "عدد")] == outputs * 4
+
+
+def test_the_earth_terminal_does_not_follow_the_outputs():
+    """ترمنل 50 للتأريض — ثمانية لكل محولة مهما بلغت مخارجها (ق-٤٣)."""
+    for size in TransformerSize:
+        assert dict(transformer_kit(size))[("ترمنل 50 ملم²", "عدد")] == 8
+
+
+def test_the_630_no_longer_lags_behind_its_cable():
+    """كان الشذوذ: قابلو 630 تضاعف في ق-٢٧ وترمنله بقي 30. زال بـ ق-٤٣."""
+    small = dict(transformer_kit(TransformerSize.KVA400))
+    big = dict(transformer_kit(TransformerSize.KVA630))
+    cable = ("قابلو نحاس 1×150 ملم²", "متر")
+    lug = ("ترمنل 150 ملم²", "عدد")
+    assert big[cable] / small[cable] == big[lug] / small[lug] == 2
 
 
 def test_1000_kva_is_not_an_overhead_option():
@@ -132,7 +164,7 @@ def test_transformer_quantities_scale_linearly():
     lines = materials_equipment(Equipment(transformers={(KV11, KVA400): 3}))
     assert qty(lines, "محولة 400 KVA جهد 11/0.4 ك.ف") == 3
     assert qty(lines, "قابلو نحاس 1×150 ملم²") == 240   # 3 × مخرجين × 40
-    assert qty(lines, "ترمنل 150 ملم²") == 90
+    assert qty(lines, "ترمنل 150 ملم²") == 72           # 3 × مخرجين × 12
 
 
 def test_mixed_ratings_share_the_common_accessories():
@@ -175,12 +207,12 @@ def test_the_33kv_transformer_swaps_only_the_arrester_and_the_fuse():
     assert set(kit11) - set(kit33) == {
         ("محولة 400 KVA جهد 11/0.4 ك.ف", "عدد"),
         ("مانعة صواعق 11 KV", "سيت"),
-        ("فاصل فيوز 11 ك.ف مع السلك", "سيت"),
+        ("لنك فيوز 11 ك.ف مع السلك", "سيت"),
     }
     assert set(kit33) - set(kit11) == {
         ("محولة 400 KVA جهد 33/0.4 ك.ف", "عدد"),
         ("مانعة صواعق 33 ك.ف", "سيت"),
-        ("فاصل فيوز 33 ك.ف مع السلك", "سيت"),
+        ("لنك فيوز 33 ك.ف مع السلك", "سيت"),
     }
     # ما بقي متطابق كمّاً لا اسماً فقط
     for material in set(kit11) & set(kit33):
@@ -207,7 +239,7 @@ def test_250_kva_exists_at_both_voltages():
     assert kit[("محولة 250 KVA جهد 33/0.4 ك.ف", "عدد")] == 1
     assert kit[("قاطع دورة 250 أمبير مع المتسعة", "عدد")] == 2   # يتبع السعة لا الجهد
     assert kit[("مانعة صواعق 33 ك.ف", "سيت")] == 1
-    assert kit[("فاصل فيوز 33 ك.ف مع السلك", "سيت")] == 1
+    assert kit[("لنك فيوز 33 ك.ف مع السلك", "سيت")] == 1
     assert len(TRANSFORMER_KITS) == 6   # ثلاث سعات × جهدين
 
 
@@ -436,6 +468,7 @@ def test_transformer_cost_is_the_heaviest_single_line(catalog):
     )
     transformer = next(m for m in result["المواد"] if m["المادة"] == "محولة 400 KVA جهد 11/0.4 ك.ف")
     assert transformer["الكلفة"] == 17_000_000
-    # قاطع الدورة 400 نزل من 1,145,000 إلى 650,000 وقاعدة المانعة صعدت إلى 150,000 (ق-٣٦)
-    assert result["كلفة_المواد"] == 22_684_000
+    # قاطع الدورة 400 نزل من 1,145,000 إلى 650,000 وقاعدة المانعة صعدت إلى 150,000 (ق-٣٦)،
+    # ثم نزلت المجموعة 113,000 بـ ق-٤٣ (ترمنل 150: 30←24، ومعدات: 15←8، وترمنل 50: 15←8)
+    assert result["كلفة_المواد"] == 22_571_000
     assert result["كلفة_العمل"] == 350_000

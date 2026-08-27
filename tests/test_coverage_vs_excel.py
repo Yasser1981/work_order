@@ -105,6 +105,9 @@ RENAMED = {
     ("براكيت 1.4 م مع الملحقات", "عدد"): ("براكيت جنل 1.4 م مع الملحقات", "عدد"),
     ("براكيت 2 متر", "عدد"): ("براكيت جنل 2 متر", "عدد"),
     ("براكيت 2.5 متر", "عدد"): ("براكيت جنل 2.5 متر", "عدد"),
+    # «فاصل فيوز» ← «لنك فيوز» بطلبك: المصطلح الأدقّ، ويطابق «قاعدة لنك فيوز
+    # مع الملحقات» التي كانت تحمله أصلاً (ق-٤٣)
+    ("فاصل فيوز 11 ك.ف مع السلك", "سيت"): ("لنك فيوز 11 ك.ف مع السلك", "سيت"),
     # الوحدة تغيّرت من «سيت» إلى «عدد»: المادة نفسها والسعر نفسه (سعر المفرد)،
     # لكن الكمية صارت تُضرب ×3 لأن السيت ثلاثة صناديق طوراً لكل صندوق (ق-٣٥)
     ("صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف", "سيت"):
@@ -121,6 +124,9 @@ DEFERRED = {
 
 def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
     """كل مادة قد يولّدها المحرك في أي تركيبة مدخلات."""
+    from engine import load_catalog
+
+    catalog = load_catalog()
     produced: set[tuple[str, str]] = set()
 
     n11 = Network11kV(
@@ -158,7 +164,7 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             route_length_m=100, feeder_count=1, sidewalk_type=sidewalk,
             straight_boxes=1, end_boxes_internal=1, end_boxes_external=1,
         )
-        for line in materials_underground11(ug11):
+        for line in materials_underground11(ug11, catalog):
             produced.add((line.name, line.unit))
 
     for circuit in CircuitType:
@@ -166,7 +172,7 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             route_length_m=100, circuit=circuit,
             straight_boxes=1, end_boxes_internal=1, end_boxes_external=1,
         )
-        for line in materials_underground33(ug33):
+        for line in materials_underground33(ug33, catalog):
             produced.add((line.name, line.unit))
 
     return produced
@@ -227,7 +233,7 @@ def test_engine_extras_beyond_the_excel_table_are_known():
         ("محولة 250 KVA جهد 33/0.4 ك.ف", "عدد"),
         ("محولة 400 KVA جهد 33/0.4 ك.ف", "عدد"),
         ("محولة 630 KVA جهد 33/0.4 ك.ف", "عدد"),
-        ("فاصل فيوز 33 ك.ف مع السلك", "سيت"),
+        ("لنك فيوز 33 ك.ف مع السلك", "سيت"),
         # الملف الأصلي أغفل معدات ربط الفاصل الهوائي 33 ك.ف كلياً (ق-٢٦ و ق-٣٧)
         ("معدات ربط ألمنيوم – نحاس 210 ملم²", "عدد"),
     }
