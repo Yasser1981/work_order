@@ -213,15 +213,15 @@ def test_civil_works_rate_depends_on_sidewalk_and_feeder_count(catalog):
 
 
 def test_civil_works_rate_all_fifteen_combinations_match_the_original_file(catalog):
-    """الإجماليات الخمسة عشر كلها كما في الملف الأصلي بلا استثناء.
+    """أربع عشرة خلية من خمس عشرة كما في الملف الأصلي — والخامسة عشرة ت-١١.
 
-    التفصيل إلى «حفر» و«إعادة مسار» (ق-٣٨) **لا يغيّر أي إجمالي**. كانت خلية
-    واحدة تتحرّك (مقرنص ثلاثي) فحُسمت في ق-٣٩ لصالح الملف الأصلي: الحفر 12,000
-    لا 13,000، فعاد المجموع 37,000.
+    التفصيل (ق-٣٨) والصيغة الممتدّة (ق-٤٧) يعيدان إجماليات الملف الأصلي كلها
+    إلا **ترابي 4 مغذيات**: 35,000 بالصيغة مقابل 36,000 في الملف.
     """
     expected = {
+        # ترابي 4 = 35,000 بالصيغة لا 36,000 كالملف الأصلي — ت-١١
         ("ترابي", 1): 20000, ("ترابي", 2): 26000, ("ترابي", 3): 31000,
-        ("ترابي", 4): 36000, ("ترابي", 5): 39000,
+        ("ترابي", 4): 35000, ("ترابي", 5): 39000,
         ("مبلط", 1): 18000, ("مبلط", 2): 22000, ("مبلط", 3): 26000,
         ("مبلط", 4): 30000, ("مبلط", 5): 34000,
         ("مقرنص", 1): 34000, ("مقرنص", 2): 36000, ("مقرنص", 3): 37000,
@@ -267,16 +267,12 @@ def test_the_detailed_components_sum_to_the_previous_totals_exactly(catalog):
     assert moved == {}, f"خلايا تحرّك إجماليها عن الملف الأصلي: {moved}"
 
 
-def test_beyond_five_feeders_the_tariff_extends_by_a_fixed_step(catalog):
-    """ما زاد على 5 مغذيات: +4,000 د/م لكل مغذٍّ إضافي بنصّك (ق-٤٤).
-
-    كانت 6 مغذيات فأكثر تُطبع «بلا أجر» — ثغرة فتحها جدول عرض الخندق الذي
-    يبلغ 8 بينما تقف التعرفة عند 5.
-    """
+def test_beyond_three_feeders_each_component_grows_by_two_thousand(catalog):
+    """ما زاد على 3 مغذيات: **كل مكوّن** +2,000 لكل مغذٍّ، فالمجموع +4,000 (ق-٤٧)."""
     expected = {
-        "ترابي": {5: 39000, 6: 43000, 7: 47000, 8: 51000, 12: 67000},
-        "مبلط": {5: 34000, 6: 38000, 7: 42000, 8: 46000, 12: 62000},
-        "مقرنص": {5: 45000, 6: 49000, 7: 53000, 8: 57000, 12: 73000},
+        "ترابي": {4: 35000, 5: 39000, 6: 43000, 8: 51000, 10: 59000, 12: 67000},
+        "مبلط": {4: 30000, 5: 34000, 6: 38000, 8: 46000, 10: 54000, 12: 62000},
+        "مقرنص": {4: 41000, 5: 45000, 6: 49000, 8: 57000, 10: 65000, 12: 73000},
     }
     for sidewalk_value, rows in expected.items():
         sidewalk = next(s for s in SidewalkType if s.value == sidewalk_value)
@@ -285,13 +281,23 @@ def test_beyond_five_feeders_the_tariff_extends_by_a_fixed_step(catalog):
             assert sum(rate for _name, rate in parts) == total, (sidewalk_value, count)
 
 
-def test_the_extended_tariff_is_flagged_as_undetailed(catalog):
-    """الامتداد مبنيّ على تعرفة الخمسة وهي إجمالٌ غير مفصَّل — فيرث وسمها."""
-    parts = civil_tariff_parts(SidewalkType.PAVED, 7, catalog)
-    assert len(parts) == 1
-    name, _rate = parts[0]
-    assert "غير مفصَّل" in name
-    assert "5 مغذيات + 2 ×" in name        # المصدر يُظهر الحساب لا النتيجة
+def test_the_extended_tariff_stays_detailed_into_two_components(catalog):
+    """الامتداد يبقى مكوّنين لا إجمالاً — لم يعد في الجدول إجمالٌ غير مفصَّل (ق-٤٧)."""
+    for count in (4, 7, 15):
+        parts = civil_tariff_parts(SidewalkType.PAVED, count, catalog)
+        assert [name for name, _rate in parts] == ["حفر الخندق", "إعادة المسار"]
+        # كل مكوّن = قيمته عند 3 + (العدد − 3) × 2,000
+        added = (count - 3) * 2000
+        assert parts[0][1] == 14000 + added
+        assert parts[1][1] == 12000 + added
+
+
+def test_no_civil_line_is_undetailed_any_more(catalog):
+    """حارس: لا يُطبع «إجمالي غير مفصَّل» لأي عدد مغذيات بعد ق-٤٧."""
+    for sidewalk in SidewalkType:
+        for count in range(1, 21):
+            for name, _rate in civil_tariff_parts(sidewalk, count, catalog):
+                assert "غير مفصَّل" not in name, (sidewalk, count)
 
 
 def test_no_feeder_count_is_left_without_a_civil_rate(catalog):
@@ -302,14 +308,26 @@ def test_no_feeder_count_is_left_without_a_civil_rate(catalog):
             assert all(rate is not None for _name, rate in parts), (sidewalk, count)
 
 
-def test_the_undetailed_totals_for_four_and_five_are_kept_not_dropped(catalog):
-    """4 و5 مغذيات: الإجمالي القديم محفوظ كما هو وموسوم بأنه غير مفصَّل (ق-٠)."""
-    for count, expected in ((4, 30000), (5, 34000)):
-        parts = civil_tariff_parts(SidewalkType.PAVED, count, catalog)
-        assert len(parts) == 1
-        name, rate = parts[0]
-        assert "غير مفصَّل" in name
-        assert rate == expected
+def test_the_original_file_totals_are_kept_for_reference(catalog):
+    """إجماليات 4 و5 من الملف الأصلي محفوظة للمرجع ولا يستعملها المحرك (ق-٠)."""
+    reference = catalog["تعرفة_الأعمال_المدنية"]["مرجع_الملف_الأصلي"]
+    assert reference["ترابي"]["4"] == 36000 and reference["ترابي"]["5"] == 39000
+    assert reference["مبلط"]["4"] == 30000 and reference["مبلط"]["5"] == 34000
+    assert reference["مقرنص"]["4"] == 41000 and reference["مقرنص"]["5"] == 45000
+
+
+def test_the_formula_reproduces_the_original_file_except_one_cell(catalog):
+    """حارس ت-١١: الصيغة تعيد إجماليات الملف الأصلي إلا خليةً واحدة معروفة."""
+    reference = catalog["تعرفة_الأعمال_المدنية"]["مرجع_الملف_الأصلي"]
+    moved = {}
+    for sidewalk in SidewalkType:
+        for key, original in reference.get(sidewalk.value, {}).items():
+            computed = sum(
+                rate for _n, rate in civil_tariff_parts(sidewalk, int(key), catalog)
+            )
+            if computed != original:
+                moved[(sidewalk.value, int(key))] = (original, computed)
+    assert moved == {("ترابي", 4): (36000, 35000)}, moved
 
 
 def test_a_missing_tariff_table_is_reported_not_guessed(catalog):

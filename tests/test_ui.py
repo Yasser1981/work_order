@@ -655,10 +655,15 @@ def test_ug11_staker_does_not_multiply_below_the_wide_threshold(window, pug11):
     assert staker() == 2000
 
 
-def test_ug11_civil_rate_warns_when_feeder_count_exceeds_the_table(window, pug11):
+def test_ug11_civil_rate_extends_beyond_the_table_with_no_warning(window, pug11):
+    """6 مغذيات: التعرفة تمتدّ بالصيغة، مفصَّلةً إلى مكوّنين، بلا تحذير (ق-٤٧)."""
     pug11.route.setValue(100)
     pug11.feeders.setValue(6)
-    assert "⚠️" in pug11.civil_hint.text()
+    text = pug11.civil_hint.text()
+    assert "⚠️" not in text
+    assert "حفر الخندق: 100 م × 17,000 د/م" in text      # 11,000 + 3 × 2,000
+    assert "إعادة المسار: 100 م × 26,000 د/م" in text     # 20,000 + 3 × 2,000
+    assert "المجموع: 43,000 د/م" in text
 
 
 def test_street_crossings_are_project_wide_fields_not_per_segment(window, pug11):

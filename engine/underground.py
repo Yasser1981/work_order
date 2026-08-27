@@ -177,23 +177,21 @@ def civil_tariff_parts(
     if len(parts) == len(CIVIL_COMPONENTS):
         return parts
 
-    undetailed = tariff.get("إجمالي_غير_مفصَّل", {}).get(sidewalk_type.value, {})
-    lump = undetailed.get(key)
-    if lump is not None:
-        return [("الحفر وإعادة المسار — إجمالي غير مفصَّل", lump)]
-
-    # ما زاد على أعلى عدد في الجدول: زيادة ثابتة لكل مغذٍّ إضافي (ق-٤٤)
+    # ما زاد على 3 مغذيات: **كل مكوّن** يزيد 2,000 لكل مغذٍّ إضافي (ق-٤٧).
+    # فالتفصيل يشمل كل عدد ولا يبقى إجمالٌ غير مفصَّل.
     extra = tariff.get("زيادة_ما_فوق_الجدول", {})
     base_count = extra.get("من_عدد")
-    step = extra.get("الزيادة_لكل_مغذٍّ")
-    base_rate = undetailed.get(str(base_count)) if base_count else None
-    if base_rate is not None and step and count > base_count:
+    step = extra.get("الزيادة_لكل_مكوّن")
+    if base_count and step and count > base_count:
+        base_key = str(base_count)
         added = (count - base_count) * step
-        return [(
-            f"الحفر وإعادة المسار — إجمالي غير مفصَّل"
-            f" ({base_count} مغذيات + {count - base_count} × {step:,.0f})",
-            base_rate + added,
-        )]
+        extended = [
+            (component, detailed[component][sidewalk_type.value][base_key] + added)
+            for component in CIVIL_COMPONENTS
+            if base_key in detailed.get(component, {}).get(sidewalk_type.value, {})
+        ]
+        if len(extended) == len(CIVIL_COMPONENTS):
+            return extended
 
     return [("الحفر وإعادة المسار", None)]
 

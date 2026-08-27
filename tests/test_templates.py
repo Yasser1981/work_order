@@ -270,11 +270,12 @@ def test_every_template_survives_an_underground_segment_with_a_missing_rate(
 
 
 def test_audit_prints_the_extended_civil_rate_not_a_blank(order, underground_result):
-    """6 مغذيات: تعرفة ممتدّة مسعّرة (ق-٤٤)، لا «بلا أجر» كما كان."""
+    """6 مغذيات: تعرفة ممتدّة مسعّرة ومفصَّلة إلى مكوّنين (ق-٤٤، ق-٤٧)."""
     html = printing.get("audit").build_html(order, underground_result)
     assert "الأعمال المدنية" in html
     assert not underground_result["أجور_مفقودة"]
-    assert "43,000" in html          # ترابي: 39,000 + مغذٍّ واحد × 4,000
+    assert "حفر الخندق" in html and "إعادة المسار" in html
+    assert "17,000" in html and "26,000" in html   # ترابي 6: 11,000+6,000 و20,000+6,000
 
 
 def test_the_audit_sheet_states_which_price_version_produced_it(order, underground_result):
