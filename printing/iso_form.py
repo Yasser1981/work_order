@@ -15,10 +15,55 @@ from datetime import date
 
 from engine.workorder import WorkOrder
 
+ARABIC_FONTS = (
+    # ويندوز — مرتَّبة بحسب ملاءمتها للمستند الرسمي (ق-٥١)
+    "Simplified Arabic",
+    "Traditional Arabic",
+    "Tahoma",            # يُشحن مع كل ويندوز منذ XP، وعربيّته ممتازة
+    "Arial",
+    # لينكس — بيئة التطوير
+    "Noto Naskh Arabic",
+    "FreeSerif",
+    "DejaVu Sans",
+)
+"""ترتيب تفضيل الخطوط العربية للطباعة.
+
+**المشكلة التي يحلّها هذا (ق-٥١):** كانت القائمة `FreeSerif, Noto Naskh Arabic`
+وكلاهما **خطّ لينكس لا يُشحن مع ويندوز**. فعلى حاسبة المستخدم كان الاختيار يسقط
+إلى `serif` العامّ — أي Times New Roman، وعربيّته ضعيفة في المستندات الرسمية.
+وهو خلل لا يظهر إلا **بعد** البناء والتسليم، كنظير خلل مجلد البيانات في ق-٢٨.
+"""
+
+
+def available_arabic_font(families: list[str] | None = None) -> str:
+    """أول خطّ عربي متاح فعلاً على هذا الجهاز، أو `serif` إن لم يتوفّر شيء.
+
+    يُقرأ من `QFontDatabase` وقت التشغيل لا وقت البناء، فيختار الخطّ الأنسب على
+    ويندوز وعلى لينكس بلا شيفرة خاصة بكل نظام.
+
+    **ولا يُستدعى `QFontDatabase` بلا `QApplication` قائمة** — استدعاؤها حينها
+    **يُسقط العملية بـ Abort** لا برفع استثناء يمكن التقاطه. فيُعاد `serif`
+    عندئذٍ. وهذا لا يمسّ الطباعة الفعلية: `write_pdf` تحتاج `QApplication` أصلاً،
+    فالخطّ يُحلّ دائماً في المسار الحقيقي.
+    """
+    if families is None:
+        from PyQt6.QtGui import QFontDatabase
+        from PyQt6.QtWidgets import QApplication
+
+        if QApplication.instance() is None:
+            return "serif"
+        families = QFontDatabase.families()
+    installed = set(families)
+    for name in ARABIC_FONTS:
+        if name in installed:
+            return name
+    return "serif"
+
+
 # ملاحظة: QTextDocument يدعم مجموعة محدودة من CSS ويتجاهل width على الجداول.
 # لذلك تُضبط أعراض الجداول والمحاذاة بخصائص HTML مباشرة، لا بالأنماط.
 _CSS = """
-body     { font-family: 'FreeSerif', 'Noto Naskh Arabic', serif; font-size: 11pt; }
+body     { font-family: %FONT%, serif; font-size: 11pt; }
 th       { background-color: #e8e8e8; font-weight: bold; }
 .k       { font-weight: bold; background-color: #f4f4f4; }
 .section { font-weight: bold; font-size: 12pt; }
@@ -27,6 +72,15 @@ th       { background-color: #e8e8e8; font-weight: bold; }
 .h2      { font-size: 11pt; }
 .title   { font-size: 15pt; font-weight: bold; }
 """
+
+
+def styles(extra: str = "") -> str:
+    """أنماط المستند بعد استبدال `%FONT%` بأول خطّ عربي متاح (ق-٥١).
+
+    تُستدعى **وقت الطباعة** لا وقت الاستيراد، لأن `QFontDatabase` تحتاج
+    `QApplication` قائمة.
+    """
+    return (_CSS + extra).replace("%FONT%", f"'{available_arabic_font()}'")
 
 _TABLE = 'width="100%" border="1" cellspacing="0" cellpadding="4"'
 
@@ -73,7 +127,7 @@ def build_html(order: WorkOrder, result: dict) -> str:
         for i, e in enumerate(order.equipment, start=1)
     )
 
-    return f"""<html><head><meta charset="utf-8"><style>{_CSS}</style></head>
+    return f"""<html><head><meta charset="utf-8"><style>{styles()}</style></head>
 <body dir="rtl">
 <p align="center" class="h1">{_esc(order.organisation)}</p>
 <p align="center" class="h2">{_esc(order.branch)}</p>
@@ -142,7 +196,7 @@ def write_pdf(order: WorkOrder, result: dict, path: str) -> str:
     writer.setResolution(150)
 
     doc = QTextDocument()
-    doc.setDefaultStyleSheet(_CSS)
+    doc.setDefaultStyleSheet(styles())
     doc.setDefaultTextOption(_rtl_option())
     doc.setHtml(build_html(order, result))
     doc.setPageSize(writer.pageLayout().paintRectPixels(writer.resolution()).size().toSizeF())

@@ -12,9 +12,9 @@ from collections import OrderedDict
 
 from engine.workorder import WorkOrder
 
-from .iso_form import _CSS, _esc, _fmt_date, _fmt_qty, _TABLE, _rtl_option
+from .iso_form import _esc, _fmt_date, _fmt_qty, styles, _TABLE, _rtl_option
 
-_EXTRA_CSS = _CSS + """
+_EXTRA = """
 .src   { font-size: 9pt; color: #444; }
 .tot   { font-weight: bold; background-color: #f0f0f0; }
 .grp   { font-weight: bold; background-color: #e8e8e8; }
@@ -138,7 +138,7 @@ def build_html(order: WorkOrder, result: dict) -> str:
 </table>
 """
 
-    return f"""<html><head><meta charset="utf-8"><style>{_EXTRA_CSS}</style></head>
+    return f"""<html><head><meta charset="utf-8"><style>{styles(_EXTRA)}</style></head>
 <body dir="rtl">
 <p align="center" class="h1">ورقة تدقيق أمر العمل</p>
 <p align="center" class="h2">{_esc(order.project_name)}</p>
@@ -186,7 +186,7 @@ def write_pdf(order: WorkOrder, result: dict, path: str) -> str:
     writer.setResolution(150)
 
     doc = QTextDocument()
-    doc.setDefaultStyleSheet(_EXTRA_CSS)
+    doc.setDefaultStyleSheet(styles(_EXTRA))
     doc.setDefaultTextOption(_rtl_option())
     doc.setHtml(build_html(order, result))
     doc.setPageSize(writer.pageLayout().paintRectPixels(writer.resolution()).size().toSizeF())

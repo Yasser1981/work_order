@@ -15,10 +15,16 @@
 يُبنى على ويندوز، ولِلينكس على لينكس. لا خيار «بناء متقاطع» فيه.
 """
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# طرفية ويندوز تفتح افتراضياً بترميز غير UTF-8 (cp1256 أو cp437)، فطباعة العربية
+# فيها ترفع UnicodeEncodeError ويتوقّف السكربت قبل أن يبني شيئاً. هذا يجبرها على
+# UTF-8. لا أثر له على لينكس (UTF-8 أصلاً).
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent
 SPEC = ROOT / "أوامر_العمل.spec"
@@ -33,11 +39,15 @@ def run(label: str, command: list[str]) -> None:
 
 
 def main() -> int:
-    if shutil.which("pyinstaller") is None:
+    try:
+        import PyInstaller  # noqa: F401
+    except ImportError:
         sys.exit("✗ PyInstaller غير مثبَّت.  ثبّته بـ:  pip install pyinstaller")
 
     run("الاختبارات", [sys.executable, "-m", "pytest", "-q"])
-    run("البناء", ["pyinstaller", "--noconfirm", str(SPEC)])
+    # يُستدعى كوحدة بايثون لا كأمر مستقلّ: على ويندوز قد لا يكون مجلد Scripts
+    # في PATH فيفشل الأمر المباشر رغم أن الحزمة مثبَّتة
+    run("البناء", [sys.executable, "-m", "PyInstaller", "--noconfirm", str(SPEC)])
 
     produced = ROOT / "dist" / (NAME + (".exe" if sys.platform == "win32" else ""))
     if not produced.exists():

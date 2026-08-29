@@ -179,6 +179,65 @@ def segmented_result():
     return compute_project(project, load_catalog())
 
 
+# ═══════════════════ الخطّ العربي — ملاءمة ويندوز (ق-٥١) ═══════════════════
+
+
+def test_the_font_falls_back_across_platforms():
+    """أول خطّ عربي متاح فعلاً — لا اسم مثبَّت قد لا يوجد على جهاز المستخدم."""
+    from printing.iso_form import available_arabic_font
+
+    # ويندوز عادي بلا أوفيس: Tahoma مشحون مع كل نسخة وعربيّته ممتازة
+    assert available_arabic_font(["Arial", "Tahoma", "Times New Roman"]) == "Tahoma"
+    # ويندوز مع أوفيس: الخطّ الرسمي يتقدّم
+    assert available_arabic_font(["Arial", "Tahoma", "Simplified Arabic"]) == "Simplified Arabic"
+    # لينكس (بيئة التطوير)
+    assert available_arabic_font(["DejaVu Sans", "FreeSerif"]) == "FreeSerif"
+    # جهاز بلا أي خطّ من القائمة — لا انهيار، بل الافتراضي العامّ
+    assert available_arabic_font(["Comic Sans MS"]) == "serif"
+
+
+def test_building_html_without_a_qt_app_does_not_abort():
+    """حارس انهيار: `QFontDatabase` بلا `QApplication` **تُسقط العملية بـ Abort**
+    لا برفع استثناء. فبناء HTML خارج التطبيق يجب أن يعيد `serif` بلا مساس.
+
+    الخلل كان من صنعي في ق-٥١ وكشفته الاختبارات قبل الإيداع.
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "from printing.iso_form import available_arabic_font;"
+        "print(available_arabic_font())"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, cwd="."
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "serif"
+
+
+def test_no_linux_only_font_is_hard_coded_in_the_styles(qapp):
+    """حارس ق-٥١: لا اسم خطّ مثبَّت في الأنماط — يُختار وقت التشغيل.
+
+    كان `FreeSerif` مثبَّتاً وهو خطّ لينكس لا يُشحن مع ويندوز، فكان المستند
+    على حاسبة المستخدم يسقط إلى Times New Roman.
+    """
+    from printing.iso_form import _CSS, styles
+
+    assert "%FONT%" in _CSS                 # القالب يحمل موضع الاستبدال
+    assert "%FONT%" not in styles()         # والناتج لا يحمله
+    assert "font-family" in styles()
+
+
+def test_both_templates_use_the_resolved_font(order, result, qapp):
+    from printing.iso_form import available_arabic_font
+
+    font = available_arabic_font()
+    for key in ("iso", "audit"):
+        html = printing.get(key).build_html(order, result)
+        assert f"'{font}'" in html, key
+
+
 def test_audit_survives_a_labour_item_with_no_rate(order, underground_result_missing_rate):
     """كان القالب ينهار على أي أجر بلا سعر — الأجر None لا يُنسَّق كرقم (خ-١)."""
     html = printing.get("audit").build_html(order, underground_result_missing_rate)
