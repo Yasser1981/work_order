@@ -531,14 +531,16 @@ def test_the_two_isolator_voltages_use_their_own_cables(window, pequip):
     pequip.onload_11_mid.setValue(1)
     pequip.isolator_33_mid.setValue(1)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
-    assert quantities["قابلو نحاس 1×150 ملم²"] == 20
-    assert quantities["قابلو 1×185 ملم²"] == 20
+    assert quantities["قابلو نحاس 1×150 ملم²"] == 30
+    assert quantities["قابلو 1×185 ملم²"] == 30
 
 
-def test_cable_head_halves_the_cable_on_screen(window, pequip):
+def test_cable_head_halves_the_cable_and_the_fittings_on_screen(window, pequip):
+    """نصف القابلو ونصف المعدات على رأس القابلو — جهة واحدة (ق-٥٠)."""
     pequip.onload_11_head.setValue(1)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
-    assert quantities["قابلو نحاس 1×150 ملم²"] == 10
+    assert quantities["قابلو نحاس 1×150 ملم²"] == 15
+    assert quantities["معدات ربط ألمنيوم – نحاس"] == 3
     assert quantities["مانعة صواعق 11 KV"] == 1
 
 

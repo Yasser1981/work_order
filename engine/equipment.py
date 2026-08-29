@@ -194,15 +194,30 @@ TRANSFORMER_KITS = {
 #     الهوائية من **جهتيه**، وعلى رأس القابلو من **جهة واحدة** فقط والجهة الثانية
 #     يربطها القابلو الأرضي نفسه.
 
-CABLE_MID_NETWORK_M = 20
+CABLE_MID_NETWORK_M = 30
+"""قابلو الفاصل في منتصف الشبكة (م) — موصول من **جهتيه** (ق-٥٠)."""
+
 CABLE_HEAD_M = CABLE_MID_NETWORK_M // 2
+"""قابلو الفاصل على رأس القابلو (م) = **نصف** قابلو المنتصف — جهة واحدة (ق-٥٠).
+
+الجهة الثانية يربطها القابلو الأرضي نفسه، فلا حاجة إلى قابلو الفاصل فيها."""
+
 LUGS_PER_ISOLATOR = 6
+"""ترمنل القابلو لكل فاصل — **6 في الموقعين معاً**، لا يتبع طول القابلو.
 
-FITTINGS_PER_ISOLATOR = 6
-"""معدات ربط ألمنيوم – نحاس لكل فاصل — في الجهدين معاً، وفي الموقعين معاً (ق-٢٦).
+الترمنل لطرفَي القابلو (طرفان × ثلاثة أطوار)، والطول لا يغيّر عدد الأطراف."""
 
-لا وجود لمعدات ألمنيوم – ألمنيوم في الفاصل إطلاقاً. ونوعها يتبع الجهد: العادية
-في 11 ك.ف و«210 ملم²» في 33 ك.ف (ق-٣٧)."""
+FITTINGS_MID_NETWORK = 6
+"""معدات ربط ألمنيوم – نحاس في منتصف الشبكة: ثلاثة أطوار × **جهتين** (ق-٥٠)."""
+
+FITTINGS_CABLE_HEAD = 3
+"""معدات ربط ألمنيوم – نحاس على رأس القابلو: ثلاثة أطوار × **جهة واحدة** (ق-٥٠).
+
+تتبع القابلو في نصفه: القابلو 15 م لا 30، والمعدات 3 لا 6. كانت 6 في الموقعين
+حتى ق-٥٠، وهو ما كنتُ أعرضه للتدقيق فصُحّح.
+
+**ونوعها يتبع الجهد**: العادية في 11 ك.ف و«210 ملم²» في 33 ك.ف (ق-٣٧).
+ولا وجود لمعدات ألمنيوم – ألمنيوم في الفاصل إطلاقاً."""
 
 BRACKETS_21_PER_ISOLATOR = 1
 """قاعدة فاصل هوائي – براكيت جنل 2.1م — واحد لكل فاصل، بالجهدين والموقعين (ق-٢٧).
@@ -237,6 +252,11 @@ class IsolatorPosition(Enum):
     def cable_m(self) -> int:
         return CABLE_HEAD_M if self.needs_arrester else CABLE_MID_NETWORK_M
 
+    @property
+    def fittings(self) -> int:
+        """معدات الربط — تتبع الموقع كما يتبعه القابلو (ق-٥٠)."""
+        return FITTINGS_CABLE_HEAD if self.needs_arrester else FITTINGS_MID_NETWORK
+
 
 ISOLATOR_PARTS = {
     IsolatorVoltage.KV11: {
@@ -244,7 +264,7 @@ ISOLATOR_PARTS = {
         "cable": M_CU_CABLE_150,
         "lug": M_TERMINAL_150,
         "arrester": M_ARRESTER_11,
-        "fittings": (M_AL_FITTINGS_CU, FITTINGS_PER_ISOLATOR),
+        "fittings": M_AL_FITTINGS_CU,
         "labour": "نصب الفاصل ON-LOAD",
     },
     IsolatorVoltage.KV33: {
@@ -253,8 +273,8 @@ ISOLATOR_PARTS = {
         "lug": M_TERMINAL_185,
         "arrester": M_ARRESTER_33,
         # 210 ملم² لا العادية — السلك المتّصل 210/35 (ق-٣٧).
-        # والملف الأصلي أغفلها كلياً في 33 ك.ف، وأكّدتَ أنها 6 (ق-٢٦)
-        "fittings": (M_AL_FITTINGS_CU_210, FITTINGS_PER_ISOLATOR),
+        # والملف الأصلي أغفلها كلياً في 33 ك.ف، وأكّدتَ وجودها (ق-٢٦)
+        "fittings": M_AL_FITTINGS_CU_210,
         "labour": "نصب فاصل هوائي 33 ك.ف",
     },
 }
@@ -272,7 +292,7 @@ def isolator_kit(
         (M_BRACKET_21, BRACKETS_21_PER_ISOLATOR),
     ]
     if parts["fittings"]:
-        kit.append(parts["fittings"])
+        kit.append((parts["fittings"], position.fittings))
     if position.needs_arrester:
         kit.append((parts["arrester"], 1))
         kit.extend(ARRESTER_ASSEMBLY_EXTRAS)

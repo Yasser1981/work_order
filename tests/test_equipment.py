@@ -283,22 +283,22 @@ def test_11kv_mid_network_has_no_arrester_and_full_cable():
     lines = materials_equipment(Equipment(onload_11_mid=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل هوائي 11 ك.ف ON LOAD": 1,
-        "قابلو نحاس 1×150 ملم²": 20,
+        "قابلو نحاس 1×150 ملم²": 30,        # موصول من جهتيه (ق-٥٠)
         "ترمنل 150 ملم²": 6,
         "قاعدة فاصل هوائي – براكيت جنل 2.1م": 1,
-        "معدات ربط ألمنيوم – نحاس": 6,
+        "معدات ربط ألمنيوم – نحاس": 6,       # 3 أطوار × جهتين
     }
 
 
 def test_11kv_cable_head_adds_the_arrester_and_halves_the_cable():
-    """رأس القابلو: مانعة صواعق كاملة بتأريضها، وقابلو نصف الكمية (ق-٢٥)."""
+    """رأس القابلو: مانعة كاملة بتأريضها، ونصفُ القابلو ونصفُ المعدات (ق-٢٥، ق-٥٠)."""
     lines = materials_equipment(Equipment(onload_11_head=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل هوائي 11 ك.ف ON LOAD": 1,
-        "قابلو نحاس 1×150 ملم²": 10,
-        "ترمنل 150 ملم²": 6,
+        "قابلو نحاس 1×150 ملم²": 15,        # نصف الـ30 — جهة واحدة
+        "ترمنل 150 ملم²": 6,                # لطرفَي القابلو، لا يتبع الطول
         "قاعدة فاصل هوائي – براكيت جنل 2.1م": 1,
-        "معدات ربط ألمنيوم – نحاس": 6,
+        "معدات ربط ألمنيوم – نحاس": 3,       # 3 أطوار × جهة واحدة (ق-٥٠)
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 1,
@@ -312,7 +312,7 @@ def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
     lines = materials_equipment(Equipment(isolator_33_mid=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل هوائي 33 ك.ف ON LOAD": 1,
-        "قابلو 1×185 ملم²": 20,
+        "قابلو 1×185 ملم²": 30,
         "ترمنل 185 ملم²": 6,
         "قاعدة فاصل هوائي – براكيت جنل 2.1م": 1,
         # 210 ملم² لا العادية — السلك المتّصل 210/35 (ق-٣٧)
@@ -321,14 +321,14 @@ def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
 
 
 def test_33kv_cable_head_matches_the_original_file_except_the_cable():
-    """الملف الأصلي أعطاه 20 م من القابلو 1×185، والصحيح 10 م (ت-٦)."""
+    """رأس القابلو 33 ك.ف: نصف القابلو ونصف المعدات (ت-٦ ثم ق-٥٠)."""
     lines = materials_equipment(Equipment(isolator_33_head=1))
     assert {l.name: l.qty for l in lines} == {
         "فاصل هوائي 33 ك.ف ON LOAD": 1,
-        "قابلو 1×185 ملم²": 10,
+        "قابلو 1×185 ملم²": 15,
         "ترمنل 185 ملم²": 6,
         "قاعدة فاصل هوائي – براكيت جنل 2.1م": 1,
-        "معدات ربط ألمنيوم – نحاس 210 ملم²": 6,
+        "معدات ربط ألمنيوم – نحاس 210 ملم²": 3,
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب تأريض 1.5 متر مع القفيص": 1,
@@ -337,15 +337,28 @@ def test_33kv_cable_head_matches_the_original_file_except_the_cable():
     }
 
 
-def test_the_cable_head_cable_is_exactly_half():
+def test_the_cable_head_halves_both_the_cable_and_the_fittings():
+    """القابلو والمعدات ينصفان معاً على رأس القابلو — جهة واحدة لا جهتان (ق-٥٠)."""
     from engine.equipment import ISOLATOR_PARTS
 
-    assert CABLE_HEAD_M * 2 == CABLE_MID_NETWORK_M
+    assert CABLE_HEAD_M * 2 == CABLE_MID_NETWORK_M == 30
     for voltage in IsolatorVoltage:
         kits = {p: dict(isolator_kit(voltage, p)) for p in IsolatorPosition}
         cable = ISOLATOR_PARTS[voltage]["cable"]
-        assert kits[IsolatorPosition.CABLE_HEAD][cable] * 2 == \
-            kits[IsolatorPosition.MID_NETWORK][cable]
+        fittings = ISOLATOR_PARTS[voltage]["fittings"]
+        for material in (cable, fittings):
+            assert kits[IsolatorPosition.CABLE_HEAD][material] * 2 == \
+                kits[IsolatorPosition.MID_NETWORK][material], material
+
+
+def test_the_lugs_do_not_follow_the_cable_length():
+    """ترمنل القابلو 6 في الموقعين — لطرفَي القابلو، والطول لا يغيّر الأطراف."""
+    from engine.equipment import ISOLATOR_PARTS
+
+    for voltage in IsolatorVoltage:
+        lug = ISOLATOR_PARTS[voltage]["lug"]
+        for position in IsolatorPosition:
+            assert dict(isolator_kit(voltage, position))[lug] == 6
 
 
 def test_only_the_cable_head_carries_an_arrester():
