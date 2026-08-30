@@ -51,6 +51,44 @@ def pug33(window):
     return window.add_segment(SegmentKind.UG33)
 
 
+# ═══════════════════ الخطّ في الواجهة (ق-٥٣) ═══════════════════
+
+
+def test_pane_titles_keep_the_application_font_family(window):
+    """عنوانا الجدولين لا يفرضان عائلة خطّ — يرثان خطّ التطبيق.
+
+    كانا `QFont("", 12, Bold)` بعائلة **فارغة**، فكان Qt يحلّها إلى خطّ لاتيني
+    بلا حروف عربية (Bitstream Charter هنا)، فيستبدل كل حرف من خطّ مختلف
+    وتنكسر وصلة الحروف. ظهر على ويندوز مقطّعاً وبألوان مختلطة (ق-٥٣).
+    """
+    from PyQt6.QtWidgets import QLabel
+
+    titles = [w for w in window.findChildren(QLabel) if w.objectName() == "pane"]
+    assert len(titles) == 2, "عنوانا «جدول المواد» و«أجور العمل»"
+
+    plain = QLabel("نصّ عادي")
+    plain.setParent(window)
+    for title in titles:
+        assert title.fontInfo().family() == plain.fontInfo().family()
+
+
+def test_no_font_is_constructed_with_an_empty_family():
+    """حارس ق-٥٣: `QFont("")` ممنوع في الواجهة كلها.
+
+    العائلة الفارغة لا ترفع خطأً ولا تسقط اختباراً — تُفسد الشكل وحده، وعلى
+    ويندوز دون لينكس. فالحارس نصّي لأن الأثر لا يظهر في أي تأكيد سلوكي هنا.
+    """
+    import pathlib
+    import re
+
+    offenders = []
+    for path in pathlib.Path("ui").glob("*.py"):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"""QFont\(\s*["']\s*["']""", line):
+                offenders.append(f"{path}:{number}")
+    assert not offenders, "QFont بعائلة فارغة: " + "، ".join(offenders)
+
+
 # ═══════════════════ المقاطع ═══════════════════
 
 

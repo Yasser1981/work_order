@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -41,6 +41,9 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top right;
 QLabel#hint   { color: palette(dark); background: palette(alternate-base);
                 border-radius: 4px; padding: 6px 8px; }
 QLabel#total  { font-size: 15px; font-weight: 700; }
+/* عناوين الجدولين. تُضبط هنا لا بـ QFont: تمرير عائلة فارغة إلى QFont
+   يكسر تشكيل العربية على ويندوز فتظهر الحروف مقطّعة ومن خطوط مختلفة (ق-٥٣). */
+QLabel#pane   { font-size: 16px; font-weight: 700; padding: 2px 2px 4px 2px; }
 QPushButton   { padding: 6px 14px; border-radius: 5px; }
 QPushButton#print { font-weight: 600; padding: 8px 20px; }
 """
@@ -86,7 +89,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
 
         title = QLabel("جدول المواد")
-        title.setFont(QFont("", 12, QFont.Weight.Bold))
+        title.setObjectName("pane")
         layout.addWidget(title)
 
         self.materials = QTableWidget(0, 5)
@@ -109,7 +112,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.breakdown)
 
         title = QLabel("أجور العمل")
-        title.setFont(QFont("", 12, QFont.Weight.Bold))
+        title.setObjectName("pane")
         layout.addWidget(title)
 
         self.labour = QTableWidget(0, 4)
