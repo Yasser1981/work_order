@@ -147,9 +147,16 @@ class MainWindow(QMainWindow):
         self.template_box.setMinimumWidth(170)
         totals.addWidget(self.template_box)
 
+        self.excel_button = QPushButton("تصدير إلى إكسل")
+        self.excel_button.setToolTip(
+            "ورقة عمل قابلة للتعديل: الكلفة معادلة لا رقماً، فتعديل أي كمية "
+            "يُحدّثها ومجموعها داخل الإكسل بلا عودة إلى البرنامج."
+        )
         self.print_button = QPushButton("طباعة  (PDF)")
         self.print_button.setObjectName("print")
         self.print_button.clicked.connect(self.export_pdf)
+        self.excel_button.clicked.connect(self.export_excel)
+        totals.addWidget(self.excel_button)
         totals.addWidget(self.print_button)
         layout.addLayout(totals)
         return pane
@@ -207,6 +214,42 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "تم الحفظ",
             f"حُفظ بقالب «{self.template.name}» في:\n{Path(path).name}{note}")
+        return path
+
+    def write_order_xlsx(self, path: str) -> str:
+        """يكتب أمر العمل ملفَّ إكسل ويعيد المسار — بلا أي حوار (ق-٥٧)."""
+        from printing.spreadsheet import write_xlsx
+
+        if not self.result["المواد"]:
+            raise ValueError("جدول المواد فارغ — أدخل معطيات الشبكة أولاً.")
+        return write_xlsx(self.order_panel.order(), self.result, path)
+
+    def export_excel(self) -> str | None:
+        """معالج زرّ التصدير إلى إكسل — نظير `export_pdf` تماماً."""
+        if not self.result["المواد"]:
+            QMessageBox.warning(self, "لا توجد مواد",
+                                "أدخل معطيات الشبكة أولاً — جدول المواد فارغ.")
+            return None
+
+        number = self.order_panel.number.text().strip()
+        suggested = f"أمر عمل {number}.xlsx" if number else "أمر عمل.xlsx"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "تصدير إلى إكسل", suggested, "مصنَّف إكسل (*.xlsx)"
+        )
+        if not path:
+            return None
+        try:
+            path = self.write_order_xlsx(path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "تعذّر الحفظ", f"لم يُكتب الملف:\n{exc}")
+            return None
+
+        QMessageBox.information(
+            self, "تم التصدير",
+            f"صُدّر إلى:\n{Path(path).name}\n\n"
+            "الكلفة في الملف **معادلة** لا رقماً — عدّل أي كمية أو سعر "
+            "فيُحدَّث المجموع داخل الإكسل."
+        )
         return path
 
     @staticmethod

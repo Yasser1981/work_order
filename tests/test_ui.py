@@ -51,6 +51,68 @@ def pug33(window):
     return window.add_segment(SegmentKind.UG33)
 
 
+# ═══════════════════ تأكيد الحذف والتصدير إلى إكسل (ق-٥٧) ═══════════════════
+
+
+def test_removing_a_segment_asks_first(window, monkeypatch):
+    """الحذف لا رجعة فيه — فيُسأل عنه أولاً (ق-٥٧)."""
+    from PyQt6.QtWidgets import QMessageBox
+
+    editor = window.add_segment(SegmentKind.HV11)
+    editor.route.setValue(500)
+    window.segments.list.setCurrentRow(0)
+
+    asked = {}
+
+    def refuse(*args, **kwargs):
+        asked["نُصّ"] = args[2] if len(args) > 2 else ""
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "question", refuse)
+    window.segments._remove_segment()
+    assert len(window.segments.segments()) == 1        # لم يُحذف
+    assert "المقطع الأول" in asked["نُصّ"]              # والرسالة تسمّيه
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    window.segments._remove_segment()
+    assert window.segments.segments() == []           # حُذف بعد الموافقة
+
+
+def test_the_excel_export_writes_a_workbook_with_live_formulas(window, p11, tmp_path):
+    """الكلفة **معادلة** لا رقماً — وهو كل الغرض من التصدير (ق-٥٧)."""
+    import openpyxl
+
+    p11.route.setValue(500)
+    p11._adopt_suggestion()
+    path = window.write_order_xlsx(str(tmp_path / "أمر.xlsx"))
+
+    book = openpyxl.load_workbook(path)
+    assert book.sheetnames == ["أمر العمل", "جدول المواد", "أجور العمل"]
+
+    sheet = book["جدول المواد"]
+    assert sheet.sheet_view.rightToLeft is True
+    assert sheet.cell(2, 6).value.startswith("=D2*E2")        # الكلفة معادلة
+    assert str(sheet.cell(sheet.max_row, 6).value).startswith("=SUM(")
+
+    labour = book["أجور العمل"]
+    assert labour.cell(2, 7).value.startswith("=D2*F2")
+
+
+def test_the_excel_export_refuses_an_empty_project(window, tmp_path):
+    """لا يُصدَّر مشروع فارغ — كنظير الطباعة تماماً."""
+    with pytest.raises(ValueError):
+        window.write_order_xlsx(str(tmp_path / "فارغ.xlsx"))
+
+
+def test_the_excel_extension_is_added_when_missing(window, p11, tmp_path):
+    p11.route.setValue(300)
+    p11._adopt_suggestion()
+    path = window.write_order_xlsx(str(tmp_path / "بلا_امتداد"))
+    assert path.endswith(".xlsx")
+
+
 # ═══════════════════ تاريخ المباشرة قد يكون فارغاً (ق-٥٥) ═══════════════════
 
 
@@ -248,7 +310,7 @@ def test_removing_a_segment_removes_its_materials(window):
     editor.route.setValue(500)
     assert window.result["المواد"]
     window.segments.list.setCurrentRow(0)
-    window.segments._remove_segment()
+    window.segments._remove_segment(confirm=False)
     assert window.segments.segments() == []
     assert window.result["المواد"] == []
 

@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -174,9 +175,17 @@ class SegmentsPanel(QWidget):
     def _add_segment(self) -> None:
         self.add_segment(self.kind.currentData())
 
-    def _remove_segment(self) -> None:
+    def _remove_segment(self, confirm: bool = True) -> None:
+        """يحذف المقطع المحدَّد بعد تأكيد المستخدم (ق-٥٧).
+
+        الحذف **لا رجعة فيه** — لا تراجع في البرنامج، ولا حفظ للمشروع بعد.
+        فمقطع أُدخلت معطياته في دقائق يضيع بنقرة واحدة. `confirm=False`
+        للاستدعاء الآلي من الاختبارات، فالنوافذ الحاجزة تُعطّلها.
+        """
         row = self.list.currentRow()
         if row < 0:
+            return
+        if confirm and not self._confirm_removal(row):
             return
         editor = self.stack.widget(row + 1)
         self.stack.removeWidget(editor)
@@ -188,6 +197,18 @@ class SegmentsPanel(QWidget):
         self.list.setCurrentRow(min(row, len(self._names) - 1))
         self._sync_controls()
         self.changed.emit()
+
+    def _confirm_removal(self, row: int) -> bool:
+        """يسأل قبل الحذف ويسمّي المقطع — لئلا يُحذف غير المقصود."""
+        answer = QMessageBox.question(
+            self,
+            "تأكيد الحذف",
+            f"حذف «{self._names[row]}»؟\n\n"
+            "تُفقَد معطياته كلها ولا يمكن التراجع.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,          # الافتراضي «لا» — نقرة سهوٍ لا تحذف
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def _move(self, delta: int) -> None:
         """ينقل المقطع المحدَّد صعوداً أو نزولاً — الترتيب ترتيب المستخدم."""
