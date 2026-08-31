@@ -52,14 +52,14 @@ def test_transformer_kit_matches_the_original_file():
         "قاعدة محولة مع الملحقات": 1,
         "لنك فيوز 11 ك.ف مع السلك": 1,
         "قاعدة لنك فيوز مع الملحقات": 1,
-        "قضيب تأريض 1.5 متر مع القفيص": 3,
+        "قضيب نحاس تأريض 1.5 متر مع القفيص": 3,
         "سلك نحاس 50 ملم²": 15,
         "قابلو نحاس 1×50 ملم²": 25,
         "قابلو نحاس 1×150 ملم²": 80,
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
-        "معدات ربط ألمنيوم – نحاس": 8,     # 4 لكل مخرج × مخرجين (ق-٤٣)
-        "ترمنل 50 ملم²": 8,                 # ثابت لا يتبع المخارج (ق-٤٣)
+        "معدات ربط ألمنيوم – نحاس": 13,    # ثابتة لكل محولة (ق-٥٦)
+        "ترمنل 50 ملم²": 15,                # ثابت لا يتبع المخارج (ق-٤٣، ق-٥٦)
         "ترمنل 150 ملم²": 24,               # 12 لكل مخرج × مخرجين (ق-٤٣)
     }
     assert {l.name: l.qty for l in lines} == expected
@@ -122,19 +122,20 @@ def test_everything_else_is_shared_across_ratings():
         assert len({k[material] for k in kits.values()}) == 1
 
 
-def test_three_items_follow_the_outputs_not_the_rating():
-    """القابلو وترمنله ومعدات ربطه تتبع عدد المخارج معاً — بنسب ثابتة (ق-٤٣)."""
+def test_two_items_follow_the_outputs_not_the_rating():
+    """القابلو وترمنله يتبعان عدد المخارج (ق-٤٣). ومعدات الربط خرجت منهما (ق-٥٦)."""
     for size, (outputs, _amps) in EXPECTED_OUTPUTS.items():
         kit = dict(transformer_kit(size))
         assert kit[("قابلو نحاس 1×150 ملم²", "متر")] == outputs * 40
         assert kit[("ترمنل 150 ملم²", "عدد")] == outputs * 12
-        assert kit[("معدات ربط ألمنيوم – نحاس", "عدد")] == outputs * 4
 
 
-def test_the_earth_terminal_does_not_follow_the_outputs():
-    """ترمنل 50 للتأريض — ثمانية لكل محولة مهما بلغت مخارجها (ق-٤٣)."""
+def test_the_fixed_items_do_not_follow_the_outputs():
+    """ترمنل 50 = 15 ومعدات الربط = 13 لكل محولة مهما بلغت مخارجها (ق-٥٦)."""
     for size in TransformerSize:
-        assert dict(transformer_kit(size))[("ترمنل 50 ملم²", "عدد")] == 8
+        kit = dict(transformer_kit(size))
+        assert kit[("ترمنل 50 ملم²", "عدد")] == 15
+        assert kit[("معدات ربط ألمنيوم – نحاس", "عدد")] == 13
 
 
 def test_the_630_no_longer_lags_behind_its_cable():
@@ -301,7 +302,7 @@ def test_11kv_cable_head_adds_the_arrester_and_halves_the_cable():
         "معدات ربط ألمنيوم – نحاس": 3,       # 3 أطوار × جهة واحدة (ق-٥٠)
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
-        "قضيب تأريض 1.5 متر مع القفيص": 1,
+        "قضيب نحاس تأريض 1.5 متر مع القفيص": 1,
         "قابلو نحاس 1×50 ملم²": 15,
         "ترمنل 50 ملم²": 1,
     }
@@ -331,7 +332,7 @@ def test_33kv_cable_head_matches_the_original_file_except_the_cable():
         "معدات ربط ألمنيوم – نحاس 210 ملم²": 3,
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
-        "قضيب تأريض 1.5 متر مع القفيص": 1,
+        "قضيب نحاس تأريض 1.5 متر مع القفيص": 1,
         "قابلو نحاس 1×50 ملم²": 15,
         "ترمنل 50 ملم²": 1,
     }
@@ -368,7 +369,7 @@ def test_only_the_cable_head_carries_an_arrester():
         assert not any("مانعة" in n for n in mid)
         assert any("مانعة صواعق" in n for n in head)
         # ولا مانعة بلا تأريض
-        assert "قضيب تأريض 1.5 متر مع القفيص" in head
+        assert "قضيب نحاس تأريض 1.5 متر مع القفيص" in head
 
 
 def test_each_voltage_uses_its_own_cable():
@@ -444,9 +445,12 @@ def test_equipment_merges_into_project_totals(catalog):
     earth = next(m for m in result["المواد"] if m["المادة"] == "سلك نحاس 50 ملم²")
 
     # 25 عموداً × 1.5 م = 37.5 من الأعمدة، و15 م من المحولة
-    assert earth["الكمية"] == 52.5
+    assert earth["الكمية"] == 53          # 52.5 مقرَّبة لأعلى متر (ق-٥٦)
     assert earth["مجمَّع"] is True
-    assert len(earth["تفصيل"]) == 2
+    # مصدران + سطر التقريب: التقريب يُعرض ولا يُخفى (ق-٥٦)
+    assert len(earth["تفصيل"]) == 3
+    assert {p["الكمية"] for p in earth["تفصيل"][:2]} == {37.5, 15}
+    assert "تقريب 52.5" in earth["تفصيل"][-1]["المصدر"]
 
 
 def test_every_equipment_material_has_an_entry_in_the_catalog(catalog):
@@ -482,6 +486,7 @@ def test_transformer_cost_is_the_heaviest_single_line(catalog):
     transformer = next(m for m in result["المواد"] if m["المادة"] == "محولة 400 KVA جهد 11/0.4 ك.ف")
     assert transformer["الكلفة"] == 17_000_000
     # قاطع الدورة 400 نزل من 1,145,000 إلى 650,000 وقاعدة المانعة صعدت إلى 150,000 (ق-٣٦)،
-    # ثم نزلت المجموعة 113,000 بـ ق-٤٣ (ترمنل 150: 30←24، ومعدات: 15←8، وترمنل 50: 15←8)
-    assert result["كلفة_المواد"] == 22_571_000
+    # ثم نزلت المجموعة بـ ق-٤٣ (ترمنل 150: 30←24)، ثم صعدت بـ ق-٥٦
+    # (معدات: 8←13 وترمنل 50: 8←15)
+    assert result["كلفة_المواد"] == 22_634_000
     assert result["كلفة_العمل"] == 350_000

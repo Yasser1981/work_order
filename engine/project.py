@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import math
+
 from collections import OrderedDict
 from dataclasses import replace
 
@@ -43,6 +45,18 @@ from .underground import (
     materials_underground11,
     materials_underground33,
 )
+
+
+METRE_UNIT = "متر"
+"""الوحدة التي تُقرَّب كمياتها لأعلى عدد صحيح (ق-٥٦).
+
+«متر مكعب» و«طن» مستثناتان قصداً: الأولى مقرَّبة أصلاً في مولّدها، والثانية
+مقرَّبة إلى منزلة عشرية واحدة بطلبك في ق-٣٢ — وتقريبها إلى طنّ كامل يفسدها."""
+
+
+def _roundup_metres(value: float) -> int:
+    """أقرب عدد صحيح لأعلى. لا يُشترى نصف متر من سلك ولا من قابلو."""
+    return math.ceil(round(value, 9))
 
 
 def _tag(lines: list, label: str) -> list:
@@ -175,7 +189,10 @@ def compute_project(project: Project, catalog: dict) -> dict:
 
     materials = []
     materials_cost = 0.0
-    for (name, unit), qty in totals.items():
+    for (name, unit), raw_qty in totals.items():
+        # المواد بالمتر تُقرَّب لأعلى عدد صحيح: لا يُشترى نصف متر من سلك (ق-٥٦).
+        # يُقرَّب **المجموع** لا كل سطر، فلا تتراكم كسور التقريب.
+        qty = _roundup_metres(raw_qty) if unit == METRE_UNIT else raw_qty
         entry = prices.get(name, {})
         price = entry.get("السعر")
         quantity_only = entry.get("كمية_فقط", False)
@@ -191,7 +208,13 @@ def compute_project(project: Project, catalog: dict) -> dict:
                 "الكلفة": cost,
                 "كمية_فقط": quantity_only,
                 "سعر_مفقود": price is None,
-                "تفصيل": [{"الكمية": c.qty, "المصدر": c.source} for c in contributors],
+                "تفصيل": (
+                    [{"الكمية": c.qty, "المصدر": c.source} for c in contributors]
+                    + (
+                        [{"الكمية": qty, "المصدر": f"تقريب {raw_qty:g} م لأعلى متر"}]
+                        if qty != raw_qty else []
+                    )
+                ),
                 "مجمَّع": len(contributors) > 1,
             }
         )

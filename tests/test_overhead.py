@@ -241,21 +241,21 @@ def test_wire_rounds_up():
 @pytest.mark.parametrize(
     "circuit,pattern,pole,supply,expected",
     [
-        # الشبكة المفردة
+        # «مع الملحقات» = البراكيت كلها مرفقة بالعمود، فلا يُشترى منها شيء
+        # في أي تركيبة (ق-٥٦). كان النموذج يخصم واحداً فقط حتى ق-٥٦.
         (SINGLE, STD, RND, WITH,    {}),
+        (SINGLE, STD, LAT, WITH,    {}),
+        (DOUBLE, STD, RND, WITH,    {}),
+        (DOUBLE, STD, LAT, WITH,    {}),
+        (DOUBLE, ALT, RND, WITH,    {}),
+        (DOUBLE, ALT, LAT, WITH,    {}),
+        # «بدون ملحقات» = الحاجة كاملة
         (SINGLE, STD, RND, WITHOUT, {"1.2": 1}),
-        (SINGLE, STD, LAT, WITH,    {"1.4": 1}),   # مؤكَّد صراحةً في كلام صاحب العمل
         (SINGLE, STD, LAT, WITHOUT, {"1.4": 2}),
-        # الشبكة المزدوجة — النمط القياسي
-        (DOUBLE, STD, RND, WITH,    {"1.2": 1, "1.4": 1}),
         (DOUBLE, STD, RND, WITHOUT, {"1.2": 2, "1.4": 1}),
         # المشبك 6× 1.4م في كلا النمطين (ق-٢١)
-        (DOUBLE, STD, LAT, WITH,    {"1.4": 5}),
         (DOUBLE, STD, LAT, WITHOUT, {"1.4": 6}),
-        # الشبكة المزدوجة — النمط البديل
-        (DOUBLE, ALT, RND, WITH,    {"1.2": 2}),
         (DOUBLE, ALT, RND, WITHOUT, {"1.2": 3}),
-        (DOUBLE, ALT, LAT, WITH,    {"1.4": 5}),
         (DOUBLE, ALT, LAT, WITHOUT, {"1.4": 6}),
     ],
 )
@@ -626,28 +626,58 @@ def test_every_material_carries_its_breakdown(catalog):
 
 
 def test_bracket_breakdown_separates_each_contributor(catalog):
-    """البراكيت 1.4 يأتي من ثلاثة مصادر — يجب أن تظهر منفصلة لا مجموعة."""
+    """البراكيت 1.4 يأتي من ثلاثة مصادر — يجب أن تظهر منفصلة لا مجموعة.
+
+    والأعمدة هنا **بدون ملحقات**: بعد ق-٥٦ لا تُنتج الأعمدة «مع الملحقات» أي
+    براكيت، فلا يبقى إلا الإضافي ولا يصحّ اختبار التفصيل عليها.
+    """
     net = Network11kV(
         poles_lattice=5, poles_round=16, circuit=DOUBLE,
-        lattice_supply=WITH, round_supply=WITH, extra_bracket_14=3,
+        lattice_supply=WITHOUT, round_supply=WITHOUT, extra_bracket_14=3,
     )
     result = compute(OverheadProject(net11=net), catalog)
     row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
     assert row["مجمَّع"] is True
     assert len(row["تفصيل"]) == 3
-    # مشبك 5×5=25 (ق-٢١) + مدوّر 16×1 + إضافي 3
-    assert {p["الكمية"] for p in row["تفصيل"]} == {25, 16, 3}
+    # مشبك 5×6=30 (ق-٢١) + مدوّر 16×1 + إضافي 3
+    assert {p["الكمية"] for p in row["تفصيل"]} == {30, 16, 3}
     assert any("إضافي" in p["المصدر"] for p in row["تفصيل"])
     assert any("مشبك" in p["المصدر"] for p in row["تفصيل"])
     assert any("مدوّر" in p["المصدر"] for p in row["تفصيل"])
 
 
-def test_breakdown_shows_the_deduction_of_included_bracket(catalog):
-    """المصدر يذكر خصم البراكيت المرفق مع العمود، لا الرقم النهائي وحده."""
-    net = Network11kV(poles_lattice=5, lattice_supply=WITH)
+def test_poles_with_accessories_produce_no_brackets_at_all(catalog):
+    """«مع الملحقات» = البراكيت كلها مرفقة، فلا يظهر منها شيء (ق-٥٦).
+
+    الخلل الذي رصدتَه في أول أمر عمل: 9 أعمدة مشبكة «مع الملحقات» كانت تُنتج
+    9 براكيتات فوق الأربعة الإضافية، فيصير المجموع 13 بدل 4.
+    """
+    net = Network11kV(
+        poles_lattice=9, poles_round=32,
+        lattice_supply=WITH, round_supply=WITH, extra_bracket_14=4,
+    )
     result = compute(OverheadProject(net11=net), catalog)
     row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
-    assert "مرفق مع العمود" in row["تفصيل"][0]["المصدر"]
+    assert row["الكمية"] == 4
+    assert len(row["تفصيل"]) == 1
+    assert "إضافي" in row["تفصيل"][0]["المصدر"]
+    assert not any(r["المادة"] == "براكيت جنل 1.2 م مع الملحقات" for r in result["المواد"])
+
+
+def test_the_pole_name_carries_its_supply_form(catalog):
+    """«مع الملحقات» مادة أخرى باسم آخر (ق-٥٦)."""
+    with_kit = compute(OverheadProject(net11=Network11kV(
+        poles_lattice=9, poles_round=32, lattice_supply=WITH, round_supply=WITH)), catalog)
+    without = compute(OverheadProject(net11=Network11kV(
+        poles_lattice=9, poles_round=32,
+        lattice_supply=WITHOUT, round_supply=WITHOUT)), catalog)
+
+    assert {r["المادة"] for r in with_kit["المواد"] if "عمود 11م" in r["المادة"]} == {
+        "عمود 11م مشبك مع الملحقات", "عمود 11م مدوّر مع الملحقات"
+    }
+    assert {r["المادة"] for r in without["المواد"] if "عمود 11م" in r["المادة"]} == {
+        "عمود 11م مشبك", "عمود 11م مدوّر"
+    }
 
 
 def test_shared_material_breakdown_names_both_voltages(catalog):
@@ -687,7 +717,7 @@ def test_lattice_pole_uses_six_14m_brackets_in_both_double_patterns():
     for pattern in (STD, ALT):
         assert bracket_need_11(DOUBLE, pattern, LAT) == {"1.4": 6}
         assert bracket_purchase_11(DOUBLE, pattern, LAT, WITHOUT) == {"1.4": 6}
-        assert bracket_purchase_11(DOUBLE, pattern, LAT, WITH) == {"1.4": 5}
+        assert bracket_purchase_11(DOUBLE, pattern, LAT, WITH) == {}      # ق-٥٦
 
 
 def test_lattice_pole_needs_no_12m_bracket_in_double_circuit():

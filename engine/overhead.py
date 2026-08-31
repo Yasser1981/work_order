@@ -232,8 +232,20 @@ BRACKET_NEED_11 = {
     (CircuitType.DOUBLE, BracketPattern.ALTERNATIVE, PoleType11.LATTICE): {"1.4": 6},
 }
 
-BRACKET_INCLUDED_11 = {PoleType11.ROUND: "1.2", PoleType11.LATTICE: "1.4"}
-"""ما يأتي مع العمود «مع الملحقات»: المدور 1.2م والمشبك 1.4م — واحد لكل عمود."""
+M_POLE_11_LATTICE_KIT = ("عمود 11م مشبك مع الملحقات", "عدد")
+M_POLE_11_ROUND_KIT = ("عمود 11م مدوّر مع الملحقات", "عدد")
+
+POLE_11_NAMES = {
+    # (نوع العمود، شكل التوريد) ← المادة (ق-٥٦)
+    (PoleType11.LATTICE, SupplyForm.WITHOUT_ACCESSORIES): M_POLE_11_LATTICE,
+    (PoleType11.LATTICE, SupplyForm.WITH_ACCESSORIES): M_POLE_11_LATTICE_KIT,
+    (PoleType11.ROUND, SupplyForm.WITHOUT_ACCESSORIES): M_POLE_11_ROUND,
+    (PoleType11.ROUND, SupplyForm.WITH_ACCESSORIES): M_POLE_11_ROUND_KIT,
+}
+"""العمود «مع الملحقات» **مادة أخرى باسم آخر وسعر آخر** لا خصمٌ من عمود عارٍ.
+
+بنصّ المستخدم (ق-٥٦): «يتغيّر الاسم إلى عمود 11م مع الملحقات (سواء كان مشبك أو
+مدور) وتنزل البراكيت الإضافية فقط»."""
 
 
 def bracket_need_11(
@@ -251,13 +263,18 @@ def bracket_purchase_11(
     pole: PoleType11,
     supply: SupplyForm,
 ) -> dict[str, int]:
-    """البراكيت المطلوب شراؤه لعمود واحد = الحاجة − المرفق (لا يقلّ عن صفر)."""
-    need = bracket_need_11(circuit, pattern, pole)
+    """البراكيت المطلوب شراؤه لعمود واحد.
+
+    **«مع الملحقات» تعني أن البراكيت كلها مرفقة بالعمود، فلا يُشترى منها شيء**
+    (ق-٥٦). كان النموذج يخصم **واحداً** فقط، فكان العمود المشبك المفرد يُنتج
+    براكيتاً واحداً للشراء رغم أنه مورَّد بملحقاته — وهو ما رصدتَه في أول
+    أمر عمل: 9 أعمدة أنتجت 9 براكيتات زائدة فوق الأربعة الإضافية.
+
+    و«بدون ملحقات» تُنتج الحاجة كاملة كما هي.
+    """
     if supply.includes_bracket:
-        size = BRACKET_INCLUDED_11[pole]
-        if size in need:
-            need[size] = max(0, need[size] - 1)
-    return {size: n for size, n in need.items() if n > 0}
+        return {}
+    return {size: n for size, n in bracket_need_11(circuit, pattern, pole).items() if n > 0}
 
 
 # ──────────────────────────── توليد مواد 11 ك.ف ────────────────────────────
@@ -285,10 +302,13 @@ def materials_11kv(net: Network11kV) -> list[MaterialLine]:
                                           f" × {factor:g} زيادة"))
 
     # الأعمدة
+    # اسم العمود يتبع شكل توريده — «مع الملحقات» مادة أخرى بسعر آخر (ق-٥٦)
     if lat:
-        add(MaterialLine(*M_POLE_11_LATTICE, lat, f"أعمدة 11 ك.ف: {lat} مشبك"))
+        add(MaterialLine(*POLE_11_NAMES[(PoleType11.LATTICE, net.lattice_supply)], lat,
+                         f"أعمدة 11 ك.ف: {lat} مشبك {net.lattice_supply.value}"))
     if rnd:
-        add(MaterialLine(*M_POLE_11_ROUND, rnd, f"أعمدة 11 ك.ف: {rnd} مدوّر"))
+        add(MaterialLine(*POLE_11_NAMES[(PoleType11.ROUND, net.round_supply)], rnd,
+                         f"أعمدة 11 ك.ف: {rnd} مدوّر {net.round_supply.value}"))
 
     # العوازل — القرصي للشد فيُنصب على المشبك فقط، والدبوسي على كل الأعمدة
     if lat:
@@ -311,14 +331,10 @@ def materials_11kv(net: Network11kV) -> list[MaterialLine]:
     ):
         if not count:
             continue
-        need = bracket_need_11(net.circuit, net.bracket_pattern, pole_type)
         purchase = bracket_purchase_11(net.circuit, net.bracket_pattern, pole_type, supply)
         for size, per_pole in purchase.items():
-            deduction = ""
-            if supply.includes_bracket and BRACKET_INCLUDED_11[pole_type] == size:
-                deduction = f" (الحاجة {need[size]} ناقص 1 مرفق مع العمود)"
             add(MaterialLine(*sizes[size], per_pole * count,
-                             f"{label}: {count} × {per_pole}{deduction}"))
+                             f"{label} ({supply.value}): {count} × {per_pole}"))
 
     if net.extra_bracket_12:
         add(MaterialLine(*M_BRACKET_12, net.extra_bracket_12, "إضافي يُدخله المستخدم"))

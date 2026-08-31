@@ -18,6 +18,7 @@ from engine.types import (
     LVNetworkType,
     Network11kV,
     Network33kV,
+    SupplyForm,
     NetworkLV,
     SidewalkType,
     Underground11kV,
@@ -109,6 +110,9 @@ RENAMED = {
     ("براكيت 1.4 م مع الملحقات", "عدد"): ("براكيت جنل 1.4 م مع الملحقات", "عدد"),
     ("براكيت 2 متر", "عدد"): ("براكيت جنل 2 متر", "عدد"),
     ("براكيت 2.5 متر", "عدد"): ("براكيت جنل 2.5 متر", "عدد"),
+    # أُضيفت كلمة «نحاس» بطلبك (ق-٥٦)
+    ("قضيب تأريض 1.5 متر مع القفيص", "عدد"):
+        ("قضيب نحاس تأريض 1.5 متر مع القفيص", "عدد"),
     # «فاصل فيوز» ← «لنك فيوز» بطلبك: المصطلح الأدقّ، ويطابق «قاعدة لنك فيوز
     # مع الملحقات» التي كانت تحمله أصلاً (ق-٤٣)
     ("فاصل فيوز 11 ك.ف مع السلك", "سيت"): ("لنك فيوز 11 ك.ف مع السلك", "سيت"),
@@ -141,9 +145,14 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
         route_length_m=100, poles_suspension=1, anchors_mid=1, anchors_end=1,
         stay_rod_sets=1, extra_bracket_2=1, extra_bracket_25=1,
     )
+    # شكل التوريد يغيّر **اسم المادة** بعد ق-٥٦، فلا بدّ من المرور بالشكلين
     for circuit in CircuitType:
         n11.circuit = n33.circuit = circuit
-        for line in materials_11kv(n11) + materials_33kv(n33):
+        for supply in SupplyForm:
+            n11.lattice_supply = n11.round_supply = supply
+            for line in materials_11kv(n11):
+                produced.add((line.name, line.unit))
+        for line in materials_33kv(n33):
             produced.add((line.name, line.unit))
 
     for kind in LVNetworkType:
@@ -245,6 +254,9 @@ def test_engine_extras_beyond_the_excel_table_are_known():
         ("لنك فيوز 33 ك.ف مع السلك", "سيت"),
         # الملف الأصلي أغفل معدات ربط الفاصل الهوائي 33 ك.ف كلياً (ق-٢٦ و ق-٣٧)
         ("معدات ربط ألمنيوم – نحاس 210 ملم²", "عدد"),
+        # العمود مورَّداً بملحقاته مادة أخرى باسم آخر (ق-٥٦)
+        ("عمود 11م مشبك مع الملحقات", "عدد"),
+        ("عمود 11م مدوّر مع الملحقات", "عدد"),
     }
 
 
