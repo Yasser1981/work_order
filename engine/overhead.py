@@ -265,6 +265,13 @@ def bracket_need_11(
     return dict(BRACKET_NEED_11[(circuit, key_pattern, pole)])
 
 
+BRACKET_INCLUDED_11 = {PoleType11.ROUND: "1.2", PoleType11.LATTICE: "1.4"}
+"""ما يأتي مع العمود «مع الملحقات»: **براكيت واحد** من مقاس العمود نفسه —
+المدوّر 1.2م والمشبك 1.4م (ق-٥، وأعاد المستخدم تثبيته نصّاً في ق-٦٠).
+
+وهذا يُلغي ق-٥٦/أ الذي جعل «مع الملحقات» تُسقط البراكيت كلها."""
+
+
 def bracket_purchase_11(
     circuit: CircuitType,
     pattern: BracketPattern,
@@ -273,16 +280,29 @@ def bracket_purchase_11(
 ) -> dict[str, int]:
     """البراكيت المطلوب شراؤه لعمود واحد.
 
-    **«مع الملحقات» تعني أن البراكيت كلها مرفقة بالعمود، فلا يُشترى منها شيء**
-    (ق-٥٦). كان النموذج يخصم **واحداً** فقط، فكان العمود المشبك المفرد يُنتج
-    براكيتاً واحداً للشراء رغم أنه مورَّد بملحقاته — وهو ما رصدتَه في أول
-    أمر عمل: 9 أعمدة أنتجت 9 براكيتات زائدة فوق الأربعة الإضافية.
+    **«مع الملحقات» يأتي معها براكيت واحد من مقاس العمود، فيُخصم من الحاجة**
+    (ق-٦٠). بنصّ المستخدم: «الشبكة المفردة تحتاج إلى دبل براكيت 1.4م… في هذه
+    الحالة جدول المواد يحتوي على براكيت 1.4م إضافي بقدر عدد الأعمدة المشبكة»،
+    و«في الشبكة المزدوجة… يجب إضافة 5 لكل عمود مشبك لتعويض النقص».
+
+    | | الحاجة | مع الملحقات | بدون |
+    |---|---|---|---|
+    | مشبك مفرد | 2× 1.4 | **1** | 2 |
+    | مشبك مزدوج | 6× 1.4 | **5** | 6 |
+    | مدوّر مفرد | 1× 1.2 | **0** | 1 |
+    | مدوّر مزدوج | 2× 1.2 + 1× 1.4 | **1× 1.2 + 1× 1.4** | كما هي |
+
+    والخصم من **مقاس العمود وحده**: العمود المدوّر يأتي ببراكيت 1.2م، فلا يُخصم
+    من حاجته إلى 1.4م في الشبكة المزدوجة شيء.
 
     و«بدون ملحقات» تُنتج الحاجة كاملة كما هي.
     """
+    need = bracket_need_11(circuit, pattern, pole)
     if supply.includes_bracket:
-        return {}
-    return {size: n for size, n in bracket_need_11(circuit, pattern, pole).items() if n > 0}
+        size = BRACKET_INCLUDED_11[pole]
+        if size in need:
+            need[size] = max(0, need[size] - 1)
+    return {size: n for size, n in need.items() if n > 0}
 
 
 # ──────────────────────────── توليد مواد 11 ك.ف ────────────────────────────
@@ -339,10 +359,14 @@ def materials_11kv(net: Network11kV) -> list[MaterialLine]:
     ):
         if not count:
             continue
+        need = bracket_need_11(net.circuit, net.bracket_pattern, pole_type)
         purchase = bracket_purchase_11(net.circuit, net.bracket_pattern, pole_type, supply)
         for size, per_pole in purchase.items():
+            deduction = ""
+            if supply.includes_bracket and BRACKET_INCLUDED_11[pole_type] == size:
+                deduction = f" (الحاجة {need[size]} ناقص 1 مرفق مع العمود)"
             add(MaterialLine(*sizes[size], per_pole * count,
-                             f"{label} ({supply.value}): {count} × {per_pole}"))
+                             f"{label} ({supply.value}): {count} × {per_pole}{deduction}"))
 
     if net.extra_bracket_12:
         add(MaterialLine(*M_BRACKET_12, net.extra_bracket_12, "إضافي يُدخله المستخدم"))

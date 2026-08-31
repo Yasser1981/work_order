@@ -241,14 +241,14 @@ def test_wire_rounds_up():
 @pytest.mark.parametrize(
     "circuit,pattern,pole,supply,expected",
     [
-        # «مع الملحقات» = البراكيت كلها مرفقة بالعمود، فلا يُشترى منها شيء
-        # في أي تركيبة (ق-٥٦). كان النموذج يخصم واحداً فقط حتى ق-٥٦.
-        (SINGLE, STD, RND, WITH,    {}),
-        (SINGLE, STD, LAT, WITH,    {}),
-        (DOUBLE, STD, RND, WITH,    {}),
-        (DOUBLE, STD, LAT, WITH,    {}),
-        (DOUBLE, ALT, RND, WITH,    {}),
-        (DOUBLE, ALT, LAT, WITH,    {}),
+        # «مع الملحقات» = **براكيت واحد** من مقاس العمود يُخصم من الحاجة
+        # (ق-٥، وأعاد المستخدم تثبيته نصّاً في ق-٦٠ فأُلغي ق-٥٦/أ).
+        (SINGLE, STD, RND, WITH,    {}),                    # الحاجة 1 ناقص 1
+        (SINGLE, STD, LAT, WITH,    {"1.4": 1}),            # الحاجة 2 ناقص 1
+        (DOUBLE, STD, RND, WITH,    {"1.2": 1, "1.4": 1}),  # 1.4 لا يُخصم منه
+        (DOUBLE, STD, LAT, WITH,    {"1.4": 5}),            # الحاجة 6 ناقص 1
+        (DOUBLE, ALT, RND, WITH,    {"1.2": 2}),
+        (DOUBLE, ALT, LAT, WITH,    {"1.4": 5}),
         # «بدون ملحقات» = الحاجة كاملة
         (SINGLE, STD, RND, WITHOUT, {"1.2": 1}),
         (SINGLE, STD, LAT, WITHOUT, {"1.4": 2}),
@@ -702,31 +702,30 @@ def test_every_material_carries_its_breakdown(catalog):
 
 
 def test_bracket_breakdown_separates_each_contributor(catalog):
-    """البراكيت 1.4 يأتي من ثلاثة مصادر — يجب أن تظهر منفصلة لا مجموعة.
-
-    والأعمدة هنا **بدون ملحقات**: بعد ق-٥٦ لا تُنتج الأعمدة «مع الملحقات» أي
-    براكيت، فلا يبقى إلا الإضافي ولا يصحّ اختبار التفصيل عليها.
-    """
+    """البراكيت 1.4 يأتي من ثلاثة مصادر — يجب أن تظهر منفصلة لا مجموعة."""
     net = Network11kV(
         poles_lattice=5, poles_round=16, circuit=DOUBLE,
-        lattice_supply=WITHOUT, round_supply=WITHOUT, extra_bracket_14=3,
+        lattice_supply=WITH, round_supply=WITH, extra_bracket_14=3,
     )
     result = compute(OverheadProject(net11=net), catalog)
     row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
     assert row["مجمَّع"] is True
     assert len(row["تفصيل"]) == 3
-    # مشبك 5×6=30 (ق-٢١) + مدوّر 16×1 + إضافي 3
-    assert {p["الكمية"] for p in row["تفصيل"]} == {30, 16, 3}
+    # مشبك 5×5=25 (الحاجة 6 ناقص 1) + مدوّر 16×1 + إضافي 3
+    assert {p["الكمية"] for p in row["تفصيل"]} == {25, 16, 3}
     assert any("إضافي" in p["المصدر"] for p in row["تفصيل"])
     assert any("مشبك" in p["المصدر"] for p in row["تفصيل"])
     assert any("مدوّر" in p["المصدر"] for p in row["تفصيل"])
 
 
-def test_poles_with_accessories_produce_no_brackets_at_all(catalog):
-    """«مع الملحقات» = البراكيت كلها مرفقة، فلا يظهر منها شيء (ق-٥٦).
+def test_the_trial_work_order_case(catalog):
+    """حالة أمر عملك التجريبي بالضبط: 9 مشبك + 32 مدوّر، مفردة، مع الملحقات.
 
-    الخلل الذي رصدتَه في أول أمر عمل: 9 أعمدة مشبكة «مع الملحقات» كانت تُنتج
-    9 براكيتات فوق الأربعة الإضافية، فيصير المجموع 13 بدل 4.
+    **يُلغي هذا ق-٥٦/أ.** كان الاختبار يطالب بـ4 (البراكيت كلها مرفقة)، وأعدتَ
+    في ق-٦٠ تثبيت أن المرفق **واحد** لكل عمود وأن «جدول المواد يحتوي على براكيت
+    1.4م إضافي بقدر عدد الأعمدة المشبكة» — أي 9 + 4 = **13**.
+
+    والمدوّر يختفي كما كان: حاجته 1 والمرفق 1 ← صفر.
     """
     net = Network11kV(
         poles_lattice=9, poles_round=32,
@@ -734,10 +733,24 @@ def test_poles_with_accessories_produce_no_brackets_at_all(catalog):
     )
     result = compute(OverheadProject(net11=net), catalog)
     row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
-    assert row["الكمية"] == 4
-    assert len(row["تفصيل"]) == 1
-    assert "إضافي" in row["تفصيل"][0]["المصدر"]
+    assert row["الكمية"] == 13
+    assert len(row["تفصيل"]) == 2
+    assert {p["الكمية"] for p in row["تفصيل"]} == {9, 4}
+    assert any("إضافي" in p["المصدر"] for p in row["تفصيل"])
     assert not any(r["المادة"] == "براكيت جنل 1.2 م مع الملحقات" for r in result["المواد"])
+
+
+def test_a_round_pole_in_a_double_circuit_still_needs_brackets(catalog):
+    """بنصّك: «ولا ننسى إضافة براكيت جنل إضافي لكل عمود مدوّر في المزدوجة».
+
+    المرفق 1.2م واحد، والحاجة 2× 1.2م + 1× 1.4م ← يبقى 1.2م واحد و1.4م واحد.
+    والخصم من مقاس العمود وحده، فلا يُمسّ 1.4م.
+    """
+    net = Network11kV(poles_round=32, circuit=DOUBLE, round_supply=WITH)
+    result = compute(OverheadProject(net11=net), catalog)
+    qty = {r["المادة"]: r["الكمية"] for r in result["المواد"]}
+    assert qty["براكيت جنل 1.2 م مع الملحقات"] == 32
+    assert qty["براكيت جنل 1.4 م مع الملحقات"] == 32
 
 
 def test_the_pole_name_carries_its_supply_form(catalog):
@@ -793,7 +806,7 @@ def test_lattice_pole_uses_six_14m_brackets_in_both_double_patterns():
     for pattern in (STD, ALT):
         assert bracket_need_11(DOUBLE, pattern, LAT) == {"1.4": 6}
         assert bracket_purchase_11(DOUBLE, pattern, LAT, WITHOUT) == {"1.4": 6}
-        assert bracket_purchase_11(DOUBLE, pattern, LAT, WITH) == {}      # ق-٥٦
+        assert bracket_purchase_11(DOUBLE, pattern, LAT, WITH) == {"1.4": 5}  # ق-٦٠
 
 
 def test_lattice_pole_needs_no_12m_bracket_in_double_circuit():
