@@ -408,25 +408,30 @@ def materials_33kv(net: Network33kV) -> list[MaterialLine]:
         add(MaterialLine(*pole_14, anchors * 2,
                          f"الركائز ({net.pole_supply.value}): {anchors} ركيزة × 2 عمود"))
 
-    # «مع الملحقات» = البراكيت كلها مرفقة بالعمود، فلا يُشترى منها شيء — لا 2م
-    # ولا 2.5م. القاعدة نفسها المطبَّقة على أعمدة 11م، بتأكيدك (ق-٥٨).
-    # وكانت حتى ق-٥٨ تخصم عدد الأعمدة من حاجة 2م وحدها وتُبقي 2.5م كاملة.
-    kitted = net.pole_supply.includes_bracket
+    # عمود 14م «مع الملحقات» يأتي معه **براكيت 2م واحد** لا البراكيت كلها —
+    # بخلاف عمود 11م الذي تأتي معه كلها (ق-٥٦). صحّح المستخدم تعميمي في ق-٥٩.
+    #
+    # والمرفق يُجمَّع من **كل** أعمدة 14م ثم يُطرح من حاجة 2م. وأعمدة الركائز
+    # لا تستعمل 2م (تستعمل 2.5م)، فبراكيتها المرفق **فائض يُستهلك على أعمدة
+    # التعليق** — وهذا هو تجميع ق-١٥، وهو قائم لم يُلغَ.
     per_susp = 3 if double else 1
-    need_b2 = 0 if kitted else susp * per_susp
-    if need_b2:
-        add(MaterialLine(*M_BRACKET_2, need_b2,
-                         f"أعمدة التعليق ({circ}، {net.pole_supply.value}):"
-                         f" {susp} × {per_susp}"))
+    need_b2 = susp * per_susp
+    included_b2 = poles_total if net.pole_supply.includes_bracket else 0
+    b2 = max(0, need_b2 - included_b2)
+    if b2:
+        detail = f"أعمدة التعليق ({circ}): {susp} × {per_susp} = {need_b2}"
+        if included_b2:
+            detail += f"، ناقص {included_b2} مرفقاً مع أعمدة 14م"
+        add(MaterialLine(*M_BRACKET_2, b2, detail))
     if net.extra_bracket_2:
         add(MaterialLine(*M_BRACKET_2, net.extra_bracket_2, "إضافي يُدخله المستخدم"))
 
-    # البراكيت 2.5م — لكل ركيزة كاملة (عمودين)، ولا شيء منه مع الملحقات
+    # البراكيت 2.5م — لكل ركيزة كاملة (عمودين). لا يُرفَق مع العمود بحال،
+    # فلا يتأثّر بشكل التوريد إطلاقاً.
     per_anchor = 6 if double else 2
-    if anchors and not kitted:
+    if anchors:
         add(MaterialLine(*M_BRACKET_25, anchors * per_anchor,
-                         f"الركائز ({circ}، {net.pole_supply.value}):"
-                         f" {anchors} ركيزة × {per_anchor}"))
+                         f"الركائز ({circ}): {anchors} ركيزة × {per_anchor}"))
     if net.extra_bracket_25:
         add(MaterialLine(*M_BRACKET_25, net.extra_bracket_25, "إضافي يُدخله المستخدم"))
 

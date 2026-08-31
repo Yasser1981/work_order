@@ -328,16 +328,15 @@ def test_round_pole_never_gets_disc_insulator():
 @pytest.mark.parametrize(
     "circuit,supply,expected",
     [
-        # «مع الملحقات» = لا براكيت إطلاقاً، كأعمدة 11م تماماً (ق-٥٨).
-        # ويُلغي هذا تجميعَ الفائض الذي بُني في ق-١٥: لا فائض يُجمَّع حين لا
-        # يُشترى شيء أصلاً.
-        (SINGLE, WITH,    0),
-        (DOUBLE, WITH,    0),
+        # عمود 14م «مع الملحقات» يأتي معه براكيت 2م **واحد** لا البراكيت كلها،
+        # بخلاف عمود 11م (ق-٥٩ يصحّح تعميم ق-٥٨/ج ويُبقي تجميع ق-١٥).
+        (SINGLE, WITH,    0),   # الحاجة 30 والمرفق 40 ← فائض 10 مُهمَل
         (SINGLE, WITHOUT, 30),
+        (DOUBLE, WITH,    50),  # الحاجة 90 والمرفق 40 ← استُهلك الفائض بالكامل
         (DOUBLE, WITHOUT, 90),
     ],
 )
-def test_bracket_2m_follows_the_supply_form(circuit, supply, expected):
+def test_bracket_2m_pooling(circuit, supply, expected):
     net = Network33kV(
         poles_suspension=30, anchors_mid=3, anchors_end=2,
         circuit=circuit, pole_supply=supply,
@@ -388,17 +387,46 @@ def test_a_derived_price_with_a_missing_source_is_reported_not_guessed(catalog):
     assert edited["المواد"]["عمود 11م مشبك"]["السعر"] is None
 
 
-def test_poles_14m_with_accessories_produce_no_bracket_of_either_size():
-    """لا 2م ولا 2.5م مع الملحقات — والاسم يتغيّر (ق-٥٨)."""
+def test_bracket_2m_pooling_saves_ten_brackets():
+    """بلا تجميع لكان الشراء 60 بدل 50 — أي فرق 10 براكيتات."""
+    net = Network33kV(
+        poles_suspension=30, anchors_mid=3, anchors_end=2,
+        circuit=DOUBLE, pole_supply=WITH,
+    )
+    pooled = qty_of(materials_33kv(net), "براكيت جنل 2 متر")
+    naive = 30 * 3 - 30  # الحاجة ناقص المرفق مع أعمدة التعليق وحدها
+    assert naive - pooled == 10
+
+
+def test_poles_14m_with_accessories_change_name_but_keep_their_brackets():
+    """ق-٥٩: الاسم وحده يتغيّر «مع الملحقات» — والبراكيت تُشترى بعد خصم المرفق.
+
+    هذا حارسٌ على الخطأ الذي وقعتُ فيه في ق-٥٨/ج: تعميم قاعدة 11م (تُرفَق
+    البراكيت كلها) على 14م. المرفق مع عمود 14م براكيت 2م **واحد** لا غير،
+    وبراكيت الركائز 2.5م تُشترى كاملةً في الحالتين.
+    """
     net = Network33kV(
         poles_suspension=30, anchors_mid=3, anchors_end=2,
         circuit=DOUBLE, pole_supply=WITH, extra_bracket_2=5,
     )
     lines = materials_33kv(net)
-    assert qty_of(lines, "براكيت جنل 2 متر") == 5          # الإضافي وحده
-    assert qty_of(lines, "براكيت جنل 2.5 متر") == 0
+    assert qty_of(lines, "براكيت جنل 2 متر") == 50 + 5      # المُجمَّع + الإضافي
+    assert qty_of(lines, "براكيت جنل 2.5 متر") == 30        # الركائز كاملةً
     assert qty_of(lines, "عمود مشبك 14م مع الملحقات") == 30 + 10
     assert qty_of(lines, "عمود مشبك 14م") == 0
+
+
+def test_poles_14m_without_accessories_bring_no_bracket_at_all():
+    """«بدون ملحقات» ← العمود عارٍ، فتُشترى البراكيت كلها (ق-٥٩)."""
+    net = Network33kV(
+        poles_suspension=30, anchors_mid=3, anchors_end=2,
+        circuit=DOUBLE, pole_supply=WITHOUT,
+    )
+    lines = materials_33kv(net)
+    assert qty_of(lines, "براكيت جنل 2 متر") == 90          # 30 × 3 بلا خصم
+    assert qty_of(lines, "براكيت جنل 2.5 متر") == 30
+    assert qty_of(lines, "عمود مشبك 14م") == 30 + 10
+    assert qty_of(lines, "عمود مشبك 14م مع الملحقات") == 0
 
 
 # ══════════════════ ٧. البراكيت والعوازل والمعدات — 33 ك.ف ══════════════════
