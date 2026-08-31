@@ -235,6 +235,14 @@ BRACKET_NEED_11 = {
 M_POLE_11_LATTICE_KIT = ("عمود 11م مشبك مع الملحقات", "عدد")
 M_POLE_11_ROUND_KIT = ("عمود 11م مدوّر مع الملحقات", "عدد")
 
+M_POLE_14_KIT = ("عمود مشبك 14م مع الملحقات", "عدد")
+
+POLE_14_NAMES = {
+    SupplyForm.WITHOUT_ACCESSORIES: M_POLE_14,
+    SupplyForm.WITH_ACCESSORIES: M_POLE_14_KIT,
+}
+"""عمود 14م: خيار واحد لكل أعمدة 33 ك.ف — تعليقاً وركائز معاً (ق-١٣، ق-٥٨)."""
+
 POLE_11_NAMES = {
     # (نوع العمود، شكل التوريد) ← المادة (ق-٥٦)
     (PoleType11.LATTICE, SupplyForm.WITHOUT_ACCESSORIES): M_POLE_11_LATTICE,
@@ -391,32 +399,34 @@ def materials_33kv(net: Network33kV) -> list[MaterialLine]:
                          f"مسار 33 ك.ف: {net.route_length_m:,.0f} × 3 أطوار"
                          f" × {net.circuit.circuits} دائرة × {factor:g} زيادة"))
 
-    # الأعمدة — كل ركيزة عمودان مشبكان 14م
+    # الأعمدة — كل ركيزة عمودان مشبكان 14م. والاسم يتبع شكل التوريد (ق-٥٨)
+    pole_14 = POLE_14_NAMES[net.pole_supply]
     if susp:
-        add(MaterialLine(*M_POLE_14, susp, f"أعمدة تعليق 14م: {susp}"))
+        add(MaterialLine(*pole_14, susp,
+                         f"أعمدة تعليق 14م ({net.pole_supply.value}): {susp}"))
     if anchors:
-        add(MaterialLine(*M_POLE_14, anchors * 2,
-                         f"الركائز: {anchors} ركيزة × 2 عمود"))
+        add(MaterialLine(*pole_14, anchors * 2,
+                         f"الركائز ({net.pole_supply.value}): {anchors} ركيزة × 2 عمود"))
 
-    # البراكيت 2م: الحاجة على أعمدة التعليق، والمرفق يُجمع من كل أعمدة 14م ثم يُطرح.
-    # هذا يُنتج سلوك «استخدام فائض الركائز على أعمدة التعليق» تلقائياً (ق-١٥).
+    # «مع الملحقات» = البراكيت كلها مرفقة بالعمود، فلا يُشترى منها شيء — لا 2م
+    # ولا 2.5م. القاعدة نفسها المطبَّقة على أعمدة 11م، بتأكيدك (ق-٥٨).
+    # وكانت حتى ق-٥٨ تخصم عدد الأعمدة من حاجة 2م وحدها وتُبقي 2.5م كاملة.
+    kitted = net.pole_supply.includes_bracket
     per_susp = 3 if double else 1
-    need_b2 = susp * per_susp
-    included_b2 = poles_total if net.pole_supply.includes_bracket else 0
-    b2 = max(0, need_b2 - included_b2)
-    if b2:
-        detail = f"أعمدة التعليق ({circ}): {susp} × {per_susp} = {need_b2}"
-        if included_b2:
-            detail += f"، ناقص {included_b2} مرفقاً مع أعمدة 14م"
-        add(MaterialLine(*M_BRACKET_2, b2, detail))
+    need_b2 = 0 if kitted else susp * per_susp
+    if need_b2:
+        add(MaterialLine(*M_BRACKET_2, need_b2,
+                         f"أعمدة التعليق ({circ}، {net.pole_supply.value}):"
+                         f" {susp} × {per_susp}"))
     if net.extra_bracket_2:
         add(MaterialLine(*M_BRACKET_2, net.extra_bracket_2, "إضافي يُدخله المستخدم"))
 
-    # البراكيت 2.5م — لكل ركيزة كاملة (عمودين)
+    # البراكيت 2.5م — لكل ركيزة كاملة (عمودين)، ولا شيء منه مع الملحقات
     per_anchor = 6 if double else 2
-    if anchors:
+    if anchors and not kitted:
         add(MaterialLine(*M_BRACKET_25, anchors * per_anchor,
-                         f"الركائز ({circ}): {anchors} ركيزة × {per_anchor}"))
+                         f"الركائز ({circ}، {net.pole_supply.value}):"
+                         f" {anchors} ركيزة × {per_anchor}"))
     if net.extra_bracket_25:
         add(MaterialLine(*M_BRACKET_25, net.extra_bracket_25, "إضافي يُدخله المستخدم"))
 

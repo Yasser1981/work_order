@@ -328,13 +328,16 @@ def test_round_pole_never_gets_disc_insulator():
 @pytest.mark.parametrize(
     "circuit,supply,expected",
     [
-        (SINGLE, WITH,    0),   # الحاجة 30 والمرفق 40 ← فائض 10 مُهمَل
+        # «مع الملحقات» = لا براكيت إطلاقاً، كأعمدة 11م تماماً (ق-٥٨).
+        # ويُلغي هذا تجميعَ الفائض الذي بُني في ق-١٥: لا فائض يُجمَّع حين لا
+        # يُشترى شيء أصلاً.
+        (SINGLE, WITH,    0),
+        (DOUBLE, WITH,    0),
         (SINGLE, WITHOUT, 30),
-        (DOUBLE, WITH,    50),  # الحاجة 90 والمرفق 40 ← استُهلك الفائض بالكامل
         (DOUBLE, WITHOUT, 90),
     ],
 )
-def test_bracket_2m_pooling(circuit, supply, expected):
+def test_bracket_2m_follows_the_supply_form(circuit, supply, expected):
     net = Network33kV(
         poles_suspension=30, anchors_mid=3, anchors_end=2,
         circuit=circuit, pole_supply=supply,
@@ -342,15 +345,60 @@ def test_bracket_2m_pooling(circuit, supply, expected):
     assert qty_of(materials_33kv(net), "براكيت جنل 2 متر") == expected
 
 
-def test_bracket_2m_pooling_saves_ten_brackets():
-    """بلا تجميع لكان الشراء 60 بدل 50 — أي فرق 10 براكيتات."""
+def test_the_bare_pole_price_is_derived_from_the_kitted_one(catalog):
+    """السعر المثبَّت هو سعر العمود مع ملحقاته، والعاري = ذاك ناقص براكيته (ق-٥٨).
+
+    الاشتقاق يُحسب عند التحميل لا يُخزَّن، فلا ينفصل الرقمان عند تحديث الأسعار:
+    تُحدَّث قيمة واحدة ويتبعها المشتقّ.
+    """
+    prices = catalog["المواد"]
+    for bare, kitted, bracket in (
+        ("عمود 11م مشبك", "عمود 11م مشبك مع الملحقات", "براكيت جنل 1.4 م مع الملحقات"),
+        ("عمود 11م مدوّر", "عمود 11م مدوّر مع الملحقات", "براكيت جنل 1.2 م مع الملحقات"),
+        ("عمود مشبك 14م", "عمود مشبك 14م مع الملحقات", "براكيت جنل 2 متر"),
+    ):
+        assert prices[bare]["السعر"] == (
+            prices[kitted]["السعر"] - prices[bracket]["السعر"]
+        ), bare
+        assert "مشتقّ" in prices[bare]["سبب"]
+
+
+def test_a_derived_price_follows_its_source(catalog):
+    """حارس: تغيير سعر الأصل يغيّر المشتقّ — وهو كلّ الغرض من الاشتقاق."""
+    import copy
+
+    from engine import _resolve_derived_prices
+
+    edited = copy.deepcopy(catalog)
+    edited["المواد"]["عمود 11م مشبك مع الملحقات"]["السعر"] = 2_000_000
+    _resolve_derived_prices(edited)
+    bracket = edited["المواد"]["براكيت جنل 1.4 م مع الملحقات"]["السعر"]
+    assert edited["المواد"]["عمود 11م مشبك"]["السعر"] == 2_000_000 - bracket
+
+
+def test_a_derived_price_with_a_missing_source_is_reported_not_guessed(catalog):
+    """طرفٌ ناقص ← `None` فيُبلَّغ عنه، لا رقم مخمَّن."""
+    import copy
+
+    from engine import _resolve_derived_prices
+
+    edited = copy.deepcopy(catalog)
+    edited["المواد"]["براكيت جنل 1.4 م مع الملحقات"]["السعر"] = None
+    _resolve_derived_prices(edited)
+    assert edited["المواد"]["عمود 11م مشبك"]["السعر"] is None
+
+
+def test_poles_14m_with_accessories_produce_no_bracket_of_either_size():
+    """لا 2م ولا 2.5م مع الملحقات — والاسم يتغيّر (ق-٥٨)."""
     net = Network33kV(
         poles_suspension=30, anchors_mid=3, anchors_end=2,
-        circuit=DOUBLE, pole_supply=WITH,
+        circuit=DOUBLE, pole_supply=WITH, extra_bracket_2=5,
     )
-    pooled = qty_of(materials_33kv(net), "براكيت جنل 2 متر")
-    naive = 30 * 3 - 30  # الحاجة ناقص المرفق مع أعمدة التعليق وحدها
-    assert naive - pooled == 10
+    lines = materials_33kv(net)
+    assert qty_of(lines, "براكيت جنل 2 متر") == 5          # الإضافي وحده
+    assert qty_of(lines, "براكيت جنل 2.5 متر") == 0
+    assert qty_of(lines, "عمود مشبك 14م مع الملحقات") == 30 + 10
+    assert qty_of(lines, "عمود مشبك 14م") == 0
 
 
 # ══════════════════ ٧. البراكيت والعوازل والمعدات — 33 ك.ف ══════════════════

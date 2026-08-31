@@ -152,8 +152,10 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
             n11.lattice_supply = n11.round_supply = supply
             for line in materials_11kv(n11):
                 produced.add((line.name, line.unit))
-        for line in materials_33kv(n33):
-            produced.add((line.name, line.unit))
+        for supply in SupplyForm:
+            n33.pole_supply = supply
+            for line in materials_33kv(n33):
+                produced.add((line.name, line.unit))
 
     for kind in LVNetworkType:
         lv = NetworkLV(
@@ -257,6 +259,7 @@ def test_engine_extras_beyond_the_excel_table_are_known():
         # العمود مورَّداً بملحقاته مادة أخرى باسم آخر (ق-٥٦)
         ("عمود 11م مشبك مع الملحقات", "عدد"),
         ("عمود 11م مدوّر مع الملحقات", "عدد"),
+        ("عمود مشبك 14م مع الملحقات", "عدد"),
     }
 
 

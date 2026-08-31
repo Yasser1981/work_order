@@ -31,4 +31,32 @@ def load_catalog(version: str | None = None) -> dict:
             f"نسخة الأسعار «{version}» غير موجودة في {user_data_dir()}."
             f" المتاح: {available}"
         )
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _resolve_derived_prices(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _resolve_derived_prices(catalog: dict) -> dict:
+    """يحسب الأسعار المشتقّة: سعر مادة = سعر أخرى ناقص سعر ثالثة (ق-٥٨).
+
+    **السبب:** سعر العمود المثبَّت في السوق هو سعره **مورَّداً بملحقاته**، والعمود
+    العاري = ذاك ناقص سعر براكيته. فلو خُزّن الرقمان مستقلَّين لانفصلا عند أول
+    تحديث أسعار — يُحدَّث أحدهما ويُنسى الآخر.
+
+    فالمشتقّ يُحسب عند كل تحميل، ويبقى **الرقم الأصل وحده** قابلاً للتحرير في
+    نسخة الأسعار. والصيغة تُكتب في حقل «سبب» فتظهر لمن يقرأ الملف.
+    """
+    prices = catalog.get("المواد", {})
+    for name, entry in prices.items():
+        rule = entry.get("مشتقّ")
+        if not rule:
+            continue
+        base = prices.get(rule["من"], {}).get("السعر")
+        minus = prices.get(rule["ناقص"], {}).get("السعر")
+        if base is None or minus is None:
+            entry["السعر"] = None      # ناقص أحد طرفيه ← يُبلَّغ عنه لا يُخمَّن
+            continue
+        entry["السعر"] = base - minus
+        entry["سبب"] = (
+            f"مشتقّ: «{rule['من']}» {base:,} ناقص «{rule['ناقص']}» {minus:,}"
+            f" = {entry['السعر']:,}"
+        )
+    return catalog
