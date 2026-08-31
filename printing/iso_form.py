@@ -63,7 +63,14 @@ def available_arabic_font(families: list[str] | None = None) -> str:
 # ملاحظة: QTextDocument يدعم مجموعة محدودة من CSS ويتجاهل width على الجداول.
 # لذلك تُضبط أعراض الجداول والمحاذاة بخصائص HTML مباشرة، لا بالأنماط.
 _CSS = """
-body     { font-family: %FONT%, serif; font-size: 11pt; }
+/* اتجاه المستند من اليمين إلى اليسار (ق-٥٤).
+   `direction` على **الجدول** هو الذي يقلب ترتيب الأعمدة فعلاً في محرّك
+   QTextDocument. جُرِّبت بدائل أربعة فلم تنفع: `dir="rtl"` على الجدول،
+   و`dir` على body، و`QTextTableFormat.setLayoutDirection`، وضبط اتجاه
+   الإطار الجذر. و`setDefaultTextOption(RightToLeft)` يضبط اتجاه النصّ
+   داخل الفقرة ولا يمسّ ترتيب الأعمدة. */
+body     { font-family: %FONT%, serif; font-size: 11pt; direction: rtl; }
+table    { direction: rtl; }
 th       { background-color: #e8e8e8; font-weight: bold; }
 .k       { font-weight: bold; background-color: #f4f4f4; }
 .section { font-weight: bold; font-size: 12pt; }

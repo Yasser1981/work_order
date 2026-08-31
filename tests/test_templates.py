@@ -179,6 +179,35 @@ def segmented_result():
     return compute_project(project, load_catalog())
 
 
+# ═══════════════════ اتجاه المستند (ق-٥٤) ═══════════════════
+
+
+def test_the_styles_set_the_table_direction_to_rtl(qapp):
+    """`direction: rtl` على الجدول هو ما يقلب ترتيب الأعمدة فعلاً (ق-٥٤).
+
+    كان الترتيب من اليسار لليمين: «ت» في أقصى اليسار و«الكمية» في أقصى اليمين
+    — عكس نموذج الإيزو. و`setDefaultTextOption(RightToLeft)` وحده يضبط اتجاه
+    النصّ **داخل** الفقرة ولا يمسّ ترتيب الأعمدة.
+
+    وهذه القاعدة **لا يحرسها شيء غير هذا الاختبار**: حذفها لا يرفع خطأً ولا
+    يُسقط تأكيداً آخر، ويقلب المستند كلّه بصمت.
+    """
+    from printing.iso_form import styles
+
+    import re
+
+    css = styles()
+    # قاعدة على الجدول تحمل direction: rtl — مهما تغيّرت المسافات
+    assert re.search(r"table\s*\{[^}]*direction:\s*rtl", css), css
+    assert re.search(r"body\s*\{[^}]*direction:\s*rtl", css), css
+
+
+def test_both_templates_carry_the_direction(order, result, qapp):
+    for key in ("iso", "audit"):
+        html = printing.get(key).build_html(order, result)
+        assert html.count("direction: rtl") >= 2, key
+
+
 # ═══════════════════ الخطّ العربي — ملاءمة ويندوز (ق-٥١) ═══════════════════
 
 
