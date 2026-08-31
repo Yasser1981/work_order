@@ -718,26 +718,36 @@ def test_bracket_breakdown_separates_each_contributor(catalog):
     assert any("مدوّر" in p["المصدر"] for p in row["تفصيل"])
 
 
-def test_the_trial_work_order_case(catalog):
-    """حالة أمر عملك التجريبي بالضبط: 9 مشبك + 32 مدوّر، مفردة، مع الملحقات.
+@pytest.mark.parametrize(
+    "supply,b14,b12",
+    [
+        # أرقام **صادق عليها المستخدم نصّاً** في ق-٦٣ بعد تدقيق الحالة معه:
+        # «في حالة 9 أعمدة مشبكة (عمود مشبك مع الملحقات)، وإضافة 4 براكيت جنل
+        #  1.4م يدوي، يصبح المجموع … 13 … وفي حالة (عمود مشبك) يصبح المجموع 22».
+        (WITH,    13, 0),      # 9 × (2 − 1) + 4  ·  والمدوّر: 1 − 1 = صفر
+        (WITHOUT, 22, 32),     # 9 × 2 + 4        ·  والمدوّر: 32 × 1
+    ],
+)
+def test_the_trial_work_order_case(catalog, supply, b14, b12):
+    """حالة أمر عملك التجريبي بعينها: 9 مشبك + 32 مدوّر، مفردة، +4 إضافي.
 
-    **يُلغي هذا ق-٥٦/أ.** كان الاختبار يطالب بـ4 (البراكيت كلها مرفقة)، وأعدتَ
-    في ق-٦٠ تثبيت أن المرفق **واحد** لكل عمود وأن «جدول المواد يحتوي على براكيت
-    1.4م إضافي بقدر عدد الأعمدة المشبكة» — أي 9 + 4 = **13**.
+    **هذا الاختبار يُلغي ق-٥٦/أ ويُثبّت ق-٦٠.** كان يطالب بـ4 (البراكيت كلها
+    مرفقة)، وصحّحتَ ذلك في ق-٦٠ ثم صادقتَ على الرقمين صراحةً في ق-٦٣.
 
-    والمدوّر يختفي كما كان: حاجته 1 والمرفق 1 ← صفر.
+    ولاحظ أن **العمود المدوّر يختفي «مع الملحقات»** (حاجته 1 والمرفق 1) — وهو
+    ما أوقع اللبس أصلاً، إذ اختفى صفّ كامل من الجدول.
     """
     net = Network11kV(
         poles_lattice=9, poles_round=32,
-        lattice_supply=WITH, round_supply=WITH, extra_bracket_14=4,
+        lattice_supply=supply, round_supply=supply, extra_bracket_14=4,
     )
     result = compute(OverheadProject(net11=net), catalog)
+    quantities = {r["المادة"]: r["الكمية"] for r in result["المواد"]}
+    assert quantities["براكيت جنل 1.4 م مع الملحقات"] == b14
+    assert quantities.get("براكيت جنل 1.2 م مع الملحقات", 0) == b12
+
     row = next(r for r in result["المواد"] if r["المادة"] == "براكيت جنل 1.4 م مع الملحقات")
-    assert row["الكمية"] == 13
-    assert len(row["تفصيل"]) == 2
-    assert {p["الكمية"] for p in row["تفصيل"]} == {9, 4}
     assert any("إضافي" in p["المصدر"] for p in row["تفصيل"])
-    assert not any(r["المادة"] == "براكيت جنل 1.2 م مع الملحقات" for r in result["المواد"])
 
 
 def test_a_round_pole_in_a_double_circuit_still_needs_brackets(catalog):
