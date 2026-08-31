@@ -568,7 +568,7 @@ class PanelLV(QWidget):
         )
         self.consumer_hint.setText(
             f"كونكتر ربط مشتركين = {self.consumers.value()} × 1 = "
-            f"<b>{self.consumers.value():,}</b> &nbsp;—&nbsp; السعر والأجر غير محدَّدين بعد."
+            f"<b>{self.consumers.value():,}</b> &nbsp;—&nbsp; ومعها أجر «ربط المستهلكين»."
         )
 
 

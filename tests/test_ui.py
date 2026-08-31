@@ -51,6 +51,100 @@ def pug33(window):
     return window.add_segment(SegmentKind.UG33)
 
 
+# ═══════════════════ تاريخ المباشرة قد يكون فارغاً (ق-٥٥) ═══════════════════
+
+
+def test_the_start_date_can_be_left_unset(order_panel):
+    """أمر العمل قد يصدر قبل تحديد موعد المباشرة (ق-٥٥)."""
+    assert order_panel.order().start_date is not None      # الافتراضي: تاريخ اليوم
+
+    order_panel.start_unset.setChecked(True)
+    assert order_panel.order().start_date is None
+    assert not order_panel.start_date.isEnabled()          # لا يوهم بقيمة تُطبع
+
+    order_panel.start_unset.setChecked(False)
+    assert order_panel.order().start_date is not None
+    assert order_panel.start_date.isEnabled()
+
+
+def test_the_unset_start_date_prints_as_blank(order_panel, qapp):
+    """الصفّ يُطبع فارغاً لا بتاريخ لم يُحدَّد بعد."""
+    import printing
+    from engine import load_catalog
+    from engine.project import compute_project
+    from engine.types import Project
+
+    order_panel.start_unset.setChecked(True)
+    result = compute_project(Project(), load_catalog())
+    html = printing.get("iso").build_html(order_panel.order(), result)
+    row = html.split("تاريخ المباشرة بالعمل")[1].split("</tr>")[0]
+    assert "&nbsp;" in row or ">" + "<" in row.replace(" ", "")
+
+
+# ═══════════════════ عدد الأيام يتبع مدّة أمر العمل (ق-٥٥) ═══════════════════
+
+
+@pytest.fixture
+def order_panel(qapp):
+    from ui.order_panel import OrderPanel
+
+    return OrderPanel()
+
+
+def _days(table):
+    return [table.cellWidget(r, 2).value() for r in range(table.rowCount())]
+
+
+def test_the_duration_fills_the_days_of_staff_and_equipment(order_panel):
+    """«عدد الأيام ينزل تلقائياً وهو نفس عدد أيام أمر العمل» — بنصّك (ق-٥٥)."""
+    assert _days(order_panel.staff) == [0] * order_panel.staff.rowCount()
+
+    order_panel.duration.setText("60 يوم")
+    assert set(_days(order_panel.staff)) == {60}
+    assert set(_days(order_panel.equipment)) == {60}
+
+
+def test_a_row_edited_by_hand_survives_a_duration_change(order_panel):
+    """الأهمّ: سطر عدّله المستخدم لا يُمحى حين تتغيّر المدّة (ق-٥٥).
+
+    آلية تعمل 10 أيام من ستّين حالةٌ واقعية، ومحوُها بتغيير المدّة يفسد
+    أمر العمل بصمت.
+    """
+    order_panel.duration.setText("60 يوم")
+    order_panel.staff.cellWidget(1, 2).setValue(10)       # الفني: 10 أيام
+    order_panel.duration.setText("90 يوم")
+
+    days = _days(order_panel.staff)
+    assert days[1] == 10                                   # لم يُمحَ
+    assert days[0] == days[2] == 90                        # وما عداه تتبّع المدّة
+
+
+def test_a_duration_without_a_number_changes_nothing(order_panel):
+    """«شهرين» لا رقم فيها — لا يُخمَّن شيء ولا يُمحى شيء."""
+    order_panel.duration.setText("45 يوم")
+    before = _days(order_panel.staff)
+    order_panel.duration.setText("شهرين")
+    assert _days(order_panel.staff) == before
+
+
+def test_the_days_reach_the_printed_order(order_panel):
+    order_panel.duration.setText("75 يوماً")
+    order = order_panel.order()
+    assert all(s.days == 75 for s in order.staff)
+    assert all(e.days == 75 for e in order.equipment)
+
+
+def test_days_in_reads_the_first_integer():
+    from engine.workorder import days_in
+
+    assert days_in("60 يوم") == 60
+    assert days_in("90 يوماً") == 90
+    assert days_in("120") == 120
+    assert days_in("45 يوم عمل") == 45
+    assert days_in("شهرين") is None
+    assert days_in("") is None
+
+
 # ═══════════════════ الخطّ في الواجهة (ق-٥٣) ═══════════════════
 
 

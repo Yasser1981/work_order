@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QDateEdit,
     QHeaderView,
     QLabel,
+    QCheckBox,
     QLineEdit,
     QScrollArea,
     QSpinBox,
@@ -20,7 +21,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from engine.workorder import WorkOrder, default_equipment, default_staff
+from engine.workorder import WorkOrder, days_in, default_equipment, default_staff
 
 from .widgets import scroll_body, section
 
@@ -40,6 +41,7 @@ class OrderPanel(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._auto_days: int | None = None
         self._build()
         self._connect()
 
@@ -62,7 +64,9 @@ class OrderPanel(QWidget):
         form.addRow("التاريخ:", self.order_date)
         form.addRow("اسم المشروع وموقعه:", self.project_name)
         form.addRow("المدة اللازمة للتنفيذ:", self.duration)
+        self.start_unset = QCheckBox("غير محدَّد — يُطبع فارغاً")
         form.addRow("تاريخ المباشرة بالعمل:", self.start_date)
+        form.addRow("", self.start_unset)
         layout.addWidget(box)
 
         box, form = section("حجم العمل المخطط تنفيذه")
@@ -76,7 +80,10 @@ class OrderPanel(QWidget):
             [s.role for s in default_staff()], ["نوع العاملين", "العدد", "عدد الأيام"]
         )
         form.addRow(self.staff)
-        form.addRow(QLabel("تُملأ يدوياً — لا يحسبها البرنامج."))
+        form.addRow(QLabel(
+            "العدد يُملأ يدوياً. و«عدد الأيام» ينزل تلقائياً من مدّة أمر العمل، "
+            "ويبقى قابلاً للتعديل لكل سطر."
+        ))
         layout.addWidget(box)
 
         box, form = section("ج - الاليات والمعدات")
@@ -122,6 +129,10 @@ class OrderPanel(QWidget):
         return table
 
     def _connect(self) -> None:
+        # الأيام تنزل قبل إشارة التغيير لتصل القيمة الجديدة إلى الطباعة (ق-٥٥)
+        self.duration.textChanged.connect(self._sync_days)
+        self.start_unset.toggled.connect(self._toggle_start_date)
+        self.start_unset.toggled.connect(self.changed)
         for w in (self.number, self.classification, self.project_name, self.duration):
             w.textChanged.connect(self.changed)
         for w in (self.order_date, self.start_date):
@@ -132,6 +143,32 @@ class OrderPanel(QWidget):
             for row in range(table.rowCount()):
                 for col in (1, 2):
                     table.cellWidget(row, col).valueChanged.connect(self.changed)
+
+    def _toggle_start_date(self, unset: bool) -> None:
+        """يُعطّل حقل التاريخ حين يُختار «غير محدَّد» — فلا يوهم بقيمة تُطبع."""
+        self.start_date.setEnabled(not unset)
+
+    DAYS_COLUMN = 2
+    """عمود «عدد الأيام» في جدولَي العاملين والآليات."""
+
+    def _sync_days(self) -> None:
+        """ينزّل مدّة أمر العمل في عمود الأيام — بلا أن يمحو ما عدّله المستخدم.
+
+        بطلبك (ق-٥٥): «عدد الأيام ينزل تلقائياً وهو نفس عدد أيام أمر العمل».
+
+        **ولا يُكتَب إلا في خلية فارغة أو خلية تحمل المدّة السابقة.** فلو غيّرتَ
+        سطراً بعينه إلى 10 أيام ثم غيّرت المدّة، بقي سطرك على 10 ولم يُمحَ.
+        """
+        days = days_in(self.duration.text())
+        previous = self._auto_days
+        self._auto_days = days
+        if days is None:
+            return
+        for table in (self.staff, self.equipment):
+            for row in range(table.rowCount()):
+                box = table.cellWidget(row, self.DAYS_COLUMN)
+                if box.value() in (0, previous):
+                    box.setValue(days)
 
     @staticmethod
     def _cell(table: QTableWidget, row: int, col: int) -> int | None:
@@ -148,7 +185,12 @@ class OrderPanel(QWidget):
             project_name=self.project_name.text().strip(),
             duration=self.duration.text().strip(),
             work_scope=self.work_scope.toPlainText().strip(),
-            start_date=self.start_date.date().toPyDate(),
+            # التاريخ الفارغ خيار مقصود — أمر العمل قد يصدر قبل تحديد
+            # موعد المباشرة (ق-٥٥). والمحرك يقبل None أصلاً.
+            start_date=(
+                None if self.start_unset.isChecked()
+                else self.start_date.date().toPyDate()
+            ),
             notes=self.notes.toPlainText().strip(),
         )
         for row, entry in enumerate(wo.staff):

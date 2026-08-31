@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -46,6 +48,16 @@ def default_equipment() -> list[EquipmentRow]:
             "شفل",
         )
     ]
+
+
+def days_in(duration: str) -> int | None:
+    """عدد الأيام المستخرَج من نصّ المدة، أو `None` إن لم يكن فيه رقم (ق-٥٥).
+
+    المدة حقل نصّي حرّ («60 يوم»، «90 يوماً»، «شهرين»). فيُقرأ منه **أول عدد
+    صحيح**، ولا يُخمَّن شيء إن لم يوجد — «شهرين» تعيد `None`.
+    """
+    match = re.search(r"\d+", duration or "")
+    return int(match.group()) if match else None
 
 
 @dataclass
