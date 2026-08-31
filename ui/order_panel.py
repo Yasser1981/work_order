@@ -176,6 +176,43 @@ class OrderPanel(QWidget):
         value = table.cellWidget(row, col).value()
         return value or None
 
+    def load(self, wo: WorkOrder) -> None:
+        """يملأ الحقول من أمر عمل محفوظ (ق-٦١) — بإشارة تغيير واحدة في آخره."""
+        self.blockSignals(True)
+        try:
+            self.number.setText(wo.number)
+            self.classification.setText(wo.classification)
+            if wo.order_date:
+                self.order_date.setDate(QDate(wo.order_date.year, wo.order_date.month,
+                                              wo.order_date.day))
+            self.project_name.setText(wo.project_name)
+            self.duration.setText(wo.duration)
+            # المدّة تنزّل الأيام تلقائياً (ق-٥٥)، وهنا **المحفوظ أولى**:
+            # فلو عدّل المستخدم يوماً بعينه فحُفظ، لا يجوز أن تمحوه المدّة عند
+            # الفتح. فتُضبط المدّة أولاً ثم تُكتب الأيام المحفوظة فوقها.
+            self._auto_days = days_in(wo.duration)
+            self.start_unset.setChecked(wo.start_date is None)
+            if wo.start_date:
+                self.start_date.setDate(QDate(wo.start_date.year, wo.start_date.month,
+                                              wo.start_date.day))
+            self.work_scope.setPlainText(wo.work_scope)
+            self.notes.setPlainText(wo.notes)
+            self._fill_table(self.staff, wo.staff)
+            self._fill_table(self.equipment, wo.equipment)
+        finally:
+            self.blockSignals(False)
+        self._toggle_start_date(self.start_unset.isChecked())
+        self.changed.emit()
+
+    @staticmethod
+    def _fill_table(table: QTableWidget, entries: list) -> None:
+        """يكتب العدد والأيام في جدول ثابت الأسماء — والصفر يعني «فارغ»."""
+        for row, entry in enumerate(entries):
+            if row >= table.rowCount():
+                break
+            table.cellWidget(row, 1).setValue(entry.count or 0)
+            table.cellWidget(row, 2).setValue(entry.days or 0)
+
     def order(self) -> WorkOrder:
         """يبني كائن أمر العمل من الحقول الحالية."""
         wo = WorkOrder(

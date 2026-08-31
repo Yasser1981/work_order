@@ -55,6 +55,20 @@ def number_field(
     return widget
 
 
+def set_number(widget, value) -> None:
+    """يضع قيمة في حقل رقمي بنوع الحقل نفسه (ق-٦١).
+
+    `QSpinBox.setValue` **يرفض `float` برفع استثناء** لا بتقريبه. وقيم المحرك
+    عشرية (`route_length_m: float = 0.0`) حتى حين يكون حقلها في الواجهة صحيحاً،
+    فالفتح كان يتعطّل على أول مقطع. والتحويل هنا صريح في مكان واحد لا مبعثر.
+    """
+    from PyQt6.QtWidgets import QSpinBox
+
+    if value is None:
+        return
+    widget.setValue(int(round(value)) if isinstance(widget, QSpinBox) else float(value))
+
+
 class HintLabel(QLabel):
     """سطر يشرح كيف تكوّن الرقم — يُعرض تحت الحقول التي تُحسب منها كميات.
 

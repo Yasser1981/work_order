@@ -38,6 +38,8 @@ from engine.underground import (
     suggest_straight_boxes,
 )
 from engine.overhead import (
+    bracket_need_11,
+    bracket_purchase_11,
     resolve_spans,
     suggest_poles_11kv,
     suggest_poles_33kv,
@@ -51,13 +53,14 @@ from engine.types import (
     Network11kV,
     Network33kV,
     NetworkLV,
+    PoleType11,
     SidewalkType,
     SupplyForm,
     Underground11kV,
     Underground33kV,
 )
 
-from .widgets import HintLabel, number_field, scroll_body, section
+from .widgets import HintLabel, number_field, scroll_body, section, set_number
 
 
 def _combo(options: list) -> QComboBox:
@@ -67,7 +70,36 @@ def _combo(options: list) -> QComboBox:
     return box
 
 
-class Panel11kV(QWidget):
+def _select(box: QComboBox, value) -> None:
+    """يختار قيمةً في قائمة منسدلة — ويرفع خطأً إن لم تكن فيها.
+
+    الصمت هنا خطر: قيمة غير موجودة تترك القائمة على خيارها الأول، فيُفتح أمر
+    عمل «مزدوج» على أنه «مفرد» بلا أن يلحظ أحد. فالتعطّل الصريح أسلم (ق-٦١).
+    """
+    index = box.findData(value)
+    if index < 0:
+        raise ValueError(f"قيمة لا توجد في القائمة: {value!r}")
+    box.setCurrentIndex(index)
+
+
+class _Loadable:
+    """يمنح اللوحة القدرة على استعادة محتواها من كائن محفوظ (ق-٦١).
+
+    الاستعادة **تصمت أثناء ملء الحقول** ثم تُصدر إشارة تغيير واحدة، فلا تُعاد
+    حسبة المشروع كله عشرين مرّة عند فتح ملف.
+    """
+
+    def load(self, content) -> None:
+        self.blockSignals(True)
+        try:
+            self._load(content)
+        finally:
+            self.blockSignals(False)
+        self.refresh_hints()
+        self.changed.emit()
+
+
+class Panel11kV(_Loadable, QWidget):
     """مدخلات شبكة 11 ك.ف الهوائية."""
 
     changed = pyqtSignal()
@@ -172,6 +204,22 @@ class Panel11kV(QWidget):
         self.lattice.setValue(result.lattice)
         self.round_.setValue(result.round_)
 
+    def _load(self, net: Network11kV) -> None:
+        set_number(self.route, net.route_length_m)
+        _select(self.circuit, net.circuit)
+        self.waste_included.setChecked(net.length_includes_waste)
+        set_number(self.waste_pct, net.waste_pct * 100.0)
+        set_number(self.span, net.span_m or self.span.value())
+        set_number(self.tension_span, net.tension_span_m or self.tension_span.value())
+        set_number(self.lattice, net.poles_lattice)
+        set_number(self.round_, net.poles_round)
+        _select(self.lattice_supply, net.lattice_supply)
+        _select(self.round_supply, net.round_supply)
+        _select(self.pattern, net.bracket_pattern)
+        set_number(self.extra_12, net.extra_bracket_12)
+        set_number(self.extra_14, net.extra_bracket_14)
+        set_number(self.stay, net.stay_rod_sets)
+
     def content(self) -> Network11kV:
         return self.network()
 
@@ -219,23 +267,38 @@ class Panel11kV(QWidget):
             f"<br>عمود شد كل {step} أعمدة ({step * span:g} م){note}."
         )
 
-        # سطر البراكيت
-        if double:
-            std = net.bracket_pattern is BracketPattern.STANDARD
-            self.bracket_hint.setText(
-                "مزدوجة قياسي: مدوّر 2×1.2 + 1×1.4 — مشبك 4×1.2 + 2×1.4"
-                if std
-                else "مزدوجة بديل: مدوّر 3×1.2 — مشبك 6×1.4"
+        # سطر البراكيت — **يُقرأ من المحرك لا يُكتب نصّاً** (ق-٦١).
+        #
+        # كان نصّاً مكتوباً باليد، فتخلّف عن المحرك: بقي يقول إن المشبك في
+        # المزدوجة القياسية «4×1.2 + 2×1.4» بعد أن صار 6×1.4 في ق-٢١. والسطر
+        # الذي يخالف الحساب أسوأ من غيابه، فصار يُشتقّ من الدالة نفسها ولا
+        # يمكن أن يتخلّف عنها بعد اليوم.
+        rows = []
+        for pole, label, supply in (
+            (PoleType11.LATTICE, "مشبك", net.lattice_supply),
+            (PoleType11.ROUND, "مدوّر", net.round_supply),
+        ):
+            need = bracket_need_11(net.circuit, net.bracket_pattern, pole)
+            buy = bracket_purchase_11(net.circuit, net.bracket_pattern, pole, supply)
+            need_txt = " + ".join(f"{n}×{size}" for size, n in need.items())
+            buy_txt = " + ".join(f"{n}×{size}" for size, n in buy.items()) or "لا شيء"
+            rows.append(
+                f"<b>{label}</b> ({supply.value}): الحاجة {need_txt}"
+                f" ← يُشترى <b>{buy_txt}</b>"
             )
-        else:
-            self.bracket_hint.setText("مفردة: مدوّر 1×1.2 — مشبك 2×1.4")
+        self.bracket_hint.setText(
+            f"{net.circuit.value} — لكل عمود:<br>" + "<br>".join(rows)
+            + ("<br><i>«مع الملحقات» يأتي معها براكيت واحد من مقاس العمود (ق-٦٠).</i>"
+               if net.lattice_supply.includes_bracket or net.round_supply.includes_bracket
+               else "")
+        )
 
         self.stay_hint.setText(
             f"واير ستي = {self.stay.value()} × 12 م = <b>{self.stay.value() * 12:,} م</b>"
         )
 
 
-class Panel33kV(QWidget):
+class Panel33kV(_Loadable, QWidget):
     """مدخلات شبكة 33 ك.ف الهوائية."""
 
     changed = pyqtSignal()
@@ -331,6 +394,24 @@ class Panel33kV(QWidget):
         self.anchors_mid.setValue(s.mid_anchors)
         self.anchors_end.setValue(s.end_anchors)
 
+    def _load(self, net: Network33kV) -> None:
+        set_number(self.route, net.route_length_m)
+        _select(self.circuit, net.circuit)
+        self.waste_included.setChecked(net.length_includes_waste)
+        set_number(self.waste_pct, net.waste_pct * 100.0)
+        set_number(self.span, net.span_m or self.span.value())
+        set_number(self.tension_span, net.tension_span_m or self.tension_span.value())
+        set_number(self.suspension, net.poles_suspension)
+        set_number(self.anchors_mid, net.anchors_mid)
+        set_number(self.anchors_end, net.anchors_end)
+        # «ركيزة بداية ونهاية» مُدخَل للاقتراح وحده (مداه 0..2) لا للحساب،
+        # فلا يُحفَظ. ويُضبط هنا بما يوافق العدد المعتمد ليبقى الاقتراح منسجماً.
+        set_number(self.end_anchors, min(net.anchors_end, 2))
+        _select(self.supply, net.pole_supply)
+        set_number(self.extra_2, net.extra_bracket_2)
+        set_number(self.extra_25, net.extra_bracket_25)
+        set_number(self.stay, net.stay_rod_sets)
+
     def content(self) -> Network33kV:
         return self.network()
 
@@ -386,7 +467,7 @@ class Panel33kV(QWidget):
         )
 
 
-class PanelLV(QWidget):
+class PanelLV(_Loadable, QWidget):
     """مدخلات شبكة الضغط الواطئ (ق-٢٢).
 
     داخل مقطع (`as_segment=True`) يختفي مربّع «المشروع يتضمّن شبكة ضغط واطئ»:
@@ -510,6 +591,22 @@ class PanelLV(QWidget):
             hv_poles_round=self.hv_round.value(),
         )
 
+    def _load(self, net: NetworkLV) -> None:
+        self.enabled.setChecked(True)
+        set_number(self.route, net.route_length_m)
+        _select(self.kind, net.kind)
+        self.waste_included.setChecked(net.length_includes_waste)
+        set_number(self.waste_pct, net.waste_pct * 100.0)
+        set_number(self.span, net.span_m or self.span.value())
+        set_number(self.tension_span, net.tension_span_m or self.tension_span.value())
+        set_number(self.lattice, net.poles_lattice)
+        set_number(self.round_, net.poles_round)
+        set_number(self.consumers, net.consumers)
+        self.on_hv.setChecked(net.on_hv_poles)
+        _select(self.hv_kind, net.hv_kind)
+        set_number(self.hv_lattice, net.hv_poles_lattice)
+        set_number(self.hv_round, net.hv_poles_round)
+
     def content(self) -> NetworkLV:
         """محتوى المقطع — وجود المقطع نفسه هو التفعيل، فلا يمرّ عبر مربّع الاختيار."""
         return self._raw_network()
@@ -572,7 +669,7 @@ class PanelLV(QWidget):
         )
 
 
-class PanelEquipment(QWidget):
+class PanelEquipment(_Loadable, QWidget):
     """مدخلات التجهيزات على الأعمدة — المحولة والفواصل والقفيص (ق-٢٣).
 
     لا تتبع طول المسار، فليس فيها اقتراح ولا زرّ اعتماد: يُدخل المستخدم العدد،
@@ -665,6 +762,19 @@ class PanelEquipment(QWidget):
     def _on_change(self) -> None:
         self.refresh_hints()
         self.changed.emit()
+
+    def _load(self, eq: Equipment) -> None:
+        for key, field in self.transformers.items():
+            field.setValue(eq.transformers.get(key, 0))
+        unknown = set(eq.transformers) - set(self.transformers)
+        if unknown:
+            # محولة بجهد أو سعة لا يعرفهما هذا الإصدار: لا تُبتلَع بصمت
+            names = "، ".join(f"{v.value} {z.label}" for v, z in sorted(
+                unknown, key=lambda k: (k[0].name, k[1].value)))
+            raise ValueError(f"محولات لا يعرفها هذا الإصدار: {names}")
+        for attr, field in self.isolators.items():
+            field.setValue(getattr(eq, attr))
+        set_number(self.cages, eq.lattice_cages)
 
     def content(self) -> Equipment:
         return self.equipment()
@@ -788,7 +898,7 @@ def _civil_hint_text(sidewalk_type, count, route_length_m, catalog) -> str:
     return "<br>".join(rows)
 
 
-class PanelUnderground11kV(QWidget):
+class PanelUnderground11kV(_Loadable, QWidget):
     """مدخلات مقطع شبكة أرضية 11 ك.ف — قابلو 3×150 ملم² (ق-٣٠).
 
     التمييز الجوهري الذي تعرضه الحقول: **طول المسار** وحده يحدّد الأعمال المدنية
@@ -878,6 +988,17 @@ class PanelUnderground11kV(QWidget):
             )
         )
 
+    def _load(self, net: Underground11kV) -> None:
+        set_number(self.route, net.route_length_m)
+        set_number(self.feeders, net.feeder_count)
+        _select(self.sidewalk, net.sidewalk_type)
+        self.waste_included.setChecked(net.length_includes_waste)
+        set_number(self.waste_pct, net.waste_pct * 100.0)
+        set_number(self.drum_length, net.drum_length_m or self.drum_length.value())
+        set_number(self.straight_boxes, net.straight_boxes)
+        set_number(self.end_internal, net.end_boxes_internal)
+        set_number(self.end_external, net.end_boxes_external)
+
     def content(self) -> Underground11kV:
         return Underground11kV(
             route_length_m=self.route.value(),
@@ -920,7 +1041,7 @@ class PanelUnderground11kV(QWidget):
         )
 
 
-class PanelUnderground33kV(QWidget):
+class PanelUnderground33kV(_Loadable, QWidget):
     """مدخلات مقطع شبكة أرضية 33 ك.ف — قابلو 1×400 ملم² (ق-٣١).
 
     الفرق عن 11 ك.ف: القابلو أحادي القلب — كل دائرة تحتاج ثلاثة كابلات منفصلة،
@@ -1014,6 +1135,17 @@ class PanelUnderground33kV(QWidget):
                 net.route_length_m, cable_count_33(net), self.drum_length.value()
             )
         )
+
+    def _load(self, net: Underground33kV) -> None:
+        set_number(self.route, net.route_length_m)
+        _select(self.circuit, net.circuit)
+        _select(self.sidewalk, net.sidewalk_type)
+        self.waste_included.setChecked(net.length_includes_waste)
+        set_number(self.waste_pct, net.waste_pct * 100.0)
+        set_number(self.drum_length, net.drum_length_m or self.drum_length.value())
+        set_number(self.straight_boxes, net.straight_boxes)
+        set_number(self.end_internal, net.end_boxes_internal)
+        set_number(self.end_external, net.end_boxes_external)
 
     def content(self) -> Underground33kV:
         return Underground33kV(

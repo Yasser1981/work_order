@@ -44,7 +44,7 @@ from .panels import (
     PanelUnderground11kV,
     PanelUnderground33kV,
 )
-from .widgets import HintLabel, number_field, section
+from .widgets import HintLabel, number_field, section, set_number
 
 EDITORS = {
     SegmentKind.HV11: Panel11kV,
@@ -104,6 +104,16 @@ class SegmentsPanel(QWidget):
         self.list = QListWidget()
         self.list.setMaximumHeight(120)
         outer.addWidget(self.list)
+
+        # الوظائف الثلاث موجودة وتعمل، ولا شيء على الشاشة يدلّ عليها — سألتَ
+        # عنها بنفسك فلم تجدها. هذا السطر يُظهر الموجود ولا يغيّر سلوكاً (ق-٦١).
+        self.usage_hint = HintLabel(
+            "اختر مقطعاً من القائمة لتحرير معطياته &nbsp;·&nbsp; "
+            "غيّر اسمه من الحقل أدناه &nbsp;·&nbsp; "
+            "زرّ <b>حذف</b> يزيله بعد تأكيد &nbsp;·&nbsp; "
+            "<b>▲ ▼</b> تغيّران ترتيبه"
+        )
+        outer.addWidget(self.usage_hint)
 
         rename = QHBoxLayout()
         self.name = QLineEdit()
@@ -178,8 +188,8 @@ class SegmentsPanel(QWidget):
     def _remove_segment(self, confirm: bool = True) -> None:
         """يحذف المقطع المحدَّد بعد تأكيد المستخدم (ق-٥٧).
 
-        الحذف **لا رجعة فيه** — لا تراجع في البرنامج، ولا حفظ للمشروع بعد.
-        فمقطع أُدخلت معطياته في دقائق يضيع بنقرة واحدة. `confirm=False`
+        الحذف **لا رجعة فيه** — لا تراجع في البرنامج. فمقطع أُدخلت معطياته في
+        دقائق يضيع بنقرة واحدة (وإن كان يمكن استعادته من ملف `.wo` محفوظ). `confirm=False`
         للاستدعاء الآلي من الاختبارات، فالنوافذ الحاجزة تُعطّلها.
         """
         row = self.list.currentRow()
@@ -232,6 +242,40 @@ class SegmentsPanel(QWidget):
             return
         self._names[row] = text
         self._refresh_labels()
+        self.changed.emit()
+
+    def clear(self) -> None:
+        """يزيل كل المقاطع — بلا سؤال، فالسائل هو من يستدعيها (ملف جديد/فتح)."""
+        while self._names:
+            row = len(self._names) - 1
+            editor = self.stack.widget(row + 1)
+            self.stack.removeWidget(editor)
+            editor.deleteLater()
+            del self._names[row]
+            del self._kinds[row]
+            self.list.takeItem(row)
+        self._sync_controls()
+
+    def load(self, project) -> None:
+        """يستبدل محتوى اللوحة كلَّه بمشروع محفوظ (ق-٦١).
+
+        إشارة `changed` تُصدَر مرّة واحدة في آخره لا مع كل مقطع، فلا يُعاد حساب
+        المشروع مرّةً لكل مقطع أثناء الفتح.
+        """
+        self.blockSignals(True)
+        try:
+            self.clear()
+            for segment in project.segments:
+                row = self.add_segment(segment.kind, segment.name)
+                self.editor(row).load(segment.content)
+            set_number(self.street_secondary, project.street_crossing_secondary_m)
+            set_number(self.street_secondary_feeders,
+                       project.street_crossing_secondary_feeders)
+            set_number(self.street_main, project.street_crossing_main_m)
+            set_number(self.street_main_feeders, project.street_crossing_main_feeders)
+            self.list.setCurrentRow(0 if self._names else -1)
+        finally:
+            self.blockSignals(False)
         self.changed.emit()
 
     # ─────────────────────────────── العرض ───────────────────────────────

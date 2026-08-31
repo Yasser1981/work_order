@@ -24,12 +24,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from engine import latest_catalog_version, load_catalog
+from engine.prices import differences
 from engine.project import compute_project
+from engine.store import EXTENSION, LoadError, load as load_order, save as save_order
+from engine.workorder import WorkOrder
 from engine.types import Project, SegmentKind
 import printing
 
 from .order_panel import OrderPanel
+from .prices_window import open_prices
 from .segments_panel import SegmentsPanel
+
+WO_FILTER = f"ملف أمر عمل (*{EXTENSION})"
 
 STYLE = """
 QWidget       { font-size: 13px; }
@@ -50,9 +57,13 @@ QPushButton#print { font-weight: 600; padding: 8px 20px; }
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, catalog: dict) -> None:
+    def __init__(self, catalog: dict, version: str | None = None) -> None:
         super().__init__()
         self.catalog = catalog
+        self.version = version or latest_catalog_version()
+        """نسخة الأسعار التي يُحسب بها أمر العمل المفتوح — تُحفظ معه (ق-٤٠)."""
+        self.path: Path | None = None
+        """مسار ملف `.wo` المفتوح. None يعني أمر عمل جديد لم يُحفظ بعد."""
         self._rows: list[dict] = []
         self.result: dict = {"المواد": [], "أسعار_مفقودة": []}
         self.setWindowTitle("نظام أوامر العمل الكهربائية")
@@ -61,8 +72,10 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(STYLE)
         self._build()
         self.recalculate()
+        self._refresh_title()
 
     def _build(self) -> None:
+        self._build_menu()
         self.segments = SegmentsPanel(self.catalog)
         self.order_panel = OrderPanel()
         self.segments.changed.connect(self.recalculate)
@@ -160,6 +173,200 @@ class MainWindow(QMainWindow):
         totals.addWidget(self.print_button)
         layout.addLayout(totals)
         return pane
+
+    # ──────────────────────── الملفّ ونسخة الأسعار ────────────────────────
+
+    def _build_menu(self) -> None:
+        """شريط «ملف» و«الأسعار» — حفظ أمر العمل وفتحه وإدارة الأسعار (ق-٦١، ق-٦٢)."""
+        bar = self.menuBar()
+        bar.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
+        menu = bar.addMenu("ملف")
+        self.action_new = menu.addAction("أمر عمل جديد")
+        self.action_new.setShortcut("Ctrl+N")
+        self.action_new.triggered.connect(self.new_order)
+        self.action_open = menu.addAction("فتح…")
+        self.action_open.setShortcut("Ctrl+O")
+        self.action_open.triggered.connect(self.open_order)
+        menu.addSeparator()
+        self.action_save = menu.addAction("حفظ")
+        self.action_save.setShortcut("Ctrl+S")
+        self.action_save.triggered.connect(self.save)
+        self.action_save_as = menu.addAction("حفظ باسم…")
+        self.action_save_as.setShortcut("Ctrl+Shift+S")
+        self.action_save_as.triggered.connect(self.save_as)
+
+        menu = bar.addMenu("الأسعار")
+        self.action_prices = menu.addAction("إدارة الأسعار…")
+        self.action_prices.triggered.connect(self.manage_prices)
+        self.action_update_prices = menu.addAction("تحديث أسعار أمر العمل إلى الأحدث…")
+        self.action_update_prices.triggered.connect(self.update_prices)
+
+    def _refresh_title(self) -> None:
+        """يُظهر اسم الملف ونسخة الأسعار في العنوان — فلا يلتبس أمر عمل بآخر."""
+        name = self.path.name if self.path else "أمر عمل جديد (لم يُحفظ)"
+        self.setWindowTitle(
+            f"نظام أوامر العمل الكهربائية  —  {name}  —  أسعار {self.version}"
+        )
+
+    def project(self) -> Project:
+        """المشروع كما هو في الواجهة الآن."""
+        return Project(
+            self.order_panel.project_name.text(),
+            self.segments.segments(),
+            **self.segments.street_crossings(),
+        )
+
+    def new_order(self) -> None:
+        """يفرغ الواجهة لأمر عمل جديد — بعد تأكيد، فالمُدخَل يضيع بلا رجعة."""
+        if self.segments.segments() and not self._confirm(
+            "أمر عمل جديد",
+            "سيُفرَّغ أمر العمل الحالي.\n\nاحفظه أولاً إن أردت الاحتفاظ به. أتابع؟"
+        ):
+            return
+        self.segments.load(Project())
+        self.order_panel.load(WorkOrder())
+        self.path = None
+        self.version = latest_catalog_version()
+        self.catalog = load_catalog(self.version)
+        self._retarget_catalog()
+        self.recalculate()
+        self._refresh_title()
+
+    @staticmethod
+    def _confirm(title: str, text: str) -> bool:
+        answer = QMessageBox.question(
+            None, title, text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def save_to(self, path: str | Path) -> Path:
+        """يكتب ملف `.wo` بلا أي حوار — قابلة للاختبار والاستدعاء الآلي."""
+        written = save_order(path, self.order_panel.order(), self.project(), self.version)
+        self.path = written
+        self._refresh_title()
+        return written
+
+    def save(self) -> Path | None:
+        """حفظ في المسار الحالي، أو «حفظ باسم» إن لم يكن ثمّة مسار."""
+        if self.path is None:
+            return self.save_as()
+        try:
+            return self.save_to(self.path)
+        except OSError as exc:
+            QMessageBox.critical(self, "تعذّر الحفظ", f"لم يُكتب الملف:\n{exc}")
+            return None
+
+    def save_as(self) -> Path | None:
+        number = self.order_panel.number.text().strip()
+        suggested = f"أمر عمل {number}{EXTENSION}" if number else f"أمر عمل{EXTENSION}"
+        path, _ = QFileDialog.getSaveFileName(self, "حفظ أمر العمل", suggested, WO_FILTER)
+        if not path:
+            return None
+        try:
+            written = self.save_to(path)
+        except OSError as exc:
+            QMessageBox.critical(self, "تعذّر الحفظ", f"لم يُكتب الملف:\n{exc}")
+            return None
+        QMessageBox.information(self, "تم الحفظ", f"حُفظ أمر العمل في:\n{written.name}")
+        return written
+
+    def load_from(self, path: str | Path) -> None:
+        """يفتح ملف `.wo` ويستعيد الواجهة كلها منه — بلا أي حوار.
+
+        **نسخة الأسعار تُستعاد من الملف** لا من أحدث نسخة: أمر عمل أُنشئ بأسعار آب
+        يُعاد فتحه بأسعار آب (ق-٤٠). فإن غابت النسخة عن القرص أُبلغ عنها ولم
+        تُستبدل صامتةً بغيرها.
+        """
+        order, project, version = load_order(path)
+        if version:
+            self.catalog = load_catalog(version)      # يرفع خطأً إن غابت النسخة
+            self.version = version
+            self._retarget_catalog()
+        self.segments.load(project)
+        self.order_panel.load(order)
+        self.path = Path(path)
+        self.recalculate()
+        self._refresh_title()
+
+    def open_order(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "فتح أمر عمل", "", WO_FILTER)
+        if not path:
+            return
+        try:
+            self.load_from(path)
+        except (LoadError, OSError, ValueError) as exc:
+            QMessageBox.critical(self, "تعذّر الفتح", f"{exc}")
+        except FileNotFoundError as exc:
+            QMessageBox.critical(
+                self, "نسخة الأسعار مفقودة",
+                f"{exc}\n\nأمر العمل يشير إلى نسخة أسعار غير موجودة في مجلد "
+                "البيانات. انسخها إلى المجلد ثم أعد الفتح."
+            )
+
+    def _retarget_catalog(self) -> None:
+        """يوجّه اللوحات إلى نسخة الأسعار الحالية — الاقتراحات تقرأ منها."""
+        self.segments.catalog = self.catalog
+        for row in range(self.segments.list.count()):
+            self.segments.editor(row).catalog = self.catalog
+
+    # ─────────────────────────── إدارة الأسعار ───────────────────────────
+
+    def manage_prices(self) -> None:
+        """يفتح شاشة الأسعار، وينتقل إلى النسخة الجديدة إن اعتُمدت (ق-٦٢)."""
+        version = open_prices(self, self.catalog, self.version)
+        if version:
+            self.switch_version(version)
+
+    def switch_version(self, version: str) -> None:
+        """ينقل أمر العمل المفتوح إلى نسخة أسعار أخرى ويُعيد الحساب."""
+        self.catalog = load_catalog(version)
+        self.version = version
+        self._retarget_catalog()
+        self.recalculate()
+        self._refresh_title()
+
+    def update_prices(self) -> None:
+        """يحدّث أمر العمل المفتوح إلى أحدث نسخة أسعار — **بأمر صريح منك**.
+
+        بنصّ المستخدم: «مع احتفاظ أوامر العمل القديمة بنفس سعر المواد والعمل في
+        تاريخ إنشائها **إلا إذا أنا أعطيت أمراً بتغييرها وتحديثها**».
+
+        فالتحديث لا يقع تلقائياً أبداً، ويُعرض أثره على الكلفة قبل وقوعه.
+        """
+        latest = latest_catalog_version()
+        if latest == self.version:
+            QMessageBox.information(
+                self, "لا جديد",
+                f"أمر العمل على أحدث نسخة أسعار أصلاً ({self.version})."
+            )
+            return
+
+        newer = load_catalog(latest)
+        diff = differences(self.catalog, newer)
+        before = self.result.get("الكلفة_الكلية", 0)
+        after = compute_project(self.project(), newer)["الكلفة_الكلية"]
+        change = after - before
+        sign = "+" if change > 0 else ""
+        detail = "\n".join(
+            f"• {d['الاسم']}: "
+            f"{'غير مُسعَّر' if d['قبل'] is None else format(d['قبل'], ',.0f')}"
+            f" ← {'غير مُسعَّر' if d['بعد'] is None else format(d['بعد'], ',.0f')}"
+            for d in diff[:10]
+        ) or "• لا فرق في الأسعار بين النسختين"
+        more = f"\n… و{len(diff) - 10} غيرها" if len(diff) > 10 else ""
+
+        if not self._confirm(
+            "تحديث أسعار أمر العمل",
+            f"من نسخة «{self.version}» إلى «{latest}» — {len(diff)} تغييراً:\n\n"
+            f"{detail}{more}\n\n"
+            f"الكلفة الكلية: {before:,.0f} ← {after:,.0f}  ({sign}{change:,.0f} دينار)"
+            "\n\nأتابع؟"
+        ):
+            return
+        self.switch_version(latest)
 
     # ─────────────────────────────── الطباعة ───────────────────────────────
 
