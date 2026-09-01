@@ -179,33 +179,161 @@ def segmented_result():
     return compute_project(project, load_catalog())
 
 
-# ═══════════════════ اتجاه المستند (ق-٥٤) ═══════════════════
+# ═══════════════════ اتجاه الأعمدة (ق-٦٤ — يصحّح ق-٥٤) ═══════════════════
 
 
-def test_the_styles_set_the_table_direction_to_rtl(qapp):
-    """`direction: rtl` على الجدول هو ما يقلب ترتيب الأعمدة فعلاً (ق-٥٤).
+def _tables(doc):
+    """كل جداول المستند بترتيب ظهورها."""
+    from PyQt6.QtGui import QTextTable
 
-    كان الترتيب من اليسار لليمين: «ت» في أقصى اليسار و«الكمية» في أقصى اليمين
-    — عكس نموذج الإيزو. و`setDefaultTextOption(RightToLeft)` وحده يضبط اتجاه
-    النصّ **داخل** الفقرة ولا يمسّ ترتيب الأعمدة.
+    return [f for f in doc.rootFrame().childFrames() if isinstance(f, QTextTable)]
 
-    وهذه القاعدة **لا يحرسها شيء غير هذا الاختبار**: حذفها لا يرفع خطأً ولا
-    يُسقط تأكيداً آخر، ويقلب المستند كلّه بصمت.
+
+def _header_columns(doc, table):
+    """نصوص خلايا الصفّ الأول مقرونةً بموضعها الأفقي في المستند المرسوم."""
+    layout = doc.documentLayout()
+    found = []
+    for col in range(table.columns()):
+        cell = table.cellAt(0, col)
+        block = cell.firstCursorPosition().block()
+        found.append((block.text().strip(), layout.blockBoundingRect(block).left()))
+    return found
+
+
+def _laid_out(html: str):
+    """مستند مرسوم فعلاً — القياس على النتيجة لا على النصّ."""
+    from PyQt6.QtGui import QTextDocument
+    from printing.iso_form import styles, _rtl_option
+
+    doc = QTextDocument()
+    doc.setDefaultStyleSheet(styles())
+    doc.setDefaultTextOption(_rtl_option())
+    doc.setHtml(html)
+    doc.setTextWidth(1000)
+    return doc
+
+
+def test_the_serial_column_is_the_rightmost_one(order, result, qapp):
+    """**حارس هندسي:** عمود «ت» في أقصى اليمين في كل جدول يحمله (ق-٦٤).
+
+    ويقيس هذا الاختبار **المستند المرسوم** لا نصّ HTML ولا قواعد CSS — وهذا هو
+    الفرق الجوهري عن حارس ق-٥٤ الذي كان يتحقّق من وجود `direction: rtl` في
+    الأنماط. تلك القاعدة موجودة فعلاً **ولا تقلب ترتيب الأعمدة** في محرّك
+    QTextDocument، فكان الحارس يمرّ والنموذج مقلوب — حتى طبع المستخدم أول أمر
+    عمل فرأى «ت» في أقصى اليسار.
+
+    فالقياس هنا على ما يراه القارئ في الورقة، ولا يمكن أن يمرّ على خلل مماثل.
     """
-    from printing.iso_form import styles
+    for key in ("iso", "audit"):
+        doc = _laid_out(printing.get(key).build_html(order, result))
+        checked = 0
+        for table in _tables(doc):
+            columns = _header_columns(doc, table)
+            positions = {text: left for text, left in columns}
+            if "ت" not in positions:
+                continue
+            checked += 1
+            assert positions["ت"] == max(left for _, left in columns), (
+                f"{key}: «ت» ليس أقصى اليمين — {columns}"
+            )
+        assert checked >= 2, f"{key}: لم يُفحص جدولان على الأقل"
 
+
+def test_the_material_columns_run_right_to_left_in_order(order, result, qapp):
+    """ترتيب أعمدة جدول المواد كاملاً: ت ← اسم المادة ← الوحدة ← الكمية."""
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    table = next(t for t in _tables(doc)
+                 if any(text == "ت" for text, _ in _header_columns(doc, t)))
+    ordered = [text for text, _ in
+               sorted(_header_columns(doc, table), key=lambda c: -c[1])]
+    assert ordered == ["ت", "اسم المادة", "الوحدة القياسية", "الكمية"], ordered
+
+
+def test_the_header_table_puts_the_label_before_its_value(order, result, qapp):
+    """ترويسة أمر العمل: «التبويب» يمين قيمته، و«التاريخ» يمين تاريخه."""
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    header = _tables(doc)[0]
+    ordered = [text for text, _ in
+               sorted(_header_columns(doc, header), key=lambda c: -c[1])]
+    assert ordered[0] == "التبويب", ordered
+    assert ordered.index("التاريخ") < ordered.index("2026/08/19"), ordered
+
+
+def test_the_styles_keep_the_document_direction(qapp):
+    """`direction: rtl` تبقى: تضبط اتجاه النصّ داخل الخلية والفقرة.
+
+    **ولا تقلب الأعمدة** — يفعل ذلك `_row` وحدها. مُثبَّت أعلاه هندسياً.
+    """
     import re
 
+    from printing.iso_form import styles
+
     css = styles()
-    # قاعدة على الجدول تحمل direction: rtl — مهما تغيّرت المسافات
-    assert re.search(r"table\s*\{[^}]*direction:\s*rtl", css), css
     assert re.search(r"body\s*\{[^}]*direction:\s*rtl", css), css
 
 
-def test_both_templates_carry_the_direction(order, result, qapp):
-    for key in ("iso", "audit"):
-        html = printing.get(key).build_html(order, result)
-        assert html.count("direction: rtl") >= 2, key
+# ═══════════ الإشراف الفني والآليات: بلا أسطر صفرية (ق-٦٤) ═══════════
+
+
+def _table_titled(doc, header: str):
+    """الجدول الذي يحمل هذا العنوان في صفّه الأول — لا بترتيبه فيتغيّر بأي إضافة."""
+    for table in _tables(doc):
+        if any(text == header for text, _ in _header_columns(doc, table)):
+            return table
+    raise AssertionError(f"لا جدول عنوانه «{header}»")
+
+
+def _body(doc, table) -> list[list[str]]:
+    """صفوف الجدول بلا رأسه، كلُّ صفّ نصوصُ خلاياه من اليمين إلى اليسار."""
+    return [
+        [table.cellAt(r, c).firstCursorPosition().block().text().strip()
+         for c in range(table.columns() - 1, -1, -1)]
+        for r in range(1, table.rows())
+    ]
+
+
+def test_a_row_with_no_count_is_left_out(order, result, qapp):
+    """السطر بلا عدد لا يُطبع — النموذج يُظهر ما استُخدم فعلاً (ق-٦٤).
+
+    والفحص على **خلايا الجدول المرسوم** لا على نصّ HTML: «عامل» جزء من «نوع
+    العاملين» في رأس الجدول، فالبحث النصّي يمرّ على الخطأ ويسقط على الصواب.
+    """
+    order.staff[0].count, order.staff[0].days = 1, 90     # مهندس
+    order.staff[2].count = 0                              # عامل — صفر
+    order.equipment[2].count, order.equipment[2].days = 1, 90   # رافعة
+
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    staff = [row[1] for row in _body(doc, _table_titled(doc, "نوع العاملين"))]
+    equipment = [row[1] for row in _body(doc, _table_titled(doc, "نوع الآلية"))]
+    assert staff == ["مهندس"], staff
+    assert equipment == ["رافعة"], equipment
+
+
+def test_the_serial_renumbers_after_the_empty_rows_are_dropped(order, result, qapp):
+    """الترقيم يعيد الحساب: الرافعة الثالثة في القائمة تصير الأولى في الجدول."""
+    order.equipment[2].count, order.equipment[2].days = 1, 90
+    order.equipment[5].count, order.equipment[5].days = 2, 30
+
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    rows = _body(doc, _table_titled(doc, "نوع الآلية"))
+    assert [row[0] for row in rows] == ["1", "2"], rows
+    assert [row[1] for row in rows] == ["رافعة", "شفل"], rows
+    assert [row[2] for row in rows] == ["1", "2"], rows
+
+
+def test_an_empty_table_keeps_one_blank_row(order, result, qapp):
+    """لا مُدخَل إطلاقاً ← صفٌّ فارغ واحد، فلا يظهر رأسُ جدولٍ بلا جسم."""
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    rows = _body(doc, _table_titled(doc, "نوع العاملين"))
+    assert rows == [["", "", "", ""]], rows
+
+
+def test_days_without_a_count_do_not_resurrect_the_row(order, result, qapp):
+    """العدد وحده يحكم — أيامٌ بلا عدد لا تُبقي السطر (بنصّك: «إذا كان العدد صفر»)."""
+    order.staff[3].days = 45          # سائق: أيام بلا عدد
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    names = [row[1] for row in _body(doc, _table_titled(doc, "نوع العاملين"))]
+    assert "سائق" not in names, names
 
 
 # ═══════════════════ الخطّ العربي — ملاءمة ويندوز (ق-٥١) ═══════════════════

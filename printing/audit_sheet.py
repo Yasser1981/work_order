@@ -12,7 +12,7 @@ from collections import OrderedDict
 
 from engine.workorder import WorkOrder
 
-from .iso_form import _esc, _fmt_date, _fmt_qty, styles, _TABLE, _rtl_option
+from .iso_form import _esc, _fmt_date, _fmt_qty, _row, styles, _TABLE, _rtl_option
 
 _EXTRA = """
 .src   { font-size: 9pt; color: #444; }
@@ -52,25 +52,25 @@ def _labour_table(lines: list) -> str:
     index = 0
     for name, members in groups.items():
         if len(groups) > 1:
-            rows.append(f'<tr class="grp"><td colspan="5" align="right">'
-                        f'<b>{_esc(name)}</b></td></tr>')
+            rows.append(_row(f'<td colspan="5" align="right"><b>{_esc(name)}</b></td>',
+                             attrs=' class="grp"'))
         for line in members:
             index += 1
-            rows.append(
-                f'<tr><td align="center">{index}</td>'
-                f'<td align="right">{_esc(line.name)}</td>'
-                f'<td align="center">{_fmt_qty(line.qty)} {_esc(line.unit)}</td>'
+            rows.append(_row(
+                f'<td align="center">{index}</td>',
+                f'<td align="right">{_esc(line.name)}</td>',
+                f'<td align="center">{_fmt_qty(line.qty)} {_esc(line.unit)}</td>',
                 # الأجر المفقود يُطبع نصّاً لا صفراً — الصفر يوهم بأن البند مجّاني
                 f'<td align="center">'
-                f'{"بلا أجر" if line.rate_missing else f"{line.rate:,.0f}"}</td>'
+                f'{"بلا أجر" if line.rate_missing else f"{line.rate:,.0f}"}</td>',
                 f'<td align="center">'
-                f'{"—" if line.rate_missing else f"{line.cost:,.0f}"}</td></tr>'
-            )
+                f'{"—" if line.rate_missing else f"{line.cost:,.0f}"}</td>',
+            ))
         if len(groups) > 1:
             subtotal = sum(line.cost for line in members)
-            rows.append(f'<tr class="sub"><td colspan="4" align="left">'
-                        f'مجموع {_esc(name)}</td>'
-                        f'<td align="center">{subtotal:,.0f}</td></tr>')
+            rows.append(_row(
+                f'<td colspan="4" align="right">مجموع {_esc(name)}</td>',
+                f'<td align="center">{subtotal:,.0f}</td>', attrs=' class="sub"'))
     return "\n".join(rows)
 
 
@@ -89,21 +89,22 @@ def build_html(order: WorkOrder, result: dict) -> str:
             price = f"{row['سعر الوحدة']:,.0f}"
             cost = f"{row['الكلفة']:,.0f}"
 
-        material_rows.append(
-            f'<tr><td align="center" rowspan="{len(parts)}">{i}</td>'
-            f'<td align="right" rowspan="{len(parts)}">{_esc(row["المادة"])}</td>'
-            f'<td align="center" rowspan="{len(parts)}">{_esc(row["الوحدة"])}</td>'
-            f'<td align="center" rowspan="{len(parts)}"><b>{_fmt_qty(row["الكمية"])}</b></td>'
-            f'<td align="center">{_fmt_qty(parts[0]["الكمية"])}</td>'
-            f'<td align="right" class="src">{_esc(parts[0]["المصدر"])}</td>'
-            f'<td align="center" rowspan="{len(parts)}">{price}</td>'
-            f'<td align="center" rowspan="{len(parts)}">{cost}</td></tr>'
-        )
+        span = f' rowspan="{len(parts)}"'
+        material_rows.append(_row(
+            f'<td align="center"{span}>{i}</td>',
+            f'<td align="right"{span}>{_esc(row["المادة"])}</td>',
+            f'<td align="center"{span}>{_esc(row["الوحدة"])}</td>',
+            f'<td align="center"{span}><b>{_fmt_qty(row["الكمية"])}</b></td>',
+            f'<td align="center">{_fmt_qty(parts[0]["الكمية"])}</td>',
+            f'<td align="right" class="src">{_esc(parts[0]["المصدر"])}</td>',
+            f'<td align="center"{span}>{price}</td>',
+            f'<td align="center"{span}>{cost}</td>',
+        ))
         for part in parts[1:]:
-            material_rows.append(
-                f'<tr><td align="center">{_fmt_qty(part["الكمية"])}</td>'
-                f'<td align="right" class="src">{_esc(part["المصدر"])}</td></tr>'
-            )
+            material_rows.append(_row(
+                f'<td align="center">{_fmt_qty(part["الكمية"])}</td>',
+                f'<td align="right" class="src">{_esc(part["المصدر"])}</td>',
+            ))
 
     # فقرات العمل مبوّبة: الأعمال الكهربائية أولاً ثم الأعمال المدنية، ولكل باب
     # مجموعه. عبور الشوارع ضمن المدنية بنصّ المستخدم (ق-٣٨).
@@ -127,13 +128,14 @@ def build_html(order: WorkOrder, result: dict) -> str:
     named = [s for s in segments if s.name]
     if named:
         rows = "\n".join(
-            f'<tr><td align="center">{i}</td><td align="right">{_esc(s.name)}</td>'
-            f'<td align="right">{_esc(s.kind.value)}</td></tr>'
+            _row(f'<td align="center">{i}</td>',
+                 f'<td align="right">{_esc(s.name)}</td>',
+                 f'<td align="right">{_esc(s.kind.value)}</td>')
             for i, s in enumerate(named, start=1)
         )
         segments_block = f"""<p class="section">مقاطع المشروع</p>
 <table {_TABLE}>
-  <tr><th width="6%">ت</th><th width="44%">اسم المقطع</th><th>نوعه</th></tr>
+  {_row('<th width="6%">ت</th>', '<th width="44%">اسم المقطع</th>', '<th>نوعه</th>')}
 {rows}
 </table>
 """
@@ -149,27 +151,29 @@ def build_html(order: WorkOrder, result: dict) -> str:
 {segments_block}
 <p class="section">أ - المواد وتفصيل مصادر كمياتها</p>
 <table {_TABLE}>
-  <tr><th width="5%">ت</th><th>اسم المادة</th><th width="9%">الوحدة</th>
-      <th width="9%">الكمية</th><th width="8%">منها</th><th width="30%">المصدر</th>
-      <th width="10%">سعر الوحدة</th><th width="12%">الكلفة</th></tr>
+  {_row('<th width="5%">ت</th>', '<th>اسم المادة</th>', '<th width="9%">الوحدة</th>',
+        '<th width="9%">الكمية</th>', '<th width="8%">منها</th>',
+        '<th width="30%">المصدر</th>', '<th width="10%">سعر الوحدة</th>',
+        '<th width="12%">الكلفة</th>')}
 {chr(10).join(material_rows)}
-  <tr class="tot"><td colspan="7" align="left">مجموع كلفة المواد</td>
-      <td align="center">{result["كلفة_المواد"]:,.0f}</td></tr>
+  {_row('<td colspan="7" align="right">مجموع كلفة المواد</td>',
+        f'<td align="center">{result["كلفة_المواد"]:,.0f}</td>', attrs=' class="tot"')}
 </table>
 {warning}
 
 <p class="section">ب - فقرات العمل</p>
 <table {_TABLE}>
-  <tr><th width="5%">ت</th><th>الفقرة</th><th width="18%">الكمية</th>
-      <th width="16%">السعر الوحدي</th><th width="18%">الكلفة</th></tr>
+  {_row('<th width="5%">ت</th>', '<th>الفقرة</th>', '<th width="18%">الكمية</th>',
+        '<th width="16%">السعر الوحدي</th>', '<th width="18%">الكلفة</th>')}
 {labour_rows}
-  <tr class="tot"><td colspan="4" align="left">مجموع أجور التنفيذ</td>
-      <td align="center">{result["كلفة_العمل"]:,.0f}</td></tr>
+  {_row('<td colspan="4" align="right">مجموع أجور التنفيذ</td>',
+        f'<td align="center">{result["كلفة_العمل"]:,.0f}</td>', attrs=' class="tot"')}
 </table>
 
 <table {_TABLE}>
-  <tr class="tot"><td align="left">الكلفة الكلية (مواد + عمل)</td>
-      <td width="30%" align="center">{result["الكلفة_الكلية"]:,.0f} دينار</td></tr>
+  {_row('<td align="right">الكلفة الكلية (مواد + عمل)</td>',
+        f'<td width="30%" align="center">{result["الكلفة_الكلية"]:,.0f} دينار</td>',
+        attrs=' class="tot"')}
 </table>
 </body></html>"""
 

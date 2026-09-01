@@ -94,6 +94,9 @@ def test_quantities_match_the_engine(order, result):
     html_text = build_html(order, result)
     rows = _material_rows(html_text)
     printed = [re.findall(r"<td[^>]*>(.*?)</td>", r, flags=re.S) for r in rows]
+    # الخلايا تُكتب مقلوبة منذ ق-٦٤ (الكمية أولاً و«ت» أخيراً)، فتُقلب هنا
+    # لتُقرأ بترتيبها المنطقي: ت، الاسم، الوحدة، الكمية.
+    printed = [list(reversed(cells)) for cells in printed]
     by_name = {cells[1]: cells[3] for cells in printed}
     assert by_name["كونكريت أساسات الأعمدة"] == "161"
     assert by_name["سلك نحاس 50 ملم²"] == "87"
@@ -107,7 +110,8 @@ def test_fractional_quantity_keeps_its_decimals(order, result):
 
 def test_rows_are_numbered_consecutively(order, result):
     rows = _material_rows(build_html(order, result))
-    numbers = [re.search(r"<td[^>]*>(\d+)</td>", r).group(1) for r in rows]
+    # «ت» آخر خلية في الصفّ بعد قلب الترتيب (ق-٦٤)
+    numbers = [re.findall(r"<td[^>]*>(.*?)</td>", r, flags=re.S)[-1] for r in rows]
     assert numbers == [str(i) for i in range(1, len(rows) + 1)]
 
 
@@ -135,12 +139,15 @@ def test_dates_are_formatted(order, result):
     assert "2026/09/01" in html_text
 
 
-def test_manual_sections_have_the_official_rows(order, result):
+def test_manual_sections_print_only_what_was_entered(order, result):
+    """**يُعدِّل السلوك السابق (ق-٦٤):** كانت الأسماء الأحد عشر كلها تُطبع ولو
+    بلا عدد، فبطلبك صار يُطبع المُدخَل وحده."""
+    order.staff[1].count, order.staff[1].days = 3, 60          # فني
+    order.equipment[4].count, order.equipment[4].days = 1, 60  # كرين
     html_text = build_html(order, result)
-    for role in ("مهندس", "فني", "عامل", "سائق", "محاسب"):
-        assert role in html_text
-    for machine in ("بيك اب دبل قمارة", "بيكب حمل", "رافعة", "لوري هايب", "كرين", "شفل"):
-        assert machine in html_text
+    assert "فني" in html_text and "كرين" in html_text
+    for absent in ("مهندس", "سائق", "محاسب", "رافعة", "شفل", "لوري هايب"):
+        assert absent not in html_text, absent
 
 
 def test_filled_staff_counts_are_printed(result):
@@ -148,8 +155,12 @@ def test_filled_staff_counts_are_printed(result):
     order = WorkOrder()
     order.staff[0].count, order.staff[0].days = 2, 30
     html_text = build_html(order, result)
-    assert re.search(r"مهندس</td><td align=\"center\">2</td><td align=\"center\">30</td>",
-                     html_text)
+    # الترتيب مقلوب منذ ق-٦٤: الأيام ثم العدد ثم الاسم ثم «ت»
+    assert re.search(
+        r'<td align="center">30</td><td align="center">2</td>'
+        r'<td align="right">مهندس</td>',
+        html_text,
+    ), html_text
 
 
 def test_special_characters_are_escaped(result):

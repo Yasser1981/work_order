@@ -92,6 +92,22 @@ def styles(extra: str = "") -> str:
 _TABLE = 'width="100%" border="1" cellspacing="0" cellpadding="4"'
 
 
+def _row(*cells: str, attrs: str = "") -> str:
+    """صفُّ جدول يُكتب بترتيبه المنطقي ويُخرَج **مقلوباً**، فأولى خلاياه يمينُه.
+
+    **لماذا القلب في الشيفرة لا في CSS (ق-٦٤):** محرّك `QTextDocument` **لا
+    يقلب ترتيب أعمدة الجدول** بـ`direction: rtl` — يقلب اتجاه النصّ داخل الخلية
+    وحده. وكان ق-٥٤ يظنّ أن القاعدة تكفي، وهو استنتاج خاطئ ظهر على أول أمر عمل
+    مطبوع: عمود «ت» في أقصى اليسار و«الكمية» في أقصى اليمين، عكس النموذج الرسمي.
+
+    فالقلب هنا **حسابي لا اعتمادَ فيه على محرّك العرض**، فيخرج الترتيب نفسه على
+    ويندوز ولينكس وأي إصدار من Qt. ويحرسه اختبار **هندسي** يقيس مواضع الأعمدة
+    في المستند المرسوم فعلاً، فلو غيّر Qt سلوكه يوماً سقط الاختبار ولم ينقلب
+    النموذج الرسمي صامتاً.
+    """
+    return f"<tr{attrs}>" + "".join(reversed(cells)) + "</tr>"
+
+
 def _fmt_qty(value: float) -> str:
     """كمية بلا كسور زائدة: 31.5 تبقى 31.5 و21.0 تصير 21."""
     if value == int(value):
@@ -107,32 +123,42 @@ def _esc(value: str) -> str:
     return html.escape(value or "")
 
 
+def _people_rows(entries: list, label_field: str) -> str:
+    """صفوف جدولَي الإشراف الفني والآليات — المُدخَل وحده، بلا أسطر صفرية.
+
+    وحين لا يُدخَل شيء يبقى **صفٌّ فارغ واحد**، فيحتفظ النموذج بشكله ولا يظهر
+    جدولاً برأس بلا جسم كأنّ الطباعة انقطعت.
+    """
+    if not entries:
+        return _row('<td align="center">&nbsp;</td>', '<td>&nbsp;</td>',
+                    '<td>&nbsp;</td>', '<td>&nbsp;</td>')
+    return "\n".join(
+        _row(f'<td align="center">{i}</td>',
+             f'<td align="right">{_esc(getattr(entry, label_field))}</td>',
+             f'<td align="center">{entry.count}</td>',
+             f'<td align="center">{entry.days if entry.days is not None else "&nbsp;"}</td>')
+        for i, entry in enumerate(entries, start=1)
+    )
+
+
 def build_html(order: WorkOrder, result: dict) -> str:
     """يبني نصّ HTML لأمر العمل جاهزاً للطباعة أو التحويل إلى PDF."""
     materials = [row for row in result["المواد"] if row["الكمية"] > 0]
     total = result["الكلفة_الكلية"]
 
     rows = "\n".join(
-        f'<tr><td align="center">{i}</td>'
-        f'<td align="right">{_esc(row["المادة"])}</td>'
-        f'<td align="center">{_esc(row["الوحدة"])}</td>'
-        f'<td align="center">{_fmt_qty(row["الكمية"])}</td></tr>'
+        _row(f'<td align="center">{i}</td>',
+             f'<td align="right">{_esc(row["المادة"])}</td>',
+             f'<td align="center">{_esc(row["الوحدة"])}</td>',
+             f'<td align="center">{_fmt_qty(row["الكمية"])}</td>')
         for i, row in enumerate(materials, start=1)
     )
 
-    staff_rows = "\n".join(
-        f'<tr><td align="center">{i}</td><td align="right">{_esc(s.role)}</td>'
-        f'<td align="center">{s.count if s.count is not None else "&nbsp;"}</td>'
-        f'<td align="center">{s.days if s.days is not None else "&nbsp;"}</td></tr>'
-        for i, s in enumerate(order.staff, start=1)
-    )
-
-    equip_rows = "\n".join(
-        f'<tr><td align="center">{i}</td><td align="right">{_esc(e.name)}</td>'
-        f'<td align="center">{e.count if e.count is not None else "&nbsp;"}</td>'
-        f'<td align="center">{e.days if e.days is not None else "&nbsp;"}</td></tr>'
-        for i, e in enumerate(order.equipment, start=1)
-    )
+    # السطر بلا عدد لا يُطبع (ق-٦٤). النموذج الورقي يُملأ باليد فتبقى فيه أسطر
+    # فارغة، أما المطبوع فيُظهر ما استُخدم فعلاً: خمسة أنواع عاملين وستّ آليات
+    # معظمها أصفار تُطيل الجدول ولا تحمل معلومة.
+    staff_rows = _people_rows([s for s in order.staff if s.count], "role")
+    equip_rows = _people_rows([e for e in order.equipment if e.count], "name")
 
     return f"""<html><head><meta charset="utf-8"><style>{styles()}</style></head>
 <body dir="rtl">
@@ -143,34 +169,40 @@ def build_html(order: WorkOrder, result: dict) -> str:
 <p align="center" class="title">أمر عمل رقم {_esc(order.number)}</p>
 
 <table {_TABLE}>
-  <tr><td class="k" width="22%">التبويب</td><td width="28%">{_esc(order.classification)}</td>
-      <td class="k" width="20%">التاريخ</td><td>{_fmt_date(order.order_date)}</td></tr>
-  <tr><td class="k">اسم المشروع وموقعه</td><td colspan="3">{_esc(order.project_name)}</td></tr>
-  <tr><td class="k">المدة اللازمة لتنفيذ العمل</td><td colspan="3">{_esc(order.duration)}</td></tr>
-  <tr><td class="k">الكلفة التخمينية للمواد + العمل</td>
-      <td colspan="3"><b>{total:,.0f}</b> دينار</td></tr>
-  <tr><td class="k">حجم العمل المخطط تنفيذه</td><td colspan="3">{_esc(order.work_scope)}</td></tr>
-  <tr><td class="k">تاريخ المباشرة بالعمل</td><td colspan="3">{_fmt_date(order.start_date)}</td></tr>
+  {_row('<td class="k" width="22%">التبويب</td>',
+        f'<td width="28%">{_esc(order.classification)}</td>',
+        '<td class="k" width="20%">التاريخ</td>',
+        f'<td>{_fmt_date(order.order_date)}</td>')}
+  {_row('<td class="k">اسم المشروع وموقعه</td>',
+        f'<td colspan="3">{_esc(order.project_name)}</td>')}
+  {_row('<td class="k">المدة اللازمة لتنفيذ العمل</td>',
+        f'<td colspan="3">{_esc(order.duration)}</td>')}
+  {_row('<td class="k">الكلفة التخمينية للمواد + العمل</td>',
+        f'<td colspan="3"><b>{total:,.0f}</b> دينار</td>')}
+  {_row('<td class="k">حجم العمل المخطط تنفيذه</td>',
+        f'<td colspan="3">{_esc(order.work_scope)}</td>')}
+  {_row('<td class="k">تاريخ المباشرة بالعمل</td>',
+        f'<td colspan="3">{_fmt_date(order.start_date)}</td>')}
 </table>
 
 <p class="section">أ - جدول المواد المخمنة</p>
 <table {_TABLE}>
-  <tr><th width="7%">ت</th><th>اسم المادة</th>
-      <th width="18%">الوحدة القياسية</th><th width="16%">الكمية</th></tr>
+  {_row('<th width="7%">ت</th>', '<th>اسم المادة</th>',
+        '<th width="18%">الوحدة القياسية</th>', '<th width="16%">الكمية</th>')}
 {rows}
 </table>
 
 <p class="section">ب - الاشراف الفني</p>
 <table {_TABLE}>
-  <tr><th width="7%">ت</th><th>نوع العاملين</th>
-      <th width="20%">العدد</th><th width="20%">عدد الأيام</th></tr>
+  {_row('<th width="7%">ت</th>', '<th>نوع العاملين</th>',
+        '<th width="20%">العدد</th>', '<th width="20%">عدد الأيام</th>')}
 {staff_rows}
 </table>
 
 <p class="section">ج - الاليات والمعدات</p>
 <table {_TABLE}>
-  <tr><th width="7%">ت</th><th>نوع الآلية</th>
-      <th width="20%">الرقم</th><th width="20%">عدد الأيام</th></tr>
+  {_row('<th width="7%">ت</th>', '<th>نوع الآلية</th>',
+        '<th width="20%">الرقم</th>', '<th width="20%">عدد الأيام</th>')}
 {equip_rows}
 </table>
 
@@ -181,12 +213,12 @@ def build_html(order: WorkOrder, result: dict) -> str:
 
 <br>
 <table width="100%" border="0" cellspacing="0" cellpadding="10">
-  <tr><td align="center">مُعِدّ أمر العمل</td>
-      <td align="center">مدير القسم</td>
-      <td align="center">المصادقة</td></tr>
-  <tr><td align="center">.....................</td>
-      <td align="center">.....................</td>
-      <td align="center">.....................</td></tr>
+  {_row('<td align="center">مُعِدّ أمر العمل</td>',
+        '<td align="center">مدير القسم</td>',
+        '<td align="center">المصادقة</td>')}
+  {_row('<td align="center">.....................</td>',
+        '<td align="center">.....................</td>',
+        '<td align="center">.....................</td>')}
 </table>
 </body></html>"""
 

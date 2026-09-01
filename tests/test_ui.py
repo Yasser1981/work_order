@@ -139,8 +139,9 @@ def test_the_unset_start_date_prints_as_blank(order_panel, qapp):
     order_panel.start_unset.setChecked(True)
     result = compute_project(Project(), load_catalog())
     html = printing.get("iso").build_html(order_panel.order(), result)
-    row = html.split("تاريخ المباشرة بالعمل")[1].split("</tr>")[0]
-    assert "&nbsp;" in row or ">" + "<" in row.replace(" ", "")
+    # الخلايا مقلوبة منذ ق-٦٤: القيمة تسبق عنوانها في النصّ وتليه في الطباعة
+    row = html.split("تاريخ المباشرة بالعمل")[0].rsplit("<tr>", 1)[1]
+    assert 'colspan="3"></td>' in row.replace(" ", " "), row
 
 
 # ═══════════════════ عدد الأيام يتبع مدّة أمر العمل (ق-٥٥) ═══════════════════
