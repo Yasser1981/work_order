@@ -6,12 +6,13 @@
 المقرنص المرمري (ق-٣٣، أجر) — كلتاهما اكتُشفت بمراجعة يدوية لا باختبار.
 
 **القاعدة:** كل بند من بنود الأجور الـ29 في الملف الأصلي يجب أن يقع في **واحدة**
-من أربع خانات، لا خامسة:
+من خمس خانات، لا سادسة:
 
 1. **يولّده المحرك** باسمه نفسه
 2. **أُعيدت تسميته** — مذكور في `RENAMED` مع الاسم الجديد
 3. **اندمج** مع بند آخر — مذكور في `MERGED` (بنود إكسل متعدّدة ← بند واحد عندنا)
-4. **ملغى صراحةً** — مذكور في `CANCELLED` مع سببه
+4. **انقسم** — مذكور في `SPLIT` (بند إكسل واحد ← بندان عندنا أو أكثر)
+5. **ملغى صراحةً** — مذكور في `CANCELLED` مع سببه
 
 قائمة الـ29 لقطة مجمَّدة من `كلفة_العمل` في الملف الأصلي — لا تُعدَّل إلا بقرار
 مسجَّل (ق-٠).
@@ -68,7 +69,7 @@ EXCEL_LABOUR = [
 ]
 
 RENAMED = {
-    "نصب الفاصل الهوائي ON-LOAD": "نصب الفاصل ON-LOAD",
+    # «نصب الفاصل الهوائي ON-LOAD» انتقل إلى SPLIT في ق-٦٧
     "كلفة عبور الشوارع الفرعية": "عبور الشوارع الفرعية",
     "كلفة عبور الشوارع الرئيسية – حفر مخفي": "عبور الشوارع الرئيسية – حفر مخفي",
 }
@@ -83,6 +84,20 @@ MERGED = {
     "نصب ركيزة وسطية (مفرد)": "نصب ركيزة شد وسطية عمود 14م",
     "نصب ركيزة بداية ونهاية (مزدوج)": "نصب ركيزة شد بداية ونهاية عمود 14م",
     "نصب ركيزة بداية ونهاية (مفرد)": "نصب ركيزة شد بداية ونهاية عمود 14م",
+}
+
+SPLIT = {
+    # أجر نصب الفاصل يتبع **الموقع** (ق-٦٧): على رأس القابلو 60,000 وفي منتصف
+    # الشبكة 90,000. فبند الإكسل الواحد صار بندين عندنا، والموقع في الاسم لا
+    # في سعرين لبند واحد — وإلا ظهر الاسم مرّتين بسعرين في الورقة الواحدة.
+    "نصب الفاصل الهوائي ON-LOAD": (
+        "نصب الفاصل ON-LOAD — منتصف الشبكة",
+        "نصب الفاصل ON-LOAD — على رأس القابلو",
+    ),
+    "نصب فاصل هوائي 33 ك.ف": (
+        "نصب فاصل هوائي 33 ك.ف — منتصف الشبكة",
+        "نصب فاصل هوائي 33 ك.ف — على رأس القابلو",
+    ),
 }
 
 DYNAMIC_GROUP = {
@@ -170,6 +185,9 @@ def _is_covered(excel_name: str, produced: set[str]) -> bool:
         return True
     if MERGED.get(excel_name) in produced:
         return True
+    if excel_name in SPLIT:
+        # **كل** أجزاء الانقسام مطلوبة — وإلا ضاع أحدها بصمت
+        return set(SPLIT[excel_name]) <= produced
     if DYNAMIC_GROUP.get(excel_name) == CIVIL_GROUP:
         return bool(civil_labour_names() & produced)
     return False
@@ -200,19 +218,23 @@ def test_cancelled_labour_items_are_really_not_produced():
     assert not leaked, f"بند أجر ملغى يولّده المحرك: {leaked}"
 
 
-def test_renamed_and_merged_targets_actually_exist():
-    """إعادة التسمية والدمج ليسا إخفاءً — الاسم الجديد مولَّد فعلاً."""
+def test_renamed_merged_and_split_targets_actually_exist():
+    """إعادة التسمية والدمج والانقسام ليست إخفاءً — الأسماء مولَّدة فعلاً."""
     produced = all_labour_the_engine_can_produce()
     for excel_name, our_name in {**RENAMED, **MERGED}.items():
         assert our_name in produced, (
             f"«{excel_name}» يشير إلى «{our_name}» وهو غير مولَّد إطلاقاً"
         )
+    for excel_name, parts in SPLIT.items():
+        missing = set(parts) - produced
+        assert not missing, f"«{excel_name}» انقسم إلى {parts} ولم يُولَّد: {missing}"
 
 
 def test_engine_extras_beyond_the_excel_sheet_are_known():
     """ما يولّده المحرك ولا نظير له في الملف الأصلي — كله مقصود ومسجَّل."""
     produced = all_labour_the_engine_can_produce()
-    mapped = set(EXCEL_LABOUR) | set(RENAMED.values()) | set(MERGED.values())
+    mapped = (set(EXCEL_LABOUR) | set(RENAMED.values()) | set(MERGED.values())
+              | {name for names in SPLIT.values() for name in names})
     extras = {name for name in produced if name not in mapped} - civil_labour_names()
     assert extras == set(), f"بنود أجور جديدة غير مسجَّلة: {extras}"
 

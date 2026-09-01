@@ -714,11 +714,16 @@ def test_each_rating_has_its_own_field_and_pulls_its_own_breaker(window, pequip)
     assert quantities["قاعدة محولة مع الملحقات"] == 3
 
 
-def test_both_onload_positions_feed_one_labour_line(window, pequip):
+def test_each_onload_position_gets_its_own_labour_line(window, pequip):
+    """**يُعدِّل السلوك السابق (ق-٦٧):** سطر لكل موقع بسعره لا سطر واحد."""
     pequip.onload_11_mid.setValue(2)
     pequip.onload_11_head.setValue(3)
-    labour = [l for l in window.result["أجور_العمل"] if l.name == "نصب الفاصل ON-LOAD"]
-    assert len(labour) == 1 and labour[0].qty == 5
+    labour = {l.name: (l.qty, l.rate)
+              for l in window.result["أجور_العمل"] if "نصب الفاصل" in l.name}
+    assert labour == {
+        "نصب الفاصل ON-LOAD — منتصف الشبكة": (2, 90_000),
+        "نصب الفاصل ON-LOAD — على رأس القابلو": (3, 60_000),
+    }
 
 
 def test_the_two_isolator_voltages_use_their_own_cables(window, pequip):

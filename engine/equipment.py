@@ -266,7 +266,7 @@ ISOLATOR_PARTS = {
         "lug": M_TERMINAL_150,
         "arrester": M_ARRESTER_11,
         "fittings": M_AL_FITTINGS_CU,
-        "labour": "نصب الفاصل ON-LOAD",
+        "labour": "نصب الفاصل ON-LOAD",   # يُلحَق به الموقع (ق-٦٧)
     },
     IsolatorVoltage.KV33: {
         "isolator": M_AIR_ISOLATOR_33,
@@ -276,7 +276,7 @@ ISOLATOR_PARTS = {
         # 210 ملم² لا العادية — السلك المتّصل 210/35 (ق-٣٧).
         # والملف الأصلي أغفلها كلياً في 33 ك.ف، وأكّدتَ وجودها (ق-٢٦)
         "fittings": M_AL_FITTINGS_CU_210,
-        "labour": "نصب فاصل هوائي 33 ك.ف",
+        "labour": "نصب فاصل هوائي 33 ك.ف",   # يُلحَق به الموقع (ق-٦٧)
     },
 }
 
@@ -379,29 +379,41 @@ def materials_equipment(eq: Equipment) -> list[MaterialLine]:
     return lines
 
 
+def isolator_labour_name(voltage: IsolatorVoltage, position: IsolatorPosition) -> str:
+    """اسم بند أجر نصب الفاصل — يحمل جهده **وموقعه** (ق-٦٧).
+
+    كان بنداً واحداً لكل جهد، بُنيَ على أن «العمل نفسه والموقع لا يغيّره». وصحّح
+    المستخدم ذلك: **على رأس القابلو 60,000 وفي منتصف الشبكة 90,000**، والجهد
+    لا يغيّر شيئاً.
+
+    والموقع في **الاسم** لا في سعرين لبند واحد — بخلاف أعمدة 14م (ق-١٦). فلو
+    اجتمع الموقعان في مشروع لظهر الاسم نفسه مرّتين بسعرين، ولا يعرف قارئ الورقة
+    أيّهما أيّ. والاسم يحمل الفارق فيُقرأ بلا تفسير.
+    """
+    return f"{ISOLATOR_PARTS[voltage]['labour']} — {position.value}"
+
+
 def labour_equipment(eq: Equipment, rates: dict) -> list[LabourLine]:
     """أجور التجهيزات.
 
-    الفاصلان يجتمعان في بند أجر واحد — كما في الملف الأصلي، لأن العمل نفسه.
+    بند أجر لكل (جهد × موقع): أجر النصب يتبع الموقع (ق-٦٧).
     القفيص بلا أجر مستقل: يُركَّب مع العمود.
     """
     transformers = sum(eq.transformers.values())
     items = [("نصب المحولة", transformers, "عدد المحولات بكل السعات والجهود")]
 
-    # الفاصلان في الجهد الواحد يتقاسمان بند الأجر: العمل نفسه، والموقع لا يغيّره.
-    for voltage, label in (
-        (IsolatorVoltage.KV11, ISOLATOR_PARTS[IsolatorVoltage.KV11]["labour"]),
-        (IsolatorVoltage.KV33, ISOLATOR_PARTS[IsolatorVoltage.KV33]["labour"]),
-    ):
-        mid, head = (
-            (eq.onload_11_mid, eq.onload_11_head)
-            if voltage is IsolatorVoltage.KV11
-            else (eq.isolator_33_mid, eq.isolator_33_head)
-        )
-        if mid + head:
-            items.append(
-                (label, mid + head, f"منتصف الشبكة {mid} + على رأس القابلو {head}")
-            )
+    counts = {
+        (IsolatorVoltage.KV11, IsolatorPosition.MID_NETWORK): eq.onload_11_mid,
+        (IsolatorVoltage.KV11, IsolatorPosition.CABLE_HEAD): eq.onload_11_head,
+        (IsolatorVoltage.KV33, IsolatorPosition.MID_NETWORK): eq.isolator_33_mid,
+        (IsolatorVoltage.KV33, IsolatorPosition.CABLE_HEAD): eq.isolator_33_head,
+    }
+    for (voltage, position), count in counts.items():
+        if count:
+            items.append((
+                isolator_labour_name(voltage, position), count,
+                f"فاصل {voltage.value} {position.value}: {count}",
+            ))
 
     out = []
     for label, count, source in items:

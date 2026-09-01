@@ -381,11 +381,15 @@ def test_each_voltage_uses_its_own_cable():
         assert "قابلو 1×185 ملم²" in kv33 and "قابلو نحاس 1×150 ملم²" not in kv33
 
 
-def test_the_two_positions_share_one_priced_material_and_one_labour_item(catalog):
-    """الموقع لا يغيّر المادة ولا الأجر — لكن المصدر يميّزهما للتتبّع."""
+def test_the_two_positions_share_the_material_but_not_the_labour(catalog):
+    """**يُعدِّل السلوك السابق (ق-٦٧):** المادة واحدة والأجر يتبع الموقع.
+
+    كان بند أجر واحد للجهد كلّه بُنيَ على أن «العمل نفسه والموقع لا يغيّره»،
+    فصحّح المستخدم: رأس القابلو 60,000 ومنتصف الشبكة 90,000.
+    """
     eq = Equipment(onload_11_mid=2, onload_11_head=3)
     lines = materials_equipment(eq)
-    assert qty(lines, "فاصل هوائي 11 ك.ف ON LOAD") == 5
+    assert qty(lines, "فاصل هوائي 11 ك.ف ON LOAD") == 5      # المادة واحدة
 
     sources = [l.source for l in lines if l.name == "فاصل هوائي 11 ك.ف ON LOAD"]
     assert sources == [
@@ -394,15 +398,26 @@ def test_the_two_positions_share_one_priced_material_and_one_labour_item(catalog
     ]
 
     labour = labour_equipment(eq, catalog["أجور_العمل"])
-    assert [(l.name, l.qty) for l in labour] == [("نصب الفاصل ON-LOAD", 5)]
+    assert [(l.name, l.qty, l.rate, l.cost) for l in labour] == [
+        ("نصب الفاصل ON-LOAD — منتصف الشبكة", 2, 90_000, 180_000),
+        ("نصب الفاصل ON-LOAD — على رأس القابلو", 3, 60_000, 180_000),
+    ]
+
+
+def test_the_installation_rate_follows_the_position_not_the_voltage(catalog):
+    """بنصّك: 60,000 على رأس القابلو و90,000 في المنتصف — **في الجهدين معاً**."""
+    rates = catalog["أجور_العمل"]
+    for base in ("نصب الفاصل ON-LOAD", "نصب فاصل هوائي 33 ك.ف"):
+        assert rates[f"{base} — على رأس القابلو"]["السعر"] == 60_000, base
+        assert rates[f"{base} — منتصف الشبكة"]["السعر"] == 90_000, base
 
 
 def test_the_two_voltages_have_separate_labour_items(catalog):
     eq = Equipment(onload_11_mid=1, isolator_33_head=2)
     labour = labour_equipment(eq, catalog["أجور_العمل"])
     assert [(l.name, l.qty, l.cost) for l in labour] == [
-        ("نصب الفاصل ON-LOAD", 1, 90_000),
-        ("نصب فاصل هوائي 33 ك.ف", 2, 180_000),
+        ("نصب الفاصل ON-LOAD — منتصف الشبكة", 1, 90_000),
+        ("نصب فاصل هوائي 33 ك.ف — على رأس القابلو", 2, 120_000),
     ]
 
 
