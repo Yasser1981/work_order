@@ -73,8 +73,14 @@ body     { font-family: %FONT%, serif; font-size: 11pt; direction: rtl; }
 table    { direction: rtl; }
 th       { background-color: #e8e8e8; font-weight: bold; }
 .k       { font-weight: bold; background-color: #f4f4f4; }
-.section { font-weight: bold; font-size: 12pt; }
+/* فراغ يفصل عنوان القسم عمّا فوقه وعمّا تحته — كانت الجداول تلتصق
+   بالترويسة وبعناوينها فتبدو كتلةً واحدة (ق-٦٩) */
+.section { font-weight: bold; font-size: 12pt;
+           margin-top: 12px; margin-bottom: 5px; }
 .code    { font-size: 9pt; }
+/* سطر فاصل رفيع. الهامش العلوي يُلغى في رأس خلية الجدول، فلا يُبعد عنوان
+   القسم عن الترويسة فوقه — والفقرة الفارغة تفعلها في كل الحالات (ق-٦٩) */
+.gap     { font-size: 4pt; }
 .h1      { font-size: 14pt; font-weight: bold; }
 .h2      { font-size: 11pt; }
 .title   { font-size: 15pt; font-weight: bold; }
@@ -221,9 +227,10 @@ def build_html(order: WorkOrder, result: dict) -> str:
   {_row('<td class="k">تاريخ المباشرة بالعمل</td>',
         f'<td colspan="3">{_fmt_date(order.start_date)}</td>')}
 </table>
+<p class="gap">&nbsp;</p>
 
 <table width="100%" border="0" cellspacing="0" cellpadding="0">
-  {_row(f'''<td width="56%" valign="top">
+  {_row(f'''<td width="55%" valign="top">
     <p class="section">أ - جدول المواد المخمنة</p>
     <table {_TABLE}>
       {_row('<th width="7%">ت</th>', '<th>اسم المادة</th>',
@@ -231,6 +238,7 @@ def build_html(order: WorkOrder, result: dict) -> str:
     {rows}
     </table>
   </td>''',
+        GUTTER,
         f'''<td valign="top">
     <p class="section">ب - الاشراف الفني</p>
     <table {_TABLE}>
@@ -276,6 +284,14 @@ def write_pdf(order: WorkOrder, result: dict, path: str) -> str:
     doc.setPageSize(writer.pageLayout().paintRectPixels(writer.resolution()).size().toSizeF())
     doc.print(writer)
     return path
+
+
+GUTTER = '<td width="2%">&nbsp;</td>'
+"""خلية فاصلة بين عمودَي التخطيط (ق-٦٩).
+
+الفراغ في **الوسط وحده**. وحشوةُ الخلايا (`cellpadding`) كانت ستضعه في الجهات
+الأربع فتُزيح حدود الجداول عن أطراف الورقة وتضيق المتاح للأسماء الطويلة.
+"""
 
 
 MATERIALS_HEADER = "اسم المادة"

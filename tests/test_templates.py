@@ -378,6 +378,41 @@ def build_html_of(order, result):
     return printing.get("iso").build_html(order, result)
 
 
+# ═══════════ فراغات الفصل بين الجداول (ق-٦٩) ═══════════
+
+
+def _frame(doc, table):
+    """مستطيل **إطار الجدول** لا نصّه.
+
+    وهذا هو الفرق الذي أسقط أول صياغة لهذين الحارسين: كنتُ أقيس مواضع **كتل
+    النصّ** داخل الخلايا، وبينها حشوة الخلية (`cellpadding`) في كل الأحوال —
+    فحذفُ الفاصل بين العمودين كان يُبقي الفرق موجباً والاختبار راضياً. جرّبتُ
+    الطفرة فمرّت، فصار القياس على `frameBoundingRect`: صفرٌ حين تتلاصق الحدود.
+    """
+    return doc.documentLayout().frameBoundingRect(table)
+
+
+def test_a_gutter_separates_the_two_columns(order, result, qapp):
+    """**حارس هندسي:** فراغ بين حدّي العمودين — لا يلتصق جدولٌ بجدول (ق-٦٩).
+
+    بلا الفاصل يصير الفرق **صفراً بالضبط**، ومعه 19 نقطة.
+    """
+    order.staff[0].count, order.staff[0].days = 1, 30
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    gap = (_frame(doc, _table_headed(doc, "اسم المادة")).left()
+           - _frame(doc, _table_headed(doc, "نوع العاملين")).right())
+    assert gap > 8, gap
+
+
+def test_a_gap_separates_the_header_from_the_tables_below(order, result, qapp):
+    """جدول الترويسة لا يلتصق بما تحته: 47 نقطة بالفاصل و18 بدونه."""
+    order.staff[0].count, order.staff[0].days = 1, 30
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    gap = (_frame(doc, _table_headed(doc, "اسم المادة")).top()
+           - _frame(doc, _table_headed(doc, "التبويب")).bottom())
+    assert gap > 30, gap
+
+
 # ═══════════ تذييل التواقيع (ق-٦٦) ═══════════
 
 
