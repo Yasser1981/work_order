@@ -123,6 +123,21 @@ def _esc(value: str) -> str:
     return html.escape(value or "")
 
 
+SIGNATURES = (
+    "مسؤول القطاع",
+    "مسؤول التنفيذ",
+    "مسؤول الفنية",
+    "مسؤول التخطيط",
+    "مدير الفرع",
+)
+"""أسماء التذييل التي توقّع أمر العمل، بترتيبها من اليمين (ق-٦٦).
+
+بنصّ المستخدم. وكانت ثلاثة عناوين عامّة («مُعِدّ أمر العمل، مدير القسم،
+المصادقة») لم تأتِ من النموذج الرسمي بل كانت تقديراً منّي في أول بناء.
+والترتيب من اليمين إلى اليسار هو ترتيب التوقيع صعوداً إلى مدير الفرع.
+"""
+
+
 def _cost_line(result: dict) -> str:
     """سطر الكلفة التخمينية مفصَّلاً في سطر واحد (ق-٦٥).
 
@@ -234,13 +249,9 @@ def build_html(order: WorkOrder, result: dict) -> str:
 </table>
 
 <br>
-<table width="100%" border="0" cellspacing="0" cellpadding="10">
-  {_row('<td align="center">مُعِدّ أمر العمل</td>',
-        '<td align="center">مدير القسم</td>',
-        '<td align="center">المصادقة</td>')}
-  {_row('<td align="center">.....................</td>',
-        '<td align="center">.....................</td>',
-        '<td align="center">.....................</td>')}
+<table width="100%" border="0" cellspacing="0" cellpadding="6">
+  {_row(*(f'<td align="center">{name}</td>' for name in SIGNATURES))}
+  {_row(*('<td align="center">................</td>' for _ in SIGNATURES))}
 </table>
 </body></html>"""
 

@@ -272,6 +272,45 @@ def test_the_styles_keep_the_document_direction(qapp):
     assert re.search(r"body\s*\{[^}]*direction:\s*rtl", css), css
 
 
+# ═══════════ تذييل التواقيع (ق-٦٦) ═══════════
+
+
+def test_the_signature_titles_are_the_five_you_named(order, result, qapp):
+    """الخمسة بترتيبهم من اليمين، ولكلٍّ سطر توقيع تحته (ق-٦٦)."""
+    from printing.iso_form import SIGNATURES
+
+    assert list(SIGNATURES) == [
+        "مسؤول القطاع", "مسؤول التنفيذ", "مسؤول الفنية",
+        "مسؤول التخطيط", "مدير الفرع",
+    ]
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    table = _tables(doc)[-1]
+    assert table.columns() == len(SIGNATURES)
+    titles = [table.cellAt(0, c).firstCursorPosition().block().text().strip()
+              for c in range(table.columns() - 1, -1, -1)]
+    assert titles == list(SIGNATURES), titles
+    lines = [table.cellAt(1, c).firstCursorPosition().block().text().strip()
+             for c in range(table.columns())]
+    assert all(line.startswith(".") for line in lines), lines
+
+
+def test_the_signature_row_reads_right_to_left(order, result, qapp):
+    """**حارس هندسي:** «مسؤول القطاع» أقصى اليمين و«مدير الفرع» أقصى اليسار."""
+    from printing.iso_form import SIGNATURES
+
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    table = _tables(doc)[-1]
+    layout = doc.documentLayout()
+    placed = {
+        table.cellAt(0, c).firstCursorPosition().block().text().strip():
+            layout.blockBoundingRect(
+                table.cellAt(0, c).firstCursorPosition().block()).left()
+        for c in range(table.columns())
+    }
+    assert placed[SIGNATURES[0]] == max(placed.values()), placed
+    assert placed[SIGNATURES[-1]] == min(placed.values()), placed
+
+
 # ═══════════ سطر الكلفة التخمينية المفصَّل (ق-٦٥) ═══════════
 
 
