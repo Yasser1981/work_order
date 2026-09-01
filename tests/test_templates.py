@@ -638,11 +638,46 @@ def test_both_templates_use_the_resolved_font(order, result, qapp):
         assert f"'{font}'" in html, key
 
 
+def test_the_resolved_font_actually_supports_arabic(qapp):
+    """**الحارس الحقيقي للخطّ (ق-٧٠):** الخطّ المختار يرسم العربية فعلاً.
+
+    والاختبار الذي فوقه **تحصيلُ حاصل**: يقارن المُخرَج بالدالة نفسها، فلو
+    أعادت خطّاً لاتينياً لطابقه المُخرَج ومرّ الاختبار — وهو بالضبط خلل ق-٥٣
+    (عائلة فارغة حُلّت إلى `Bitstream Charter` فتقطّعت العربية على ويندوز).
+    أثبتُّ ذلك بطفرة: صدّرتُ خطّاً لاتينياً في القائمة **فمرّ كلّ شيء**.
+
+    وهذا يسأل `QFontDatabase` سؤالاً مباشراً: أيدعم هذا الخطّ العربية؟
+    """
+    from PyQt6.QtGui import QFontDatabase
+
+    from printing.iso_form import ARABIC_FONTS, available_arabic_font
+
+    installed = set(QFontDatabase.families())
+    arabic = QFontDatabase.WritingSystem.Arabic
+
+    chosen = available_arabic_font()
+    if chosen != "serif":
+        assert arabic in QFontDatabase.writingSystems(chosen), chosen
+
+    # وكل اسم في القائمة — لا المختار على هذا الجهاز وحده: القائمة تُقرأ على
+    # ويندوز أيضاً، وخطأٌ فيها لا يظهر هنا
+    for name in ARABIC_FONTS:
+        if name in installed:
+            assert arabic in QFontDatabase.writingSystems(name), name
+
+
 def test_audit_survives_a_labour_item_with_no_rate(order, underground_result_missing_rate):
     """كان القالب ينهار على أي أجر بلا سعر — الأجر None لا يُنسَّق كرقم (خ-١)."""
     html = printing.get("audit").build_html(order, underground_result_missing_rate)
     assert underground_result_missing_rate["أجور_مفقودة"]
-    assert "بلا أجر" in html
+    # **في خلية الجدول** لا في سطر التحذير: «بلا أجر» جزء من «بنود بلا أجر»،
+    # فالبحث في الصفحة كلها كان يمرّ ولو طُبع الأجر المفقود صفراً (ق-٧٠)
+    doc = _laid_out(html)
+    labour = _table_headed(doc, "الفقرة")
+    cells = [labour.cellAt(r, c).firstCursorPosition().block().text().strip()
+             for r in range(1, labour.rows()) for c in range(labour.columns())]
+    assert "بلا أجر" in cells, cells
+    assert "0" not in cells, cells
 
 
 def test_audit_warns_about_missing_rates_too(order, underground_result_missing_rate):
