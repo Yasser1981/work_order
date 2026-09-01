@@ -183,10 +183,21 @@ def segmented_result():
 
 
 def _tables(doc):
-    """كل جداول المستند بترتيب ظهورها."""
+    """كل جداول المستند **بما فيها المتداخلة**، بترتيب ظهورها.
+
+    منذ ق-٦٨ صار جدول المواد داخل جدول تخطيط، فلا يكفي المستوى الأول من
+    `rootFrame().childFrames()` — وكان الاكتفاء به يجعل الحرّاس تفحص جدولاً
+    واحداً وتظنّ أنها فحصت الكل.
+    """
     from PyQt6.QtGui import QTextTable
 
-    return [f for f in doc.rootFrame().childFrames() if isinstance(f, QTextTable)]
+    found, pending = [], list(doc.rootFrame().childFrames())
+    while pending:
+        frame = pending.pop(0)
+        pending.extend(frame.childFrames())
+        if isinstance(frame, QTextTable):
+            found.append(frame)
+    return found
 
 
 def _header_columns(doc, table):
@@ -242,8 +253,8 @@ def test_the_serial_column_is_the_rightmost_one(order, result, qapp):
 def test_the_material_columns_run_right_to_left_in_order(order, result, qapp):
     """ترتيب أعمدة جدول المواد كاملاً: ت ← اسم المادة ← الوحدة ← الكمية."""
     doc = _laid_out(printing.get("iso").build_html(order, result))
-    table = next(t for t in _tables(doc)
-                 if any(text == "ت" for text, _ in _header_columns(doc, t)))
+    # يُنتقى بعنوانه لا بترتيبه: ثلاثة جداول تحمل «ت» منذ ق-٦٨
+    table = _table_headed(doc, "اسم المادة")
     ordered = [text for text, _ in
                sorted(_header_columns(doc, table), key=lambda c: -c[1])]
     assert ordered == ["ت", "اسم المادة", "الوحدة القياسية", "الكمية"], ordered
@@ -272,6 +283,101 @@ def test_the_styles_keep_the_document_direction(qapp):
     assert re.search(r"body\s*\{[^}]*direction:\s*rtl", css), css
 
 
+# ═══════════ التخطيط: الجداول متجاورة (ق-٦٨) ═══════════
+
+
+def _table_headed(doc, header: str):
+    for table in _tables(doc):
+        texts = [table.cellAt(0, c).firstCursorPosition().block().text().strip()
+                 for c in range(table.columns())]
+        if header in texts:
+            return table
+    raise AssertionError(f"لا جدول فيه العنوان «{header}»")
+
+
+def _left_edge(doc, table):
+    block = table.cellAt(0, 0).firstCursorPosition().block()
+    return doc.documentLayout().blockBoundingRect(block).left()
+
+
+def test_the_side_tables_sit_beside_the_materials_not_below_them(order, result, qapp):
+    """**حارس هندسي:** الإشراف والآليات والملاحظات **يسار** جدول المواد (ق-٦٨).
+
+    يقيس المستند المرسوم: لو انهار التخطيط إلى عمود واحد لصار أحدها تحت الآخر
+    بالإحداثي نفسه تقريباً، فيسقط الاختبار.
+    """
+    order.staff[0].count, order.staff[0].days = 1, 30
+    order.equipment[2].count, order.equipment[2].days = 1, 30
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+
+    materials = _left_edge(doc, _table_headed(doc, "اسم المادة"))
+    for header in ("نوع العاملين", "نوع الآلية"):
+        assert _left_edge(doc, _table_headed(doc, header)) < materials, header
+
+
+def test_the_side_tables_share_one_top_line_with_the_materials(order, result, qapp):
+    """يبدأ العمودان من ارتفاع واحد — لا يهبط أحدهما تحت الآخر."""
+    order.staff[0].count, order.staff[0].days = 1, 30
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    layout = doc.documentLayout()
+
+    def top(header):
+        table = _table_headed(doc, header)
+        return layout.blockBoundingRect(
+            table.cellAt(0, 0).firstCursorPosition().block()).top()
+
+    assert abs(top("اسم المادة") - top("نوع العاملين")) < 40
+
+
+def test_the_materials_header_repeats_on_every_page(order, result, qapp):
+    """صفحة ثانية بأعمدة بلا عناوين = أربعة أرقام لا يُعرف أيّها أيّ (ق-٦٨).
+
+    و`<th>` وحده لا يفعلها: مستورد HTML في Qt لا يضبط `headerRowCount` منه.
+
+    **والفحص على `document()` التي تستعملها الطباعة نفسها** لا على
+    `repeat_header_rows` وحدها: أول صياغة لهذا الاختبار استدعت الدالة بيدها،
+    فكان حذفُ استدعائها من مسار الطباعة يمرّ بلا أن يسقط شيء — جرّبتُ الطفرة
+    فمرّت. فصار الاختبار يفحص **الوصل** لا الدالة.
+    """
+    from printing.iso_form import document
+
+    doc = document(order, result)
+    assert _table_headed(doc, "اسم المادة").format().headerRowCount() == 1
+    for header in ("نوع العاملين", "نوع الآلية"):
+        assert _table_headed(doc, header).format().headerRowCount() == 0, header
+
+
+def test_only_the_materials_table_repeats_its_header(order, result, qapp):
+    """الجداول الجانبية قصيرة لا تعبر الصفحات، فتكرار عناوينها ضجيج."""
+    from printing.iso_form import build_html, repeat_header_rows
+
+    doc = _laid_out(build_html(order, result))
+    assert repeat_header_rows(doc, "اسم المادة") == 1
+
+
+def test_a_long_material_list_flows_without_losing_rows(tmp_path, order, qapp):
+    """التخطيط المتجاور لا يبتلع الصفوف الزائدة: 90 مادة على صفحتين وكلها هناك."""
+    from printing.iso_form import write_pdf
+
+    big = {
+        "المواد": [{"المادة": f"مادة رقم {i}", "الوحدة": "عدد", "الكمية": i,
+                    "سعر الوحدة": 1000, "الكلفة": i * 1000,
+                    "كمية_فقط": False, "سعر_مفقود": False} for i in range(1, 91)],
+        "كلفة_المواد": 800_000, "كلفة_العمل": 200_000, "الكلفة_الكلية": 1_000_000,
+    }
+    doc = _laid_out(build_html_of(order, big))
+    table = _table_headed(doc, "اسم المادة")
+    assert table.rows() == 91                       # رأس + 90 مادة
+
+    path = tmp_path / "big.pdf"
+    write_pdf(order, big, str(path))
+    assert path.exists() and path.stat().st_size > 10_000
+
+
+def build_html_of(order, result):
+    return printing.get("iso").build_html(order, result)
+
+
 # ═══════════ تذييل التواقيع (ق-٦٦) ═══════════
 
 
@@ -284,7 +390,7 @@ def test_the_signature_titles_are_the_five_you_named(order, result, qapp):
         "مسؤول التخطيط", "مدير الفرع",
     ]
     doc = _laid_out(printing.get("iso").build_html(order, result))
-    table = _tables(doc)[-1]
+    table = _table_headed(doc, SIGNATURES[0])
     assert table.columns() == len(SIGNATURES)
     titles = [table.cellAt(0, c).firstCursorPosition().block().text().strip()
               for c in range(table.columns() - 1, -1, -1)]
@@ -299,7 +405,7 @@ def test_the_signature_row_reads_right_to_left(order, result, qapp):
     from printing.iso_form import SIGNATURES
 
     doc = _laid_out(printing.get("iso").build_html(order, result))
-    table = _tables(doc)[-1]
+    table = _table_headed(doc, SIGNATURES[0])
     layout = doc.documentLayout()
     placed = {
         table.cellAt(0, c).firstCursorPosition().block().text().strip():

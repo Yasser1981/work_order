@@ -222,30 +222,35 @@ def build_html(order: WorkOrder, result: dict) -> str:
         f'<td colspan="3">{_fmt_date(order.start_date)}</td>')}
 </table>
 
-<p class="section">أ - جدول المواد المخمنة</p>
-<table {_TABLE}>
-  {_row('<th width="7%">ت</th>', '<th>اسم المادة</th>',
-        '<th width="18%">الوحدة القياسية</th>', '<th width="16%">الكمية</th>')}
-{rows}
-</table>
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+  {_row(f'''<td width="56%" valign="top">
+    <p class="section">أ - جدول المواد المخمنة</p>
+    <table {_TABLE}>
+      {_row('<th width="7%">ت</th>', '<th>اسم المادة</th>',
+            '<th width="20%">الوحدة القياسية</th>', '<th width="18%">الكمية</th>')}
+    {rows}
+    </table>
+  </td>''',
+        f'''<td valign="top">
+    <p class="section">ب - الاشراف الفني</p>
+    <table {_TABLE}>
+      {_row('<th width="8%">ت</th>', '<th>نوع العاملين</th>',
+            '<th width="22%">العدد</th>', '<th width="24%">عدد الأيام</th>')}
+    {staff_rows}
+    </table>
 
-<p class="section">ب - الاشراف الفني</p>
-<table {_TABLE}>
-  {_row('<th width="7%">ت</th>', '<th>نوع العاملين</th>',
-        '<th width="20%">العدد</th>', '<th width="20%">عدد الأيام</th>')}
-{staff_rows}
-</table>
+    <p class="section">ج - الاليات والمعدات</p>
+    <table {_TABLE}>
+      {_row('<th width="8%">ت</th>', '<th>نوع الآلية</th>',
+            '<th width="22%">الرقم</th>', '<th width="24%">عدد الأيام</th>')}
+    {equip_rows}
+    </table>
 
-<p class="section">ج - الاليات والمعدات</p>
-<table {_TABLE}>
-  {_row('<th width="7%">ت</th>', '<th>نوع الآلية</th>',
-        '<th width="20%">الرقم</th>', '<th width="20%">عدد الأيام</th>')}
-{equip_rows}
-</table>
-
-<p class="section">ملاحظات إضافية</p>
-<table {_TABLE}>
-  <tr><td height="60" valign="top" align="right">{_esc(order.notes) or "&nbsp;"}</td></tr>
+    <p class="section">ملاحظات إضافية</p>
+    <table {_TABLE}>
+      <tr><td height="70" valign="top" align="right">{_esc(order.notes) or "&nbsp;"}</td></tr>
+    </table>
+  </td>''')}
 </table>
 
 <br>
@@ -267,13 +272,62 @@ def write_pdf(order: WorkOrder, result: dict, path: str) -> str:
     writer.setPageMargins(QMarginsF(14, 14, 14, 16), QPageLayout.Unit.Millimeter)
     writer.setResolution(150)
 
+    doc = document(order, result)
+    doc.setPageSize(writer.pageLayout().paintRectPixels(writer.resolution()).size().toSizeF())
+    doc.print(writer)
+    return path
+
+
+MATERIALS_HEADER = "اسم المادة"
+"""عنوان يُعرَّف به جدول المواد بين الجداول — أثبت من ترتيبه بينها."""
+
+
+def document(order: WorkOrder, result: dict):
+    """المستند جاهزاً للطباعة: أنماطه واتجاهه وتكرار عناوينه (ق-٦٨).
+
+    **مفصولة عن `write_pdf` عمداً:** الطباعة تحتاج `QPdfWriter` وملفاً على
+    القرص، فلا يمكن لاختبار أن يتحقّق مما فيها. وبنائها هنا يجعل كل خطوة
+    تحضيرية مقيسةً — ولولا ذلك لمرّ حذفُ `repeat_header_rows` بلا أن يسقط
+    اختبار، وقد جرّبتُه فمرّ فعلاً.
+    """
+    from PyQt6.QtGui import QTextDocument
+
     doc = QTextDocument()
     doc.setDefaultStyleSheet(styles())
     doc.setDefaultTextOption(_rtl_option())
     doc.setHtml(build_html(order, result))
-    doc.setPageSize(writer.pageLayout().paintRectPixels(writer.resolution()).size().toSizeF())
-    doc.print(writer)
-    return path
+    repeat_header_rows(doc, MATERIALS_HEADER)
+    return doc
+
+
+def repeat_header_rows(doc, marker: str) -> int:
+    """يجعل صفّ العناوين يتكرّر في كل صفحة، ويعيد عدد الجداول التي عُولجت (ق-٦٨).
+
+    **قارئ الملف يفصله عن صفّ العناوين ورقةٌ كاملة.** جدول مواد فيه 90 مادة
+    يمتدّ على صفحتين، فتخرج الثانية بأعمدة بلا عناوين: أربعة أرقام لا يُعرف
+    أيّها الكمية وأيّها الوحدة.
+
+    **ولا يفعل ذلك `<th>` وحده:** مستورد HTML في Qt لا يضبط `headerRowCount`
+    منه، فيُضبط هنا بعد التحميل. والجدول يُعرَّف بنصّ في صفّه الأول لا بترتيبه
+    بين الجداول — فترتيبه يتغيّر بأي إضافة، ونصّ عنوانه لا يتغيّر إلا بقرار.
+    """
+    from PyQt6.QtGui import QTextTable
+
+    treated = 0
+    pending = list(doc.rootFrame().childFrames())
+    while pending:                       # **بحث متداخل**: جدول المواد صار داخل
+        frame = pending.pop()            # جدول التخطيط (ق-٦٨)، فلا يكفي المستوى
+        pending.extend(frame.childFrames())   # الأول من `rootFrame`
+        if not isinstance(frame, QTextTable):
+            continue
+        heads = [frame.cellAt(0, c).firstCursorPosition().block().text().strip()
+                 for c in range(frame.columns())]
+        if marker in heads:
+            fmt = frame.format()
+            fmt.setHeaderRowCount(1)
+            frame.setFormat(fmt)
+            treated += 1
+    return treated
 
 
 def _rtl_option():
