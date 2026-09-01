@@ -193,6 +193,10 @@ def test_large_project_flows_onto_more_than_one_page(tmp_path, order, qapp):
              "الكلفة": i * 1000, "كمية_فقط": False, "سعر_مفقود": False}
             for i in range(1, 61)
         ],
+        # القالب يعرض شقّي الكلفة والمجموع في سطر واحد (ق-٦٥)، فالثلاثة
+        # مطلوبة — وهي التي يعيدها `compute_project` دائماً.
+        "كلفة_المواد": 800_000,
+        "كلفة_العمل": 200_000,
         "الكلفة_الكلية": 1_000_000,
     }
     assert len(_material_rows(build_html(order, big))) == 60

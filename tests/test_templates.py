@@ -272,6 +272,69 @@ def test_the_styles_keep_the_document_direction(qapp):
     assert re.search(r"body\s*\{[^}]*direction:\s*rtl", css), css
 
 
+# ═══════════ سطر الكلفة التخمينية المفصَّل (ق-٦٥) ═══════════
+
+
+def _cost_block(doc):
+    """فقرة سطر الكلفة **بعد رسمها فعلاً**.
+
+    ⚠️ **يجب أن يبقى `doc` حيّاً عند المُنادي.** `QTextBlock` مؤشّر إلى داخل
+    المستند لا نسخة منه، فلو جُمع المستند بعد الاستدعاء (`_cost_block(_laid_out(…))`
+    بلا متغيّر يمسكه) صار المؤشّر معلّقاً و**سقطت العملية بـ Segfault** عند أول
+    قراءة — لا باستثناء يُلتقط.
+
+    `blockBoundingRect` ليست للقياس هنا بل **تُجبر Qt على رسم الفقرة**: قبلها
+    `layout().lineCount()` صفر، و`lineAt(0)` عندئذٍ **تُسقط العملية** لا ترفع
+    استثناءً — كنظير `QFontDatabase` بلا `QApplication` في ق-٥٣.
+    """
+    block = doc.begin()
+    while block.isValid():
+        if "الكلفة التخمينية الكلية" in block.text():
+            doc.documentLayout().blockBoundingRect(block)
+            assert block.layout().lineCount() == 1, "السطر لم يُرسم"
+            return block
+        block = block.next()
+    raise AssertionError("لا سطر كلفة في المستند")
+
+
+def test_the_cost_line_shows_both_parts_and_their_sum(order, result, qapp):
+    """بنصّك: المواد + العمل = الكلي د.ع — في سطر واحد."""
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    text = _cost_block(doc).text()
+    for part in ("كلفة المواد التخمينية", "كلفة العمل التخمينية",
+                 "الكلفة التخمينية الكلية", "د.ع", "+", "="):
+        assert part in text, (part, text)
+    for value in ("كلفة_المواد", "كلفة_العمل", "الكلفة_الكلية"):
+        assert f"{result[value]:,.0f}" in text, (value, text)
+
+
+def test_the_printed_sum_actually_adds_up(order, result, qapp):
+    """حارس حسابي: المعروض في الورقة يجمع فعلاً — لا ثلاثة أرقام لا رابط بينها."""
+    import re
+
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    text = _cost_block(doc).text()
+    numbers = [int(n.replace(",", "")) for n in re.findall(r"[\d,]{4,}", text)]
+    assert len(numbers) == 3, numbers
+    assert numbers[0] + numbers[1] == numbers[2], numbers
+
+
+def test_the_cost_line_reads_right_to_left(order, result, qapp):
+    """**حارس هندسي:** المواد يمين العمل يمين المجموع — بترتيب القراءة (ق-٦٥).
+
+    و`+` و`=` محارف محايدة في خوارزمية BiDi تأخذ اتجاهها من جوارها، فقد تنتقل
+    إلى الطرف الخطأ. جرّبتُ تغليفها بعلامات اتجاه فلم يتغيّر الرسم شيئاً، فحُذفت
+    وبقي هذا القياس حارساً: يقيس موضع كل مبلغ في **السطر المرسوم** لا في النصّ.
+    """
+    doc = _laid_out(printing.get("iso").build_html(order, result))
+    block = _cost_block(doc)
+    text = block.text()
+    line = block.layout().lineAt(0)
+    positions = [line.cursorToX(text.index(f"{result[key]:,.0f}"))[0]
+                 for key in ("كلفة_المواد", "كلفة_العمل", "الكلفة_الكلية")]
+    assert positions[0] > positions[1] > positions[2], positions
+
+
 # ═══════════ الإشراف الفني والآليات: بلا أسطر صفرية (ق-٦٤) ═══════════
 
 
