@@ -89,12 +89,15 @@ def test_the_excel_export_writes_a_workbook_with_live_formulas(window, p11, tmp_
     path = window.write_order_xlsx(str(tmp_path / "أمر.xlsx"))
 
     book = openpyxl.load_workbook(path)
-    assert book.sheetnames == ["أمر العمل", "جدول المواد", "أجور العمل"]
+    # ورقتان منذ ق-٧١: «أمر العمل» تحاكي المطبوع وتضمّ جدول المواد، و«أجور
+    # العمل» تفصيلٌ يشير إليه سطر الكلفة بمعادلة
+    assert book.sheetnames == ["أمر العمل", "أجور العمل"]
 
-    sheet = book["جدول المواد"]
+    sheet = book["أمر العمل"]
     assert sheet.sheet_view.rightToLeft is True
-    assert sheet.cell(2, 6).value.startswith("=D2*E2")        # الكلفة معادلة
-    assert str(sheet.cell(sheet.max_row, 6).value).startswith("=SUM(")
+    first = next(r for r in range(1, sheet.max_row + 1)
+                 if sheet.cell(r, 1).value == "ت") + 1
+    assert sheet.cell(first, 6).value == f"=D{first}*E{first}"   # الكلفة معادلة
 
     labour = book["أجور العمل"]
     assert labour.cell(2, 7).value.startswith("=D2*F2")
