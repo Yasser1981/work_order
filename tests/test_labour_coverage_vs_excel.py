@@ -21,7 +21,7 @@
 from engine import load_catalog
 from engine.equipment import TRANSFORMER_KITS
 from engine.labels import RATE_KEYS
-from engine.lowvoltage import WIRING_BARE_LABEL
+from engine.lowvoltage import WIRING_BARE_LABEL, WIRING_BUNDLED_LABEL
 from engine.overhead import WIRING_11_LABEL, WIRING_33_LABEL
 from engine.underground import CIVIL_GROUP
 from engine.project import compute_project
@@ -78,6 +78,7 @@ RENAMED = {
     "تسليك شبكة الضغط العالي": WIRING_11_LABEL,
     "تسليك شبكة 33 ك.ف 210": WIRING_33_LABEL,
     "تسليك شبكة الضغط الواطئ (أسلاك)": WIRING_BARE_LABEL,
+    "تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)": WIRING_BUNDLED_LABEL,
     "كلفة عبور الشوارع الفرعية": "عبور الشوارع الفرعية",
     "كلفة عبور الشوارع الرئيسية – حفر مخفي": "عبور الشوارع الرئيسية – حفر مخفي",
 }
@@ -317,28 +318,36 @@ def test_every_wiring_item_is_named_after_the_conductor_it_lays():
     من اسم المادة لا مكتوباً حرفياً، فلو تغيّر مقطع سلك يوماً تبعه اسم أجره ولم
     يبقَ بندٌ يذكر مقطعاً لا يُسلَّك.
 
-    والقابلو المعلق المبروم خارج القاعدة عمداً: ليس سلكاً عارياً، وطلب المستخدم
-    كان على أسماء أسلاك الألمنيوم.
+    والقاعدة تشمل **الأربعة** بعد ق-٧٩، ومنها القابلو المعلق المبروم.
     """
-    from engine.lowvoltage import M_WIRE_LV, WIRING_BARE_LABEL
+    from engine.lowvoltage import (
+        M_BUNDLED_CABLE,
+        M_WIRE_LV,
+        WIRING_BARE_LABEL,
+        WIRING_BUNDLED_LABEL,
+    )
     from engine.overhead import M_WIRE_11, M_WIRE_33, WIRING_11_LABEL, WIRING_33_LABEL
 
-    for label, material in ((WIRING_11_LABEL, M_WIRE_11),
-                            (WIRING_33_LABEL, M_WIRE_33),
-                            (WIRING_BARE_LABEL, M_WIRE_LV)):
+    labels = {
+        WIRING_11_LABEL: M_WIRE_11,
+        WIRING_33_LABEL: M_WIRE_33,
+        WIRING_BARE_LABEL: M_WIRE_LV,
+        WIRING_BUNDLED_LABEL: M_BUNDLED_CABLE,
+    }
+    for label, material in labels.items():
         assert label == f"تسليك {material[0]}"
-        assert "شبكة" not in label
+        assert "شبكة" not in label       # لا بندَ يصف الشبكة بدل ما يُمَدّ فيها
 
-    produced = all_labour_the_engine_can_produce()
-    assert {WIRING_11_LABEL, WIRING_33_LABEL, WIRING_BARE_LABEL} <= produced
+    assert set(labels) <= all_labour_the_engine_can_produce()
 
 
 def test_the_renamed_wiring_items_keep_their_catalog_keys():
     """الاسم المعروض تغيّر و**مفتاح السعر لم يتغيّر** — وإلا انكسرت نسخ الأسعار."""
     rates = load_catalog()["أجور_العمل"]
-    from engine.lowvoltage import WIRING_BARE_LABEL
+    from engine.lowvoltage import WIRING_BARE_LABEL, WIRING_BUNDLED_LABEL
     from engine.overhead import WIRING_11_LABEL, WIRING_33_LABEL
 
-    for label in (WIRING_11_LABEL, WIRING_33_LABEL, WIRING_BARE_LABEL):
+    for label in (WIRING_11_LABEL, WIRING_33_LABEL, WIRING_BARE_LABEL,
+                  WIRING_BUNDLED_LABEL):
         assert label not in rates, f"«{label}» صار مفتاحاً في الكتالوج — لا يجوز"
         assert RATE_KEYS[label] in rates

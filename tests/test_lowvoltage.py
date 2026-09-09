@@ -12,6 +12,7 @@ from engine.lowvoltage import (
     labour_lv,
     materials_lv,
     WIRING_BARE_LABEL,
+    WIRING_BUNDLED_LABEL,
 )
 from engine.overhead import aggregate, compute
 from engine.types import (
@@ -252,7 +253,8 @@ def test_wiring_labour_follows_the_kind(catalog):
 
     assert wires[0].name == WIRING_BARE_LABEL == "تسليك سلك ألمنيوم 95 ملم²"
     assert wires[0].cost == 4400 * 500
-    assert cable[0].name == "تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)"
+    assert cable[0].name == WIRING_BUNDLED_LABEL == \
+        "تسليك قابلو ألمنيوم معلق 3×120+95+16 ملم²"
     assert cable[0].cost == 1100 * 1500
 
 

@@ -201,13 +201,20 @@ WIRING_BUNDLED_RATE = "تسليك شبكة الضغط الواطئ (قابلو �
 """**مفاتيح** أجرَي التسليك في الكتالوج — لا تُغيَّر (ق-٧٨)."""
 
 WIRING_BARE_LABEL = f"تسليك {M_WIRE_LV[0]}"
-"""«تسليك سلك ألمنيوم 95 ملم²» — بطلب المستخدم، على نسق بندَي 11 و33 ك.ف (ق-٧٨).
+"""«تسليك سلك ألمنيوم 95 ملم²» — بطلب المستخدم، على نسق بندَي 11 و33 ك.ف (ق-٧٨)."""
 
-**ولم يُمسّ اسم القابلو المعلق المبروم:** ليس سلكاً عارياً، وطلب المستخدم كان
-على أسماء أسلاك الألمنيوم. فبقي «تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)».
+WIRING_BUNDLED_LABEL = f"تسليك {M_BUNDLED_CABLE[0]}"
+"""«تسليك قابلو ألمنيوم معلق 3×120+95+16 ملم²» — بطلب المستخدم (ق-٧٩).
+
+فصارت بنود التسليك **الأربعة** كلها على قاعدة واحدة: «تسليك» + اسم الموصِّل
+الذي تمدّه، مشتقّاً من اسم المادة نفسها. ولا يبقى بندٌ يصف الشبكة بدل ما
+يُمَدّ فيها.
 """
 
-RATE_KEYS = {WIRING_BARE_LABEL: WIRING_BARE_RATE}
+RATE_KEYS = {
+    WIRING_BARE_LABEL: WIRING_BARE_RATE,
+    WIRING_BUNDLED_LABEL: WIRING_BUNDLED_RATE,
+}
 """الاسم المعروض ← مفتاح سعره، حين يختلفان — يُجمع مع نظيره في `engine.labels`."""
 
 
@@ -217,7 +224,7 @@ def labour_lv(net: NetworkLV, rates: dict) -> list[LabourLine]:
     qty = conductor_quantity(net)
     if qty:
         bare = net.kind is LVNetworkType.BARE_WIRES
-        label = WIRING_BARE_LABEL if bare else WIRING_BUNDLED_RATE
+        label = WIRING_BARE_LABEL if bare else WIRING_BUNDLED_LABEL
         entry = rates[WIRING_BARE_RATE if bare else WIRING_BUNDLED_RATE]
         out.append(LabourLine(label, entry["الوحدة"], qty, entry["السعر"]))
 
