@@ -327,3 +327,20 @@ def test_the_work_survives_a_failed_open(window, tmp_path, monkeypatch):
 
     window.open_order()
     assert window.project() == before
+
+
+def test_the_prices_window_warns_that_an_edit_is_local_to_this_computer(qapp):
+    """من يعمل على حاسبتين يجب أن يعرف — **قبل الاعتماد** — أنه يفرّق بينهما.
+
+    فالنسخة الجديدة تُكتب على هذه الحاسبة وحدها، والبرنامج يبدأ بأحدث نسخة
+    متاحة، فتصير أوامر العمل الجديدة هنا بأسعار غير أسعار الحاسبة الأخرى بلا
+    ما ينبّه — إلا اسم النسخة في عنوان النافذة.
+    """
+    from PyQt6.QtWidgets import QLabel
+
+    from ui.prices_window import PricesWindow
+
+    window = PricesWindow(load_catalog(), "2026-08")
+    hints = " ".join(label.text() for label in window.findChildren(QLabel))
+    assert "أكثر من حاسبة" in hints
+    assert "هذه الحاسبة وحدها" in hints
