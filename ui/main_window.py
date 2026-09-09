@@ -311,14 +311,18 @@ class MainWindow(QMainWindow):
             return
         try:
             self.load_from(path)
-        except (LoadError, OSError, ValueError) as exc:
-            QMessageBox.critical(self, "تعذّر الفتح", f"{exc}")
+        # الأخصّ أولاً: FileNotFoundError فرعٌ من OSError، فلو تأخّر لصار فرعاً
+        # ميتاً لا يُبلَغ منه شيء — وهذه أكثر حالة يقع فيها من يعمل على أكثر من
+        # حاسبة، إذ تُنشأ نسخة الأسعار على حاسبة ويُفتح أمر العمل على غيرها.
         except FileNotFoundError as exc:
             QMessageBox.critical(
                 self, "نسخة الأسعار مفقودة",
                 f"{exc}\n\nأمر العمل يشير إلى نسخة أسعار غير موجودة في مجلد "
-                "البيانات. انسخها إلى المجلد ثم أعد الفتح."
+                "البيانات. انسخ ملف catalog_<النسخة>.json من الحاسبة التي "
+                "أُنشئ عليها إلى مجلد data هنا، ثم أعد الفتح."
             )
+        except (LoadError, OSError, ValueError) as exc:
+            QMessageBox.critical(self, "تعذّر الفتح", f"{exc}")
 
     def _retarget_catalog(self) -> None:
         """يوجّه اللوحات إلى نسخة الأسعار الحالية — الاقتراحات تقرأ منها."""

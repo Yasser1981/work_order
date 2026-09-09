@@ -268,3 +268,62 @@ def test_an_old_order_keeps_its_prices_when_a_newer_version_exists(
     reopened.load_from(path)
     assert reopened.version == "2000-01"
     assert reopened.result["الكلفة_الكلية"] == original_cost
+
+
+# ═════════════ ٤. العمل على أكثر من حاسبة: نسخة أسعار غائبة ═════════════
+#
+# أمر عمل يحمل **اسم** نسخة الأسعار لا الأسعار نفسها. فمن ينشئ نسخة أسعار على
+# حاسبة ويفتح أمر العمل على غيرها يجد النسخة غائبة. والرسالة يجب أن تقول **ما
+# العمل**، لا أن تكتفي بـ«تعذّر الفتح».
+
+
+def test_a_missing_price_version_says_what_to_do_about_it(window, tmp_path, monkeypatch):
+    """الحارس: الرسالة الخاصّة تصل فعلاً.
+
+    وكانت **لا تصل**: `FileNotFoundError` فرعٌ من `OSError`، وفرع `OSError` كان
+    مكتوباً قبله، فيبتلعه ويبقى فرع الأسعار المفقودة ميتاً لا يُبلَّغ منه شيء.
+    """
+    import json
+
+    from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+    path = window.save_to(tmp_path / "أمر")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["نسخة_الأسعار"] = "1999-01"          # نسخة لا وجود لها على هذه الحاسبة
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    shown = []
+    monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (str(path), "")))
+    monkeypatch.setattr(QMessageBox, "critical",
+                        staticmethod(lambda parent, title, text: shown.append((title, text))))
+
+    window.open_order()
+
+    assert shown, "لم تظهر أي رسالة"
+    title, text = shown[0]
+    assert title == "نسخة الأسعار مفقودة", title
+    assert "1999-01" in text                  # تُسمّى النسخة الغائبة بعينها
+    assert "catalog_" in text and "data" in text     # ويُذكر ما يُنسخ وإلى أين
+
+
+def test_the_work_survives_a_failed_open(window, tmp_path, monkeypatch):
+    """فتحٌ فاشل لا يمسح ما على الشاشة — وإلا ضاع عمل ساعة برسالة خطأ."""
+    import json
+
+    from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+    window.segments.load(full_project())
+    before = window.project()
+
+    path = window.save_to(tmp_path / "أمر")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["نسخة_الأسعار"] = "1999-01"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (str(path), "")))
+    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a: None))
+
+    window.open_order()
+    assert window.project() == before
