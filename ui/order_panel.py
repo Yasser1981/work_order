@@ -93,6 +93,31 @@ class OrderPanel(QWidget):
         form.addRow(self.equipment)
         layout.addWidget(box)
 
+        box, form = section("خيارات قالب تنفيذ أمانة")
+        self.show_material_prices = QCheckBox(
+            "إظهار سعر المفرد والسعر الكلي في جدول المواد"
+        )
+        self.show_material_prices.setToolTip(
+            "الافتراضي: الخانتان فارغتان — ومجموع كلفة المواد يُطبع مع ذلك.\n"
+            "وفي ورقة الإكسل تبقى الأرقام موجودة وحيّة ويُخفى عرضها، فلا يخرج "
+            "مجموع لا تُنتجه سطوره."
+        )
+        self.preparation_committee = QSpinBox()
+        self.audit_committee = QSpinBox()
+        for spin, default in ((self.preparation_committee, 6),
+                              (self.audit_committee, 5)):
+            spin.setRange(0, 12)
+            spin.setValue(default)
+            spin.setSuffix(" موقّعاً")
+        form.addRow(self.show_material_prices)
+        form.addRow("خطوط توقيع لجنة اعداد الكشف:", self.preparation_committee)
+        form.addRow("خطوط توقيع لجنة تدقيق الكشف:", self.audit_committee)
+        form.addRow(QLabel(
+            "اللجان تُطبع <b>بلا أسماء</b> — خطوط توقيع فارغة بالعدد أعلاه، "
+            "ثلاثة في السطر."
+        ))
+        layout.addWidget(box)
+
         box, form = section("ملاحظات إضافية")
         self.notes = QTextEdit()
         self.notes.setMaximumHeight(80)
@@ -139,6 +164,9 @@ class OrderPanel(QWidget):
             w.dateChanged.connect(self.changed)
         for w in (self.work_scope, self.notes):
             w.textChanged.connect(self.changed)
+        self.show_material_prices.toggled.connect(self.changed)
+        for spin in (self.preparation_committee, self.audit_committee):
+            spin.valueChanged.connect(self.changed)
         for table in (self.staff, self.equipment):
             for row in range(table.rowCount()):
                 for col in (1, 2):
@@ -197,6 +225,9 @@ class OrderPanel(QWidget):
                                               wo.start_date.day))
             self.work_scope.setPlainText(wo.work_scope)
             self.notes.setPlainText(wo.notes)
+            self.show_material_prices.setChecked(wo.show_material_prices)
+            self.preparation_committee.setValue(wo.preparation_committee)
+            self.audit_committee.setValue(wo.audit_committee)
             self._fill_table(self.staff, wo.staff)
             self._fill_table(self.equipment, wo.equipment)
         finally:
@@ -229,6 +260,9 @@ class OrderPanel(QWidget):
                 else self.start_date.date().toPyDate()
             ),
             notes=self.notes.toPlainText().strip(),
+            show_material_prices=self.show_material_prices.isChecked(),
+            preparation_committee=self.preparation_committee.value(),
+            audit_committee=self.audit_committee.value(),
         )
         for row, entry in enumerate(wo.staff):
             entry.count = self._cell(self.staff, row, 1)

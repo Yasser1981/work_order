@@ -344,3 +344,58 @@ def test_the_prices_window_warns_that_an_edit_is_local_to_this_computer(qapp):
     hints = " ".join(label.text() for label in window.findChildren(QLabel))
     assert "أكثر من حاسبة" in hints
     assert "هذه الحاسبة وحدها" in hints
+
+
+# ═════════════ ٥. تأشير المواد وخيارات قالب الأمانة تُحفظ وتُستعاد (ق-٧٦) ═════════════
+
+
+def test_the_unavailable_ticks_survive_a_save_and_reopen(window, tmp_path):
+    """التأشير جزء من أمر العمل — يُحفظ معه ولا يُعاد إدخاله عند كل طباعة."""
+    window.segments.load(Project("م", [Segment("أ", Network11kV(poles_lattice=9))]))
+    name = window._rows[0]["المادة"]
+    window.unavailable = {name}
+    path = window.save_to(tmp_path / "أمر")
+
+    other = MainWindow(load_catalog())
+    other.load_from(path)
+    assert other.unavailable == {name}
+    assert other.order().unavailable_materials == [name]
+
+
+def test_the_amana_options_survive_a_save_and_reopen(window, tmp_path):
+    window.order_panel.show_material_prices.setChecked(True)
+    window.order_panel.preparation_committee.setValue(4)
+    window.order_panel.audit_committee.setValue(3)
+    path = window.save_to(tmp_path / "أمر")
+
+    other = MainWindow(load_catalog())
+    other.load_from(path)
+    reopened = other.order()
+    assert reopened.show_material_prices is True
+    assert (reopened.preparation_committee, reopened.audit_committee) == (4, 3)
+
+
+def test_a_new_order_clears_the_ticks(window, tmp_path, monkeypatch):
+    """وإلا انتقل تأشير أمر عمل قديم إلى أمر عمل جديد بلا أن ينتبه أحد."""
+    monkeypatch.setattr(MainWindow, "_confirm", staticmethod(lambda *a: True))
+    window.segments.load(Project("م", [Segment("أ", Network11kV(poles_lattice=9))]))
+    window.unavailable = {window._rows[0]["المادة"]}
+
+    window.new_order()
+    assert window.unavailable == set()
+
+
+def test_the_excel_export_follows_the_selected_template(window, tmp_path):
+    """زرّ الإكسل يُخرج ورقة القالب المعروض — لا ورقةً واحدة لكل القوالب (ق-٧٦)."""
+    import openpyxl
+
+    from printing.amana_sheet import SHEET
+    from printing.spreadsheet import ORDER_SHEET
+
+    window.segments.load(Project("م", [Segment("أ", Network11kV(poles_lattice=9))]))
+
+    iso = window.write_order_xlsx(str(tmp_path / "إيزو"), template_key="iso")
+    amana = window.write_order_xlsx(str(tmp_path / "أمانة"), template_key="amana")
+
+    assert ORDER_SHEET in openpyxl.load_workbook(iso).sheetnames
+    assert openpyxl.load_workbook(amana).sheetnames == [SHEET]

@@ -25,12 +25,15 @@ from PyQt6.QtWidgets import (
 )
 
 from engine import latest_catalog_version, load_catalog
+from engine.availability import selectable, unavailable_summary
+from engine.underground import CIVIL_GROUP
 from engine.prices import differences
 from engine.project import compute_project
 from engine.store import EXTENSION, LoadError, load as load_order, save as save_order
 from engine.workorder import WorkOrder
 from engine.types import Project, SegmentKind
 import printing
+from printing.amana_form import printed_labour_name
 
 from .order_panel import OrderPanel
 from .prices_window import open_prices
@@ -65,6 +68,11 @@ class MainWindow(QMainWindow):
         self.path: Path | None = None
         """مسار ملف `.wo` المفتوح. None يعني أمر عمل جديد لم يُحفظ بعد."""
         self._rows: list[dict] = []
+        self.unavailable: set[str] = set()
+        """المواد المؤشَّرة «غير متوفرة في المخازن» (ق-٧٦).
+
+        تُحفَظ في الكائن لا في الجدول: الجدول يُعاد بناؤه عند كل حساب، ولو كان
+        هو المرجع لضاع التأشير مع أول تعديل على المقاطع."""
         self.result: dict = {"المواد": [], "أسعار_مفقودة": []}
         self.setWindowTitle("نظام أوامر العمل الكهربائية")
         self.resize(1500, 950)
@@ -98,6 +106,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter)
         self.setCentralWidget(container)
 
+    MATERIAL_COLUMNS = ["المادة", "الوحدة", "الكمية", "سعر الوحدة", "الكلفة",
+                        "غير متوفرة"]
+    UNAVAILABLE_COLUMN = 5
+    """عمود تأشير المواد غير المتوفرة في المخازن (ق-٧٦)."""
+
     def _results_pane(self) -> QWidget:
         pane = QWidget()
         layout = QVBoxLayout(pane)
@@ -108,12 +121,11 @@ class MainWindow(QMainWindow):
         title.setObjectName("pane")
         layout.addWidget(title)
 
-        self.materials = QTableWidget(0, 5)
-        self.materials.setHorizontalHeaderLabels(
-            ["المادة", "الوحدة", "الكمية", "سعر الوحدة", "الكلفة"]
-        )
+        self.materials = QTableWidget(0, len(self.MATERIAL_COLUMNS))
+        self.materials.setHorizontalHeaderLabels(self.MATERIAL_COLUMNS)
         self._tune_table(self.materials)
         self.materials.itemSelectionChanged.connect(self._show_breakdown)
+        self.materials.itemChanged.connect(self._on_availability_change)
         layout.addWidget(self.materials, stretch=3)
 
         # تفصيل الرقم — من أين جاءت كمية المادة المحدّدة
@@ -223,6 +235,17 @@ class MainWindow(QMainWindow):
             f"نظام أوامر العمل الكهربائية  —  {name}  —  أسعار {self.version}"
         )
 
+    def order(self) -> WorkOrder:
+        """أمر العمل كما هو في الواجهة — بحقول اللوحة **وتأشير المواد** معاً.
+
+        التأشير يعيش في جدول النتائج لا في لوحة أمر العمل، فيُضمّ هنا في مكان
+        واحد. ولو ضُمّ في كل موضع على حدة (حفظ، طباعة، إكسل) لسقط من أحدها
+        يوماً بلا أن يظهر أثرُ سقوطه إلا في ورقة مطبوعة.
+        """
+        wo = self.order_panel.order()
+        wo.unavailable_materials = sorted(self.unavailable)
+        return wo
+
     def project(self) -> Project:
         """المشروع كما هو في الواجهة الآن."""
         return Project(
@@ -240,6 +263,7 @@ class MainWindow(QMainWindow):
             return
         self.segments.load(Project())
         self.order_panel.load(WorkOrder())
+        self.unavailable = set()
         self.path = None
         self.version = latest_catalog_version()
         self.catalog = load_catalog(self.version)
@@ -258,7 +282,7 @@ class MainWindow(QMainWindow):
 
     def save_to(self, path: str | Path) -> Path:
         """يكتب ملف `.wo` بلا أي حوار — قابلة للاختبار والاستدعاء الآلي."""
-        written = save_order(path, self.order_panel.order(), self.project(), self.version)
+        written = save_order(path, self.order(), self.project(), self.version)
         self.path = written
         self._refresh_title()
         return written
@@ -301,6 +325,7 @@ class MainWindow(QMainWindow):
             self._retarget_catalog()
         self.segments.load(project)
         self.order_panel.load(order)
+        self.unavailable = set(order.unavailable_materials)
         self.path = Path(path)
         self.recalculate()
         self._refresh_title()
@@ -404,7 +429,7 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".pdf"):
             path += ".pdf"
         template = printing.get(template_key) if template_key else self.template
-        template.write_pdf(self.order_panel.order(), self.result, path)
+        template.write_pdf(self.order(), self.result, path)
         return path
 
     def export_pdf(self) -> str | None:
@@ -441,13 +466,12 @@ class MainWindow(QMainWindow):
             f"حُفظ بقالب «{self.template.name}» في:\n{Path(path).name}{note}")
         return path
 
-    def write_order_xlsx(self, path: str) -> str:
-        """يكتب أمر العمل ملفَّ إكسل ويعيد المسار — بلا أي حوار (ق-٥٧)."""
-        from printing.spreadsheet import write_xlsx
-
+    def write_order_xlsx(self, path: str, template_key: str | None = None) -> str:
+        """يكتب أمر العمل ملفَّ إكسل **بالقالب المختار** ويعيد المسار (ق-٥٧، ق-٧٦)."""
         if not self.result["المواد"]:
             raise ValueError("جدول المواد فارغ — أدخل معطيات الشبكة أولاً.")
-        return write_xlsx(self.order_panel.order(), self.result, path)
+        template = printing.get(template_key) if template_key else self.template
+        return template.write_xlsx(self.order(), self.result, path)
 
     def export_excel(self) -> str | None:
         """معالج زرّ التصدير إلى إكسل — نظير `export_pdf` تماماً."""
@@ -457,7 +481,10 @@ class MainWindow(QMainWindow):
             return None
 
         number = self.order_panel.number.text().strip()
-        suggested = f"أمر عمل {number}.xlsx" if number else "أمر عمل.xlsx"
+        stem = f"أمر عمل {number}" if number else "أمر عمل"
+        if self.template.key != "iso":
+            stem += f" - {self.template.name}"
+        suggested = f"{stem}.xlsx"
         path, _ = QFileDialog.getSaveFileName(
             self, "تصدير إلى إكسل", suggested, "مصنَّف إكسل (*.xlsx)"
         )
@@ -493,6 +520,83 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _fmt(value: float) -> str:
         return f"{value:,.3f}".rstrip("0").rstrip(".") if value % 1 else f"{value:,.0f}"
+
+    @staticmethod
+    def _rate_reason(line) -> str:
+        """لماذا اختلف سعر هذا البند عن نظيره — يُشرَح **في البرنامج وحده** (ق-٧٦).
+
+        بطلب المستخدم: تعدّد المسار (عدد المغذيات في الخندق الواحد) يغيّر سعر
+        الحفر وإعادة المسار، ولا يُذكر في المطبوع. فلولا هذا الشرح لبقي سببُ
+        اختلاف سعرين لبندين متشابهَي الاسم **بلا تفسير في أي مكان**.
+        """
+        if line.group != CIVIL_GROUP or "مسار" not in line.name:
+            return ""
+        return (
+            f"سعر هذا البند يتبع نوع الرصيف و«تعدّد المسار» — أي عدد المغذيات في "
+            "الخندق الواحد: مفرد = مغذٍّ، ثنائي = مغذيان، ثلاثي = ثلاثة.\n"
+            "ولذلك يختلف سعره عن سعر البند نفسه في مسار آخر.\n\n"
+            f"وفي المطبوع يظهر باسم «{printed_labour_name(line.name)}» بلا ذكر "
+            "التعدّد — بطلبك."
+        )
+
+    def _mark(self, row: dict) -> QTableWidgetItem:
+        """خلية تأشير «غير متوفرة» لمادة واحدة (ق-٧٦).
+
+        المادة التي كلفتها ضمن الأجور **لا تُؤشَّر**: بنصّ المستخدم «هذه المواد
+        تعتبر متوفرة دائماً». ولو أُتيح تأشيرها لأضافت صفراً إلى كلفة غير
+        المتوفرة بلا أن ينبّه شيء.
+        """
+        item = QTableWidgetItem()
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if not selectable(row):
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setText("متوفرة دائماً")
+            item.setForeground(QColor("#6b7280"))
+            item.setToolTip("كلفتها ضمن أجور العمل، فهي متوفرة دائماً ولا تُؤشَّر.")
+            return item
+        item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        item.setCheckState(
+            Qt.CheckState.Checked if row["المادة"] in self.unavailable
+            else Qt.CheckState.Unchecked
+        )
+        if row["سعر_مفقود"]:
+            item.setToolTip("هذه المادة بلا سعر — تأشيرها لا يزيد كلفة غير "
+                            "المتوفرة شيئاً.")
+        return item
+
+    def _on_availability_change(self, item: QTableWidgetItem) -> None:
+        """يزامن مجموعة المؤشَّر عليها مع الجدول، ثم يُحدّث التحذيرات."""
+        if item.column() != self.UNAVAILABLE_COLUMN:
+            return
+        row = self._rows[item.row()]
+        if item.checkState() == Qt.CheckState.Checked:
+            self.unavailable.add(row["المادة"])
+        else:
+            self.unavailable.discard(row["المادة"])
+        self._refresh_warning()
+
+    def _refresh_warning(self) -> None:
+        """سطر التحذير: أسعار وأجور مفقودة، ومؤشَّرٌ بلا سعر (ق-٧٦)."""
+        result = self.result
+        notes = []
+        if result.get("أسعار_مفقودة"):
+            notes.append("مواد بلا سعر: " + "، ".join(result["أسعار_مفقودة"]))
+        if result.get("أجور_مفقودة"):
+            notes.append("بنود بلا أجر: " + "، ".join(result["أجور_مفقودة"]))
+        text = ("⚠️ غير محتسب في المجموع — " + " &nbsp;|&nbsp; ".join(notes)
+                if notes else "")
+
+        summary = unavailable_summary(
+            [r for r in result.get("المواد", []) if r["الكمية"] > 0], self.unavailable
+        )
+        if summary["بلا_سعر"]:
+            unpriced = "، ".join(summary["بلا_سعر"])
+            text += ("<br>" if text else "") + (
+                "⚠️ مواد أُشّرت «غير متوفرة» وهي <b>بلا سعر</b>، فلا تزيد كلفة "
+                f"غير المتوفرة شيئاً: {unpriced}"
+            )
+        self.warning.setText(text)
+        self.warning.setVisible(bool(text))
 
     def _show_breakdown(self) -> None:
         """يعرض تفصيل كمية المادة المحدّدة — مصادرها ومعادلة كل مصدر."""
@@ -531,6 +635,12 @@ class MainWindow(QMainWindow):
 
         rows = result["المواد"]
         self._rows = rows
+        # بناء الجدول يُطلق `itemChanged` لكل خلية. والمعالج **لا يفسد شيئاً**
+        # لو وصلته: كل خلية تأشير تُبنى على حالتها الصحيحة أصلاً، فيُعيد كتابة
+        # ما هو مكتوب. جُرِّب حذف الكتم بالطفرة فلم يسقط اختبار (ق-٧٦).
+        # ويبقى الكتم لأنه يُجنّب مئات النداءات في كل إعادة حساب — كلٌّ منها
+        # يُعيد حساب سطر التحذير على الجدول كلّه.
+        self.materials.blockSignals(True)
         self.materials.setRowCount(len(rows))
         for r, row in enumerate(rows):
             qty = row["الكمية"]
@@ -553,6 +663,8 @@ class MainWindow(QMainWindow):
                 elif row["كمية_فقط"]:
                     item.setForeground(QColor("#6b7280"))
                 self.materials.setItem(r, c, item)
+            self.materials.setItem(r, self.UNAVAILABLE_COLUMN, self._mark(row))
+        self.materials.blockSignals(False)
 
         labour = result["أجور_العمل"]
         self.labour.setRowCount(len(labour))
@@ -562,22 +674,16 @@ class MainWindow(QMainWindow):
             rate_text = "— بلا أجر —" if line.rate_missing else f"{line.rate:,.0f}"
             cost_text = "—" if line.rate_missing else f"{line.cost:,.0f}"
             cells = [line.name, f"{qty_text} {line.unit}", rate_text, cost_text]
+            tip = self._rate_reason(line)
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if tip:
+                    item.setToolTip(tip)
                 self.labour.setItem(r, c, item)
 
-        notes = []
-        if result["أسعار_مفقودة"]:
-            notes.append("مواد بلا سعر: " + "، ".join(result["أسعار_مفقودة"]))
-        if result.get("أجور_مفقودة"):
-            notes.append("بنود بلا أجر: " + "، ".join(result["أجور_مفقودة"]))
-        if notes:
-            self.warning.setText("⚠️ غير محتسب في المجموع — " + " &nbsp;|&nbsp; ".join(notes))
-            self.warning.setVisible(True)
-        else:
-            self.warning.setVisible(False)
+        self._refresh_warning()
 
         self._show_breakdown()
         self.total_mat.setText(f"كلفة المواد:  {result['كلفة_المواد']:,.0f}")

@@ -6,6 +6,10 @@
 
 لإضافة قالب جديد: أنشئ وحدة فيها `build_html(order, result) -> str` و
 `write_pdf(order, result, path) -> str`، ثم سجّلها هنا. لا يُمسّ المحرك.
+
+**وتصدير الإكسل يتبع القالب المختار** (ق-٧٦): لكل قالب `write_xlsx` خاصّته،
+فزرّ «تصدير إلى إكسل» يُخرج ورقة القالب الذي على الشاشة لا ورقةً واحدة لكل
+القوالب.
 """
 
 from __future__ import annotations
@@ -25,6 +29,8 @@ class Template:
     description: str
     build_html: Callable[[WorkOrder, dict], str]
     write_pdf: Callable[[WorkOrder, dict, str], str]
+    write_xlsx: Callable[[WorkOrder, dict, str], str]
+    """كاتب ورقة الإكسل لهذا القالب — يُستدعى من زرّ التصدير."""
 
 
 _REGISTRY: dict[str, Template] = {}
@@ -49,7 +55,7 @@ def available() -> list[Template]:
 
 
 def _register_builtin() -> None:
-    from . import audit_sheet, iso_form
+    from . import amana_form, amana_sheet, audit_sheet, iso_form, spreadsheet
 
     register(
         Template(
@@ -59,6 +65,7 @@ def _register_builtin() -> None:
                         "الكلية، بلا تفصيل فقرات العمل.",
             build_html=iso_form.build_html,
             write_pdf=iso_form.write_pdf,
+            write_xlsx=spreadsheet.write_xlsx,
         )
     )
     register(
@@ -69,6 +76,20 @@ def _register_builtin() -> None:
                         "وكلفها — للمراجعة الداخلية لا للتسليم الرسمي.",
             build_html=audit_sheet.build_html,
             write_pdf=audit_sheet.write_pdf,
+            # ورقة التدقيق للقراءة لا للتحرير، فتصديرها إكسلاً يُخرج ورقة
+            # أمر العمل نفسها — وهو ما كان يفعله الزرّ قبل ق-٧٦ بلا استثناء.
+            write_xlsx=spreadsheet.write_xlsx,
+        )
+    )
+    register(
+        Template(
+            key="amana",
+            name="قالب تنفيذ أمانة",
+            description="المواد وحدها، ثم الأعمال المدنية، ثم الأعمال الكهربائية "
+                        "— كلٌّ بمجموعه، مع المواد غير المتوفرة ولجنتَي الكشف.",
+            build_html=amana_form.build_html,
+            write_pdf=amana_form.write_pdf,
+            write_xlsx=amana_sheet.write_xlsx,
         )
     )
 

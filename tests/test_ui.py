@@ -1106,3 +1106,97 @@ def test_the_totals_stay_on_one_line_while_there_is_room(window, splitter, qapp)
     for label in (window.total_mat, window.total_lab, window.total_all):
         assert label.heightForWidth(label.width()) <= label.fontMetrics().height() + 4, \
             (label.text(), label.width())
+
+
+# ═══════════ تأشير المواد غير المتوفرة في المخازن (ق-٧٦) ═══════════
+
+
+@pytest.fixture
+def stocked(window, p11):
+    """مشروع فيه مواد مُسعَّرة وأخرى كلفتها ضمن الأجور."""
+    p11.route.setValue(750)
+    p11.lattice.setValue(9)
+    p11.round_.setValue(15)
+    return window
+
+
+def _row_of_material(window, predicate) -> int:
+    for index, row in enumerate(window._rows):
+        if predicate(row):
+            return index
+    raise AssertionError("لا مادة تطابق الشرط في هذا المشروع")
+
+
+def test_ticking_a_material_puts_it_in_the_work_order(stocked):
+    """التأشير يصل إلى أمر العمل — فيُحفظ ويُطبع ولا يبقى حبيس الجدول."""
+    from PyQt6.QtCore import Qt
+
+    row = _row_of_material(stocked, lambda r: not r["كمية_فقط"])
+    name = stocked._rows[row]["المادة"]
+    stocked.materials.item(row, stocked.UNAVAILABLE_COLUMN).setCheckState(
+        Qt.CheckState.Checked)
+
+    assert stocked.order().unavailable_materials == [name]
+
+
+def test_a_material_priced_inside_the_labour_has_no_tick_box(stocked):
+    """«هذه المواد تعتبر متوفرة دائماً» — فلا يوجد ما يُؤشَّر أصلاً."""
+    from PyQt6.QtCore import Qt
+
+    row = _row_of_material(stocked, lambda r: r["كمية_فقط"])
+    cell = stocked.materials.item(row, stocked.UNAVAILABLE_COLUMN)
+    assert cell.flags() == Qt.ItemFlag.NoItemFlags
+    assert "متوفرة دائماً" in cell.text()
+
+
+def test_the_ticks_survive_a_recalculation(stocked):
+    """تعديل مقطع يُعيد بناء الجدول — والتأشير يجب أن يبقى."""
+    from PyQt6.QtCore import Qt
+
+    row = _row_of_material(stocked, lambda r: not r["كمية_فقط"])
+    name = stocked._rows[row]["المادة"]
+    stocked.materials.item(row, stocked.UNAVAILABLE_COLUMN).setCheckState(
+        Qt.CheckState.Checked)
+
+    stocked.segments.editor(0).round_.setValue(20)     # يُعيد الحساب والبناء
+    assert stocked.unavailable == {name}
+    again = _row_of_material(stocked, lambda r: r["المادة"] == name)
+    assert stocked.materials.item(again, stocked.UNAVAILABLE_COLUMN).checkState() \
+        == Qt.CheckState.Checked
+
+
+def test_ticking_an_unpriced_material_raises_a_visible_warning(window):
+    """المؤشَّرة بلا سعر تُحسب صفراً — فتُذكر صراحةً بدل أن تمرّ بصمت."""
+    window.result = {
+        "المواد": [{"المادة": "مادة بلا سعر", "الوحدة": "عدد", "الكمية": 3,
+                    "الكلفة": 0, "كمية_فقط": False, "سعر_مفقود": True}],
+        "أسعار_مفقودة": ["مادة بلا سعر"], "أجور_مفقودة": [],
+    }
+    window.unavailable = {"مادة بلا سعر"}
+    window._refresh_warning()
+
+    assert window.warning.isVisible() or window.warning.text()
+    assert "بلا سعر" in window.warning.text()
+    assert "مادة بلا سعر" in window.warning.text()
+
+
+def test_a_civil_row_explains_why_its_rate_differs(window):
+    """بطلبك: سبب اختلاف السعر يُوضَّح **في البرنامج** لا في المطبوع."""
+    from engine.types import SegmentKind
+
+    editor = window.add_segment(SegmentKind.UG11)
+    editor.route.setValue(300)
+    editor.feeders.setValue(2)
+
+    tips = [window.labour.item(r, 0).toolTip() for r in range(window.labour.rowCount())]
+    civil = [tip for tip in tips if tip]
+    assert civil, "لا تلميح على أي بند مدني"
+    assert "تعدّد المسار" in civil[0]
+    assert "الخندق الواحد" in civil[0]
+
+
+def test_an_electrical_row_carries_no_such_tip(stocked):
+    """التلميح للبنود التي يتغيّر سعرها بتعدّد المسار وحدها."""
+    tips = [stocked.labour.item(r, 0).toolTip()
+            for r in range(stocked.labour.rowCount())]
+    assert not any(tips)
