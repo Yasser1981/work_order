@@ -4,6 +4,12 @@
 # المستخدم. تعمل عند كل دفع، وعند الطلب اليدوي من تبويب Actions.
 #
 # المخرَج: أرشيف باسم «أوامر_العمل-ويندوز» يُنزَّل من صفحة التشغيل.
+#
+# إصدارات الإجراءات (ق-٧٣): مرفوعة إلى التي تعمل على Node 24، فقد كانت الإصدارات
+# السابقة تعمل على Node 20 وكيت هب يُنذر بانتهاء دعمه — والإنذار يصير خطأً يوقف
+# البناء متى أُسقط الدعم. ومدخلات الخطوات لم تتغيّر: `name` و`path`
+# و`retention-days` موجودة كما هي في upload-artifact، و`archive` الجديد
+# افتراضه `true` أي أن المُنزَّل يبقى أرشيفاً فيه الملف التنفيذي كما كان.
 
 name: بناء ويندوز
 
@@ -17,10 +23,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: سحب المستودع
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: تهيئة بايثون
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -49,7 +55,7 @@ jobs:
           Write-Host "تمّ: $exe  ($mb ميغابايت)"
 
       - name: رفع الملف للتنزيل
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: أوامر_العمل-ويندوز
           path: dist/أوامر_العمل.exe
