@@ -87,6 +87,9 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(tabs)
         splitter.addWidget(self._results_pane())
+        # الحدّ الأدنى الصريح يمنع محتوى اللوحة من تجميد المقبض (ق-٧٢): لوحات
+        # الإدخال داخل مناطق تمرير، فتضييقها يُظهر شريط تمرير ولا يخفي حقلاً.
+        tabs.setMinimumWidth(320)
         splitter.setSizes([680, 820])
 
         container = QWidget()
@@ -139,16 +142,26 @@ class MainWindow(QMainWindow):
         self.warning.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.warning)
 
+        # سطران لا سطر واحد: المجاميع أعلى والأزرار أسفل. وسطرٌ واحد يجمعهما
+        # يجعل الحدّ الأدنى لعرض اللوحة = عرضهما معاً، فيتجمّد مقبض المُقسِّم (ق-٧٢).
         totals = QHBoxLayout()
         self.total_mat = QLabel()
         self.total_lab = QLabel()
         self.total_all = QLabel()
         self.total_all.setObjectName("total")
-        for w in (self.total_mat, self.total_lab, self.total_all):
-            totals.addWidget(w)
-        totals.addStretch(1)
+        # حصص العرض: للكلفة الكلية ضعف حصّة غيرها، فسطرها أطول (فيه «دينار»
+        # وخطّه عريض)، ولولا ذلك للفَّ وحده وفي الصفّ متّسع.
+        for w, share in ((self.total_mat, 1), (self.total_lab, 1), (self.total_all, 2)):
+            # لفّ الكلام لا قصّه: عند التضييق ينزل الرقم سطراً ولا يُبتَر منه
+            # خانة، فلا يُقرأ مبلغٌ ناقص على أنه المبلغ. واللفّ يجعل الحدّ الأدنى
+            # للعرض مستقلاً عن طول الرقم، فلا تضيق سعة سحب المقبض كلّما كبرت
+            # كلفة المشروع (ق-٧٢). والحصص أعلاه تمنع اللفّ ما دام في الصفّ متّسع.
+            w.setWordWrap(True)
+            totals.addWidget(w, stretch=share)
 
-        totals.addWidget(QLabel("القالب:"))
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        actions.addWidget(QLabel("القالب:"))
         self.template_box = QComboBox()
         for template in printing.available():
             self.template_box.addItem(template.name, template.key)
@@ -158,7 +171,7 @@ class MainWindow(QMainWindow):
                 Qt.ItemDataRole.ToolTipRole,
             )
         self.template_box.setMinimumWidth(170)
-        totals.addWidget(self.template_box)
+        actions.addWidget(self.template_box)
 
         self.excel_button = QPushButton("تصدير إلى إكسل")
         self.excel_button.setToolTip(
@@ -169,9 +182,10 @@ class MainWindow(QMainWindow):
         self.print_button.setObjectName("print")
         self.print_button.clicked.connect(self.export_pdf)
         self.excel_button.clicked.connect(self.export_excel)
-        totals.addWidget(self.excel_button)
-        totals.addWidget(self.print_button)
+        actions.addWidget(self.excel_button)
+        actions.addWidget(self.print_button)
         layout.addLayout(totals)
+        layout.addLayout(actions)
         return pane
 
     # ──────────────────────── الملفّ ونسخة الأسعار ────────────────────────

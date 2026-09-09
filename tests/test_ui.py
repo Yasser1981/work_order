@@ -1008,3 +1008,101 @@ def test_ug33_end_box_hint_shows_the_resulting_count(window, pug33):
     """اللافتة تُظهر العدد الفعلي كي لا يظنّ المستخدم أن مُدخَله هو الكمية."""
     pug33.end_internal.setValue(2)
     assert "6 صندوق" in pug33.end_box_hint.text()
+
+
+# ═══════════════════ مقبض المُقسِّم: النافذتان تُعاد قسمتهما (ق-٧٢) ═══════════════════
+#
+# العلّة التي حدثت فعلاً: مجموع الحدود الدنيا للوحتين ساوى عرض المُقسِّم تماماً،
+# فلم تبقَ سعة للحركة. المؤشّر يتحوّل عند المقبض (فالمقبض موجود) لكن السحب لا
+# يُحرّك شيئاً — عطلٌ صامت لا رسالة فيه. وكان الحدّ الأدنى ينمو مع **طول الأرقام**
+# المعروضة، فالبرنامج يعمل عند مشروع صغير ويتجمّد عند مشروع كبير.
+
+
+@pytest.fixture
+def splitter(window):
+    from PyQt6.QtWidgets import QSplitter
+
+    window.show()
+    return window.findChild(QSplitter)
+
+
+def _huge_project():
+    from engine.types import Network11kV, Project, Segment
+
+    return Project("م", [Segment("أ", Network11kV(
+        route_length_m=50_000, poles_lattice=99, poles_round=320))])
+
+
+def test_the_divider_has_room_to_move(window, splitter, qapp):
+    """الحارس الأساسي: سعة سحب حقيقية، لا مقبض مشلول."""
+    window.segments.load(_huge_project())
+    qapp.processEvents()
+    minimums = sum(splitter.widget(i).minimumSizeHint().width()
+                   for i in range(splitter.count()))
+    assert minimums + splitter.handleWidth() < splitter.width()
+
+
+def test_the_divider_actually_moves_in_both_directions(window, splitter, qapp):
+    """`setSizes` تحرّك القسمة فعلاً — وهي عين ما يفعله السحب باليد."""
+    window.segments.load(_huge_project())
+    qapp.processEvents()
+    total = splitter.width()
+
+    splitter.setSizes([400, total - 400])
+    qapp.processEvents()
+    assert splitter.sizes()[0] <= 400, splitter.sizes()
+
+    splitter.setSizes([total - 560, 560])
+    qapp.processEvents()
+    assert splitter.sizes()[1] <= 560, splitter.sizes()
+
+
+def test_the_panes_minimum_does_not_grow_with_the_numbers_on_screen(qapp):
+    """**علّة الأصل:** كلفةٌ من عشرة أرقام كانت توسّع اللوحة حتى يشلّ المقبض.
+
+    فيُقاس الحدّ الأدنى مرّتين: بلا مشروع، ثم بمشروع كلفته بالمليارات. تساويهما
+    يعني أن سعة السحب لا تتآكل مع كِبَر المشروع.
+    """
+    from PyQt6.QtWidgets import QSplitter
+
+    def pane_minimum(project=None):
+        win = MainWindow(load_catalog())
+        if project is not None:
+            win.segments.load(project)
+        win.show()
+        qapp.processEvents()
+        return win.findChild(QSplitter).widget(1).minimumSizeHint().width()
+
+    empty = pane_minimum()
+    assert pane_minimum(_huge_project()) == empty
+
+
+def test_nothing_in_the_results_pane_is_cut_off_at_its_narrowest(window, splitter, qapp):
+    """عند أضيق وضع للوحة: الأزرار كاملة، والمبالغ كاملة لا مبتورة.
+
+    وبتر المبلغ أخطر من ضيق اللوحة: «114,102,750» مقصوصةً تُقرأ «102,750»،
+    رقمٌ معقول المظهر وخاطئ. فاللفّ مسموح والقصّ ممنوع.
+    """
+    window.segments.load(_huge_project())
+    qapp.processEvents()
+    pane = splitter.widget(1)
+    splitter.setSizes([splitter.width() - pane.minimumSizeHint().width(),
+                       pane.minimumSizeHint().width()])
+    qapp.processEvents()
+
+    for control in (window.print_button, window.excel_button, window.template_box):
+        assert control.width() >= control.sizeHint().width(), control.text() \
+            if hasattr(control, "text") else control
+
+    for label in (window.total_mat, window.total_lab, window.total_all):
+        assert label.wordWrap(), label.text()
+        assert label.heightForWidth(label.width()) <= label.height(), label.text()
+
+
+def test_the_totals_stay_on_one_line_while_there_is_room(window, splitter, qapp):
+    """اللفّ للضرورة لا للعادة: عند العرض الافتراضي تُقرأ المبالغ في سطر واحد."""
+    window.segments.load(_huge_project())
+    qapp.processEvents()
+    for label in (window.total_mat, window.total_lab, window.total_all):
+        assert label.heightForWidth(label.width()) <= label.fontMetrics().height() + 4, \
+            (label.text(), label.width())
