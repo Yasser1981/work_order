@@ -82,6 +82,19 @@ def printed_labour_name(name: str) -> str:
     return _MULTIPLICITY.sub("", name).strip()
 
 
+def printed_unit(unit: str) -> str:
+    """الوحدة كما تُطبع: «متر × مغذٍّ» ← «متر» (ق-٧٧).
+
+    بنصّ المستخدم: «وحدة عبور الشوارع هي متر. صح أنت تحسبها حسب عدد المغذيات،
+    لكن التي تظهر في القالب القابل للطباعة تكون متر فقط».
+
+    **والكمية تبقى كما هي** — أي الطول × عدد المغذيات. فعبور 12 م لمغذيَّين
+    يُطبع «24 متر»، وهو المقصود: الذرعة المدفوع عليها. وسبب الضرب يظهر في
+    البرنامج بتلميح على السطر، كما فُعل بتعدّد المسار.
+    """
+    return unit.split("×")[0].strip() if "×" in unit else unit
+
+
 def split_labour(result: dict) -> tuple[list, list]:
     """(الأعمال المدنية، الأعمال الكهربائية) — بالوسم لا بالاسم.
 
@@ -143,7 +156,7 @@ def _labour_rows(lines: list) -> str:
         out.append(_row(
             f'<td align="center">{index}</td>',
             f'<td align="right">{_esc(printed_labour_name(line.name))}</td>',
-            f'<td align="center">{_esc(line.unit)}</td>',
+            f'<td align="center">{_esc(printed_unit(line.unit))}</td>',
             f'<td align="center">{_fmt_qty(line.qty)}</td>',
             f'<td align="center">{rate}</td>',
             f'<td align="center">{cost}</td>',

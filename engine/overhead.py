@@ -514,32 +514,54 @@ def materials_33kv(net: Network33kV) -> list[MaterialLine]:
 # ──────────────────────────────── أجور العمل ────────────────────────────────
 
 
+WIRING_11_RATE = "تسليك شبكة الضغط العالي"
+"""**مفتاح** أجر التسليك في الكتالوج — لا يُغيَّر (ق-٧٧).
+
+تغييره كان سيكسر كل نسخة أسعار محفوظة: المحرك يطلب الأجر بهذا الاسم، ونسخة
+آب لا تعرف غيره. فالتغيير في **الاسم المعروض** وحده أدناه.
+"""
+
+WIRING_11_LABEL = f"تسليك {M_WIRE_11[0]}"
+"""الاسم المعروض: «تسليك سلك ألمنيوم 120/20 ملم²» (ق-٧٧).
+
+بنصّ المستخدم: «عبارة «تسليك شبكة الضغط العالي» أفضل أن تتغير إلى «تسليك سلك
+ألمنيوم» وتذكر حجم السلك بعدها».
+
+**ويُشتقّ من اسم المادة نفسها** لا يُكتب حرفياً: فلو تغيّر مقطع السلك يوماً تبع
+اسمُ الأجر اسمَ المادة تلقائياً، ولا يبقى بندٌ يذكر مقطعاً لا يُسلَّك.
+"""
+
+
+RATE_KEYS = {WIRING_11_LABEL: WIRING_11_RATE}
+"""الاسم المعروض ← مفتاح سعره في الكتالوج، حين يختلفان (ق-٧٧).
+
+**مصدر واحد** يقرأ منه المحرك وحارس التغطية معاً. ولولاه لكان على كل موضع أن
+يعرف الاستثناء بنفسه، فيسقط أحدها يوماً ويصير بندٌ بلا سعر بلا أن ينبّه شيء.
+"""
+
+
 def labour_11kv(net: Network11kV, rates: dict) -> list[LabourLine]:
-    """أجور 11 ك.ف — لا تتغيّر بنوع الدائرة عدا التسليك (لأن كمية السلك تتضاعف)."""
+    """أجور 11 ك.ف — لا تتغيّر بنوع الدائرة عدا التسليك (لأن كمية السلك تتضاعف).
+
+    **والوحدات تُقرأ من الكتالوج** لا تُكتب هنا (ق-٧٧): كانت مكتوبة في الشيفرة
+    («متر سلك» و«عمود») بينما الكتالوج يحمل «متر» و«عدد» — فكان المعروض يخالف
+    المرجع بلا سبب، وكلّ من قرأ الورقة قرأ وحدةً لم يعتمدها أحد.
+    """
     out: list[LabourLine] = []
     qty = wire_quantity(
         net.route_length_m, net.circuit, net.length_includes_waste, net.waste_pct
     )
     if qty:
-        out.append(
-            LabourLine("تسليك شبكة الضغط العالي", "متر سلك", qty,
-                       rates["تسليك شبكة الضغط العالي"]["السعر"])
-        )
-    if net.poles_lattice:
-        out.append(
-            LabourLine("نصب عمود مشبك 11م", "عمود", net.poles_lattice,
-                       rates["نصب عمود مشبك 11م"]["السعر"])
-        )
-    if net.poles_round:
-        out.append(
-            LabourLine("نصب عمود مدور 11م", "عمود", net.poles_round,
-                       rates["نصب عمود مدور 11م"]["السعر"])
-        )
-    if net.stay_rod_sets:
-        out.append(
-            LabourLine("نصب طاقم ستي", "طاقم", net.stay_rod_sets,
-                       rates["نصب طاقم ستي"]["السعر"])
-        )
+        entry = rates[WIRING_11_RATE]
+        out.append(LabourLine(WIRING_11_LABEL, entry["الوحدة"], qty, entry["السعر"]))
+    for label, count in (
+        ("نصب عمود مشبك 11م", net.poles_lattice),
+        ("نصب عمود مدور 11م", net.poles_round),
+        ("نصب طاقم ستي", net.stay_rod_sets),
+    ):
+        if count:
+            entry = rates[label]
+            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"]))
     return out
 
 
@@ -553,7 +575,8 @@ def labour_33kv(net: Network33kV, rates: dict) -> list[LabourLine]:
     )
     if qty:
         out.append(
-            LabourLine("تسليك شبكة 33 ك.ف 210", "متر سلك", qty,
+            LabourLine("تسليك شبكة 33 ك.ف 210",
+                       rates["تسليك شبكة 33 ك.ف 210"]["الوحدة"], qty,
                        rates["تسليك شبكة 33 ك.ف 210"]["السعر"])
         )
     for label, count in (
@@ -566,8 +589,8 @@ def labour_33kv(net: Network33kV, rates: dict) -> list[LabourLine]:
             out.append(LabourLine(label, unit, count, rates[label][suffix]))
     if net.stay_rod_sets:
         out.append(
-            LabourLine("نصب طاقم ستي", "طاقم", net.stay_rod_sets,
-                       rates["نصب طاقم ستي"]["السعر"])
+            LabourLine("نصب طاقم ستي", rates["نصب طاقم ستي"]["الوحدة"],
+                       net.stay_rod_sets, rates["نصب طاقم ستي"]["السعر"])
         )
     return out
 

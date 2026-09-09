@@ -37,6 +37,7 @@ from .amana_form import (
     header_line,
     printed_labour_name,
     printed_materials,
+    printed_unit,
     split_labour,
     title_line,
 )
@@ -133,7 +134,7 @@ def _labour(sheet, title: str, lines: list, row: int, total_label: str) -> dict:
     for index, line in enumerate(lines, start=1):
         sheet.cell(at, 1, index).alignment = _CENTRE
         sheet.cell(at, 2, printed_labour_name(line.name)).alignment = _RIGHT
-        sheet.cell(at, 3, line.unit).alignment = _CENTRE
+        sheet.cell(at, 3, printed_unit(line.unit)).alignment = _CENTRE
         sheet.cell(at, 4, line.qty).alignment = _CENTRE
         sheet.cell(at, 5, line.rate or 0).number_format = _MONEY
         sheet.cell(at, 6, f"=D{at}*E{at}").number_format = _MONEY

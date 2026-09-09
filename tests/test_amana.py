@@ -438,3 +438,78 @@ def test_the_file_is_written_and_reopens(order, result, tmp_path):
     path = write_xlsx(order, result, str(tmp_path / "أمانة"))
     assert path.endswith(".xlsx")
     assert openpyxl.load_workbook(path).sheetnames == [SHEET]
+
+
+# ═══════════════ ١٠. الوحدات والأسماء بعد ملاحظات التجربة (ق-٧٧) ═══════════════
+
+
+@pytest.mark.parametrize("engine_unit,printed", [
+    ("متر × مغذٍّ", "متر"),
+    ("متر", "متر"),
+    ("عدد", "عدد"),
+])
+def test_the_printed_unit_drops_the_multiplier(engine_unit, printed):
+    from printing.amana_form import printed_unit
+
+    assert printed_unit(engine_unit) == printed
+
+
+def test_the_crossing_prints_metres_while_the_engine_keeps_the_multiplier(order, result):
+    """بطلبك: الوحدة في المطبوع «متر»، والكمية تبقى الطول × عدد المغذيات."""
+    from printing.amana_form import printed_unit
+
+    civil, _ = split_labour(result)
+    crossing = next(line for line in civil if "عبور الشوارع الفرعية" in line.name)
+    assert "×" in crossing.unit                      # المحرك يبقى صريحاً
+    assert printed_unit(crossing.unit) == "متر"
+
+    body = text_of(build_html(order, result))
+    assert "متر × مغذٍّ" not in body
+    assert f"{crossing.qty:,.0f}" in body            # والكمية كما هي
+
+
+def test_the_excel_prints_the_same_unit_as_the_pdf(order, result):
+    sheet = build_workbook(order, result)[SHEET]
+    units = [sheet.cell(row, 3).value for row in range(1, sheet.max_row + 1)]
+    assert "متر × مغذٍّ" not in units
+    assert "متر" in units
+
+
+def test_the_wiring_item_is_named_after_the_aluminium_wire_it_lays(result):
+    """«تسليك سلك ألمنيوم 120/20 ملم²» — والاسم مشتقّ من اسم المادة نفسها."""
+    from engine.overhead import M_WIRE_11, WIRING_11_LABEL
+
+    _, electrical = split_labour(result)
+    line = next(line for line in electrical if line.name.startswith("تسليك"))
+    assert line.name == WIRING_11_LABEL == f"تسليك {M_WIRE_11[0]}"
+    assert "شبكة الضغط العالي" not in line.name
+    assert line.unit == "متر"
+
+
+def test_the_pole_items_are_counted_in_units(result):
+    """وحدة نصب الأعمدة «عدد» — كما في نسخة الأسعار."""
+    _, electrical = split_labour(result)
+    poles = [line for line in electrical if line.name.startswith("نصب عمود")]
+    assert poles
+    assert all(line.unit == "عدد" for line in poles)
+
+
+def test_the_cable_boxes_belong_to_the_electrical_table(order):
+    """بنصّك: «أجور عمل صندوق مستقيم وصندوق نهاية تقع ضمن الأعمال الكهربائية».
+
+    وهي كذلك أصلاً — وهذا الحارس يمنع انزلاقها إلى الجدول المدني لاحقاً.
+    """
+    from engine.types import Underground33kV
+
+    boxed = compute_project(Project("م", [
+        Segment("أ", Underground11kV(route_length_m=300, feeder_count=2,
+                                     straight_boxes=3, end_boxes_internal=1,
+                                     end_boxes_external=2,
+                                     sidewalk_type=SidewalkType.EARTH)),
+        Segment("ب", Underground33kV(route_length_m=200, straight_boxes=1,
+                                     end_boxes_internal=1)),
+    ]), load_catalog())
+
+    civil, electrical = split_labour(boxed)
+    assert not any("صندوق" in line.name for line in civil)
+    assert len([line for line in electrical if "صندوق" in line.name]) == 4

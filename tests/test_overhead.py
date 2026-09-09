@@ -27,6 +27,7 @@ from engine.overhead import (
     materials_11kv,
     materials_33kv,
     wire_quantity,
+    WIRING_11_LABEL,
 )
 from engine.types import (
     BracketPattern,
@@ -595,7 +596,7 @@ def test_11kv_labour_unchanged_by_circuit_except_stringing(catalog):
 
     assert single["نصب عمود مشبك 11م"] == double["نصب عمود مشبك 11م"]
     assert single["نصب عمود مدور 11م"] == double["نصب عمود مدور 11م"]
-    assert double["تسليك شبكة الضغط العالي"] == 2 * single["تسليك شبكة الضغط العالي"]
+    assert double[WIRING_11_LABEL] == 2 * single[WIRING_11_LABEL]
 
 
 def test_11kv_labour_matches_original_excel(catalog):
@@ -606,7 +607,7 @@ def test_11kv_labour_matches_original_excel(catalog):
         Network11kV(route_length_m=500, poles_lattice=5, poles_round=20), catalog["أجور_العمل"]
     )
     costs = {l.name: l.cost for l in lines}
-    assert costs["تسليك شبكة الضغط العالي"] == 1_237_500
+    assert costs[WIRING_11_LABEL] == 1_237_500
     assert costs["نصب عمود مشبك 11م"] == 1_075_000
     assert costs["نصب عمود مدور 11م"] == 3_800_000
 

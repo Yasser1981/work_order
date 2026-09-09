@@ -33,7 +33,7 @@ from engine.store import EXTENSION, LoadError, load as load_order, save as save_
 from engine.workorder import WorkOrder
 from engine.types import Project, SegmentKind
 import printing
-from printing.amana_form import printed_labour_name
+from printing.amana_form import printed_labour_name, printed_unit
 
 from .order_panel import OrderPanel
 from .prices_window import open_prices
@@ -529,6 +529,13 @@ class MainWindow(QMainWindow):
         الحفر وإعادة المسار، ولا يُذكر في المطبوع. فلولا هذا الشرح لبقي سببُ
         اختلاف سعرين لبندين متشابهَي الاسم **بلا تفسير في أي مكان**.
         """
+        if "×" in line.unit:
+            return (
+                f"الوحدة «{line.unit}»: الكمية = طول العبور × عدد المغذيات "
+                "المارّة فيه، لأن التعرفة لمغذٍّ واحد ولمتر واحد (ق-٤٥).\n\n"
+                f"وفي المطبوع تظهر الوحدة «{printed_unit(line.unit)}» والكمية "
+                "كما هي — بطلبك."
+            )
         if line.group != CIVIL_GROUP or "مسار" not in line.name:
             return ""
         return (

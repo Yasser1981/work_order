@@ -1200,3 +1200,14 @@ def test_an_electrical_row_carries_no_such_tip(stocked):
     tips = [stocked.labour.item(r, 0).toolTip()
             for r in range(stocked.labour.rowCount())]
     assert not any(tips)
+
+
+def test_a_crossing_row_explains_why_its_quantity_is_multiplied(window):
+    """وحدة العبور «متر × مغذٍّ» — والسبب يُشرَح في البرنامج لا في المطبوع (ق-٧٧)."""
+    window.segments.street_secondary.setValue(12)
+    window.segments.street_secondary_feeders.setValue(2)
+
+    tips = [window.labour.item(r, 0).toolTip() for r in range(window.labour.rowCount())]
+    crossing = [tip for tip in tips if "عدد المغذيات" in tip]
+    assert crossing, tips
+    assert "متر" in crossing[0]

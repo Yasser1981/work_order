@@ -20,6 +20,7 @@
 
 from engine import load_catalog
 from engine.equipment import TRANSFORMER_KITS
+from engine.overhead import RATE_KEYS, WIRING_11_LABEL
 from engine.underground import CIVIL_GROUP
 from engine.project import compute_project
 from engine.types import (
@@ -70,6 +71,9 @@ EXCEL_LABOUR = [
 
 RENAMED = {
     # «نصب الفاصل الهوائي ON-LOAD» انتقل إلى SPLIT في ق-٦٧
+    # الاسم المعروض تغيّر في ق-٧٧ بطلب المستخدم، **ومفتاح السعر في الكتالوج
+    # بقي كما هو** — وإلا لانكسرت كل نسخة أسعار محفوظة (RATE_KEYS).
+    "تسليك شبكة الضغط العالي": WIRING_11_LABEL,
     "كلفة عبور الشوارع الفرعية": "عبور الشوارع الفرعية",
     "كلفة عبور الشوارع الرئيسية – حفر مخفي": "عبور الشوارع الرئيسية – حفر مخفي",
 }
@@ -255,12 +259,50 @@ def test_every_produced_labour_item_has_a_row_in_the_catalog():
     for name in sorted(all_labour_the_engine_can_produce()):
         if name in from_tariff:
             continue
-        assert name in rates, f"بند أجر بلا صف في نسخة الأسعار: {name}"
+        key = RATE_KEYS.get(name, name)
+        assert key in rates, f"بند أجر بلا صف في نسخة الأسعار: {name}"
 
 
 def test_no_orphan_rates_left_unused_in_the_catalog():
     """العكس: كل بند في نسخة الأسعار يستخدمه المحرك فعلاً — لا أسعار ميتة."""
     rates = set(load_catalog()["أجور_العمل"])
-    produced = all_labour_the_engine_can_produce()
+    produced = {RATE_KEYS.get(name, name) for name in all_labour_the_engine_can_produce()}
     unused = rates - produced
     assert unused == set(), f"أسعار أجور لا يستخدمها المحرك: {unused}"
+
+
+def test_every_labour_unit_comes_from_the_catalog():
+    """**وحدة البند تُقرأ من نسخة الأسعار لا تُكتب في الشيفرة (ق-٧٧).**
+
+    كانت مكتوبة في موضعين («متر سلك» و«عمود») بينما الكتالوج يحمل «متر» و«عدد»،
+    فكان المطبوع يخالف المرجع. وهذا الحارس يمنع عودة أي وحدة مكتوبة يدوياً:
+    كل بند له صفّ في نسخة الأسعار يجب أن يحمل وحدتها حرفياً.
+    """
+    rates = load_catalog()["أجور_العمل"]
+    catalog = load_catalog()
+    from engine.overhead import RATE_KEYS
+
+    project = _sample_project()
+    for line in compute_project(project, catalog)["أجور_العمل"]:
+        key = RATE_KEYS.get(line.name, line.name)
+        if key not in rates:
+            continue                      # الأعمال المدنية: سعرها من جدول التعرفة
+        assert line.unit == rates[key]["الوحدة"], (
+            f"وحدة «{line.name}» = «{line.unit}» والكتالوج يقول "
+            f"«{rates[key]['الوحدة']}»"
+        )
+
+
+def _sample_project() -> Project:
+    """مشروع يوقظ أكبر عدد من بنود الأجور — للحارس أعلاه."""
+    return Project(segments=[
+        Segment("", Network11kV(route_length_m=100, poles_lattice=1, poles_round=1,
+                                stay_rod_sets=1)),
+        Segment("", Network33kV(route_length_m=100, poles_suspension=1,
+                                anchors_mid=1, anchors_end=1)),
+        Segment("", Underground11kV(route_length_m=100, feeder_count=1,
+                                    straight_boxes=1, end_boxes_internal=1)),
+        Segment("", Underground33kV(route_length_m=100, straight_boxes=1,
+                                    end_boxes_internal=1)),
+        Segment("", NetworkLV(route_length_m=100, poles_lattice=1, consumers=1)),
+    ], street_crossing_secondary_m=10, street_crossing_main_m=10)
