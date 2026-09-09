@@ -532,7 +532,17 @@ WIRING_11_LABEL = f"تسليك {M_WIRE_11[0]}"
 """
 
 
-RATE_KEYS = {WIRING_11_LABEL: WIRING_11_RATE}
+WIRING_33_RATE = "تسليك شبكة 33 ك.ف 210"
+"""**مفتاح** أجر تسليك 33 ك.ف في الكتالوج — لا يُغيَّر (ق-٧٨)."""
+
+WIRING_33_LABEL = f"تسليك {M_WIRE_33[0]}"
+"""«تسليك سلك ألمنيوم 210/35 ملم²» — بطلب المستخدم، على نسق بند 11 ك.ف (ق-٧٨).
+
+**والمقطع من اسم المادة نفسها:** الكتالوج يسمّي البند «210» والمادة
+«210/35 ملم²»، والثاني هو الصحيح فنّياً (ألمنيوم مع قلب فولاذي).
+"""
+
+RATE_KEYS = {WIRING_11_LABEL: WIRING_11_RATE, WIRING_33_LABEL: WIRING_33_RATE}
 """الاسم المعروض ← مفتاح سعره في الكتالوج، حين يختلفان (ق-٧٧).
 
 **مصدر واحد** يقرأ منه المحرك وحارس التغطية معاً. ولولاه لكان على كل موضع أن
@@ -575,9 +585,8 @@ def labour_33kv(net: Network33kV, rates: dict) -> list[LabourLine]:
     )
     if qty:
         out.append(
-            LabourLine("تسليك شبكة 33 ك.ف 210",
-                       rates["تسليك شبكة 33 ك.ف 210"]["الوحدة"], qty,
-                       rates["تسليك شبكة 33 ك.ف 210"]["السعر"])
+            LabourLine(WIRING_33_LABEL, rates[WIRING_33_RATE]["الوحدة"], qty,
+                       rates[WIRING_33_RATE]["السعر"])
         )
     for label, count in (
         ("نصب عمود مشبك تعليق 14م", net.poles_suspension),

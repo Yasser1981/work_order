@@ -11,6 +11,7 @@ from engine.lowvoltage import (
     count_poles_lv,
     labour_lv,
     materials_lv,
+    WIRING_BARE_LABEL,
 )
 from engine.overhead import aggregate, compute
 from engine.types import (
@@ -249,7 +250,7 @@ def test_wiring_labour_follows_the_kind(catalog):
     wires = labour_lv(NetworkLV(route_length_m=1000, kind=WIRES), rates)
     cable = labour_lv(NetworkLV(route_length_m=1000, kind=CABLE), rates)
 
-    assert wires[0].name == "تسليك شبكة الضغط الواطئ (أسلاك)"
+    assert wires[0].name == WIRING_BARE_LABEL == "تسليك سلك ألمنيوم 95 ملم²"
     assert wires[0].cost == 4400 * 500
     assert cable[0].name == "تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)"
     assert cable[0].cost == 1100 * 1500

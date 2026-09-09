@@ -196,17 +196,29 @@ def materials_lv(net: NetworkLV) -> list[MaterialLine]:
     return lines
 
 
+WIRING_BARE_RATE = "تسليك شبكة الضغط الواطئ (أسلاك)"
+WIRING_BUNDLED_RATE = "تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)"
+"""**مفاتيح** أجرَي التسليك في الكتالوج — لا تُغيَّر (ق-٧٨)."""
+
+WIRING_BARE_LABEL = f"تسليك {M_WIRE_LV[0]}"
+"""«تسليك سلك ألمنيوم 95 ملم²» — بطلب المستخدم، على نسق بندَي 11 و33 ك.ف (ق-٧٨).
+
+**ولم يُمسّ اسم القابلو المعلق المبروم:** ليس سلكاً عارياً، وطلب المستخدم كان
+على أسماء أسلاك الألمنيوم. فبقي «تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)».
+"""
+
+RATE_KEYS = {WIRING_BARE_LABEL: WIRING_BARE_RATE}
+"""الاسم المعروض ← مفتاح سعره، حين يختلفان — يُجمع مع نظيره في `engine.labels`."""
+
+
 def labour_lv(net: NetworkLV, rates: dict) -> list[LabourLine]:
     """أجور الضغط الواطئ."""
     out: list[LabourLine] = []
     qty = conductor_quantity(net)
     if qty:
-        label = (
-            "تسليك شبكة الضغط الواطئ (أسلاك)"
-            if net.kind is LVNetworkType.BARE_WIRES
-            else "تسليك شبكة الضغط الواطئ (قابلو معلق مبروم)"
-        )
-        entry = rates[label]
+        bare = net.kind is LVNetworkType.BARE_WIRES
+        label = WIRING_BARE_LABEL if bare else WIRING_BUNDLED_RATE
+        entry = rates[WIRING_BARE_RATE if bare else WIRING_BUNDLED_RATE]
         out.append(LabourLine(label, entry["الوحدة"], qty, entry["السعر"]))
 
     for label, count in (
