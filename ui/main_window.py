@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 from engine import latest_catalog_version, load_catalog
 from engine.version import VERSION
 from engine.availability import selectable, unavailable_summary
+from engine.overrides import apply as apply_overrides, ambiguous_labour, key_of
 from engine.underground import CIVIL_GROUP
 from engine.prices import differences
 from engine.project import compute_project
@@ -76,6 +77,11 @@ class MainWindow(QMainWindow):
         ويُخفض عند الحفظ والفتح والبدء من جديد — أي عند كل لحظة يصير فيها ما
         على الشاشة مطابقاً لما على القرص.
         """
+        self.manual_mode = False
+        """هل أُذن بتحرير الكميات يدوياً؟ (ق-٨٢) — إذنٌ صريح لا حالة افتراضية."""
+        self.material_overrides: dict[str, float] = {}
+        self.labour_overrides: dict[str, float] = {}
+        """الكميات التي عدّلها المستخدم بيده. المحسوب لا يُمسّ، وإفراغُها يعيده."""
         self.unavailable: set[str] = set()
         """المواد المؤشَّرة «غير متوفرة في المخازن» (ق-٧٦).
 
@@ -118,10 +124,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter)
         self.setCentralWidget(container)
 
-    MATERIAL_COLUMNS = ["المادة", "الوحدة", "الكمية", "سعر الوحدة", "الكلفة",
-                        "غير متوفرة"]
-    UNAVAILABLE_COLUMN = 5
+    MATERIAL_COLUMNS = ["المادة", "الوحدة", "الكمية", "الكمية المعدَّلة",
+                        "سعر الوحدة", "الكلفة", "غير متوفرة"]
+    UNAVAILABLE_COLUMN = 6
     """عمود تأشير المواد غير المتوفرة في المخازن (ق-٧٦)."""
+
+    EDIT_COLUMN = 3
+    """عمود الكمية المعدَّلة يدوياً — **بجانب المحسوبة** ليُقارَن الرقمان بنظرة
+    واحدة، لا في آخر الجدول حيث يُقرأ وحده فيُظنّ هو الحساب (ق-٨٢)."""
+
+    LABOUR_COLUMNS = ["البند", "الكمية", "الكمية المعدَّلة", "السعر الوحدي", "الكلفة"]
+    LABOUR_EDIT_COLUMN = 2
 
     def _results_pane(self) -> QWidget:
         pane = QWidget()
@@ -138,6 +151,7 @@ class MainWindow(QMainWindow):
         self._tune_table(self.materials)
         self.materials.itemSelectionChanged.connect(self._show_breakdown)
         self.materials.itemChanged.connect(self._on_availability_change)
+        self.materials.itemChanged.connect(self._on_material_edit)
         layout.addWidget(self.materials, stretch=3)
 
         # تفصيل الرقم — من أين جاءت كمية المادة المحدّدة
@@ -155,10 +169,26 @@ class MainWindow(QMainWindow):
         title.setObjectName("pane")
         layout.addWidget(title)
 
-        self.labour = QTableWidget(0, 4)
-        self.labour.setHorizontalHeaderLabels(["البند", "الكمية", "السعر الوحدي", "الكلفة"])
+        self.labour = QTableWidget(0, len(self.LABOUR_COLUMNS))
+        self.labour.setHorizontalHeaderLabels(self.LABOUR_COLUMNS)
         self._tune_table(self.labour)
+        self.labour.itemChanged.connect(self._on_labour_edit)
         layout.addWidget(self.labour, stretch=2)
+
+        # شريط التعديلات اليدوية: ظاهرٌ ما دام هناك تعديل، ومعه زرّ إلغائها (ق-٨٢)
+        self.manual_bar = QHBoxLayout()
+        self.manual_note = QLabel()
+        self.manual_note.setObjectName("hint")
+        self.manual_note.setTextFormat(Qt.TextFormat.RichText)
+        self.manual_note.setMinimumWidth(1)
+        self.clear_manual = QPushButton("إلغاء كل التعديلات اليدوية")
+        self.clear_manual.setToolTip(
+            "يعيد كل كمية إلى ما حسبه البرنامج. والمحسوب لم يُمسّ أصلاً."
+        )
+        self.clear_manual.clicked.connect(self.clear_overrides)
+        self.manual_bar.addWidget(self.manual_note, stretch=1)
+        self.manual_bar.addWidget(self.clear_manual)
+        layout.addLayout(self.manual_bar)
 
         self.warning = QLabel()
         self.warning.setWordWrap(True)
@@ -234,6 +264,13 @@ class MainWindow(QMainWindow):
         self.action_save_as.setShortcut("Ctrl+Shift+S")
         self.action_save_as.triggered.connect(self.save_as)
 
+        menu = bar.addMenu("الكميات")
+        self.action_manual = menu.addAction("تحرير الكميات يدوياً")
+        self.action_manual.setCheckable(True)
+        self.action_manual.toggled.connect(self.set_manual_mode)
+        self.action_clear_manual = menu.addAction("إلغاء كل التعديلات اليدوية")
+        self.action_clear_manual.triggered.connect(self.clear_overrides)
+
         menu = bar.addMenu("الأسعار")
         self.action_prices = menu.addAction("إدارة الأسعار…")
         self.action_prices.triggered.connect(self.manage_prices)
@@ -303,6 +340,8 @@ class MainWindow(QMainWindow):
         """
         wo = self.order_panel.order()
         wo.unavailable_materials = sorted(self.unavailable)
+        wo.material_overrides = dict(self.material_overrides)
+        wo.labour_overrides = dict(self.labour_overrides)
         return wo
 
     def project(self) -> Project:
@@ -323,6 +362,8 @@ class MainWindow(QMainWindow):
         self.segments.load(Project())
         self.order_panel.load(WorkOrder())
         self.unavailable = set()
+        self.material_overrides = {}
+        self.labour_overrides = {}
         self.path = None
         self.version = latest_catalog_version()
         self.catalog = load_catalog(self.version)
@@ -385,6 +426,8 @@ class MainWindow(QMainWindow):
         self.segments.load(project)
         self.order_panel.load(order)
         self.unavailable = set(order.unavailable_materials)
+        self.material_overrides = dict(order.material_overrides)
+        self.labour_overrides = dict(order.labour_overrides)
         self.path = Path(path)
         self.recalculate()
         self._mark_clean()
@@ -572,7 +615,10 @@ class MainWindow(QMainWindow):
     def _tune_table(table: QTableWidget) -> None:
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # التحرير مسموح **بعلَم الخلية** وحده: لا خلية قابلة للتحرير إلا خانة
+        # «الكمية المعدَّلة» وبإذن صريح (ق-٨٢)
+        table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked
+                              | QTableWidget.EditTrigger.EditKeyPressed)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -609,6 +655,114 @@ class MainWindow(QMainWindow):
             f"وفي المطبوع يظهر باسم «{printed_labour_name(line.name)}» بلا ذكر "
             "التعدّد — بطلبك."
         )
+
+    # ─────────────────── التعديل اليدوي على الكميات (ق-٨٢) ───────────────────
+
+    def set_manual_mode(self, enabled: bool) -> None:
+        """يفتح تحرير الكميات أو يغلقه — بإذن صريح في أول مرّة.
+
+        **والإغلاق لا يمسح التعديلات**: هو إذنُ تحريرٍ لا مفتاحُ تشغيل. ومن
+        أراد إزالتها فله زرّ صريح يقول ذلك باسمه.
+        """
+        if enabled and not self._confirm(
+            "تحرير الكميات يدوياً",
+            "ستتمكّن من كتابة كمية بيدك بدل ما حسبه البرنامج.\n\n"
+            "• الرقم المحسوب لا يُمحى — يبقى معروضاً بجانب تعديلك\n"
+            "• كل سطر معدَّل يُميَّز بلون، ويظهر عددها فوق المجاميع\n"
+            "• «إلغاء كل التعديلات اليدوية» يعيد كل شيء إلى الحساب\n\n"
+            "أتابع؟",
+        ):
+            self.action_manual.setChecked(False)
+            return
+        self.manual_mode = enabled
+        if self.action_manual.isChecked() != enabled:
+            self.action_manual.setChecked(enabled)
+        self.recalculate()
+
+    def clear_overrides(self) -> None:
+        """يعيد كل كمية إلى ما حسبه المحرك."""
+        if not (self.material_overrides or self.labour_overrides):
+            return
+        self.material_overrides.clear()
+        self.labour_overrides.clear()
+        self._mark_dirty()
+        self.recalculate()
+
+    def _edit_cell(self, key: str, value, *, blocked: str = "") -> QTableWidgetItem:
+        """خلية «الكمية المعدَّلة» لسطر واحد.
+
+        فارغةٌ ما لم يُعدَّل السطر، ولا تُحرَّر إلا بالإذن — فلا يتغيّر رقم
+        بنقرةٍ سهو على جدول يُقرأ أكثر ممّا يُكتب.
+        """
+        item = QTableWidgetItem("" if value is None else self._fmt(value))
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if blocked:
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setToolTip(blocked)
+            return item
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        if self.manual_mode:
+            flags |= Qt.ItemFlag.ItemIsEditable
+        item.setFlags(flags)
+        item.setData(Qt.ItemDataRole.UserRole, key)
+        if value is not None:
+            item.setForeground(QColor("#b45309"))
+            if key not in self.material_overrides and key not in self.labour_overrides:
+                item.setToolTip("تبعت مادتها المعدَّلة — اكتب رقماً هنا لتعديلها وحدها.")
+        elif self.manual_mode:
+            item.setToolTip("اكتب كمية لتحلّ محلّ المحسوبة، وأفرغ الخانة للعودة إليها.")
+        return item
+
+    def _apply_edit(self, item: QTableWidgetItem, store: dict) -> None:
+        """يقرأ ما كُتب في خلية التعديل ويُحدّث مخزن التعديلات."""
+        key = item.data(Qt.ItemDataRole.UserRole)
+        if key is None:
+            return
+        text = (item.text() or "").strip().replace(",", "").replace("،", "")
+        if not text:
+            removed = store.pop(key, None)
+            if removed is not None:
+                self._mark_dirty()
+                self.recalculate()
+            return
+        try:
+            value = float(text)
+        except ValueError:
+            QMessageBox.warning(self, "كمية غير صالحة",
+                                f"«{text}» ليس رقماً. أُبقيت الكمية كما كانت.")
+            self.recalculate()
+            return
+        if value < 0:
+            QMessageBox.warning(self, "كمية غير صالحة", "الكمية لا تكون سالبة.")
+            self.recalculate()
+            return
+        if store.get(key) == value:
+            return
+        store[key] = value
+        self._mark_dirty()
+        self.recalculate()
+
+    def _on_material_edit(self, item: QTableWidgetItem) -> None:
+        if item.column() == self.EDIT_COLUMN:
+            self._apply_edit(item, self.material_overrides)
+
+    def _on_labour_edit(self, item: QTableWidgetItem) -> None:
+        if item.column() == self.LABOUR_EDIT_COLUMN:
+            self._apply_edit(item, self.labour_overrides)
+
+    def _refresh_manual_bar(self) -> None:
+        """شريطٌ ظاهر ما دام في الجدول رقمٌ ليس من حساب البرنامج."""
+        summary = self.result.get("تعديلات_يدوية") or {"العدد": 0}
+        count = summary["العدد"]
+        names = (summary.get("المواد", []) + summary.get("الأجور", []))[:3]
+        tail = "…" if len(summary.get("المواد", []) + summary.get("الأجور", [])) > 3 else ""
+        self.manual_note.setText(
+            f"✎ <b>{count}</b> كمية معدَّلة يدوياً — ليست من حساب البرنامج: "
+            f"{'، '.join(names)}{tail}" if count else ""
+        )
+        self.manual_note.setVisible(bool(count))
+        self.clear_manual.setVisible(bool(count))
+        self.action_clear_manual.setEnabled(bool(count))
 
     def _mark(self, row: dict) -> QTableWidgetItem:
         """خلية تأشير «غير متوفرة» لمادة واحدة (ق-٧٦).
@@ -701,8 +855,13 @@ class MainWindow(QMainWindow):
             **self.segments.street_crossings(),
         )
         self.segments.refresh_street_hint(self.catalog)
-        result = compute_project(project, self.catalog)
+        # **المحرك أولاً، ثم طبقة التعديل اليدوي فوقه** (ق-٨٢): `compute_project`
+        # لا يعرف بالتعديلات شيئاً، فإلغاؤها يعيد رقمه كما هو.
+        computed = compute_project(project, self.catalog)
+        result = apply_overrides(computed, self.material_overrides,
+                                 self.labour_overrides)
         self.result = result
+        blocked_labour = ambiguous_labour(result)
 
         rows = result["المواد"]
         self._rows = rows
@@ -724,8 +883,18 @@ class MainWindow(QMainWindow):
                 price_text = f"{row['سعر الوحدة']:,.0f}"
                 cost_text = f"{row['الكلفة']:,.0f}"
             name = row["المادة"] + ("  ⊕" if row["مجمَّع"] else "")
-            cells = [name, row["الوحدة"], qty_text, price_text, cost_text]
+            manual = row.get("معدَّل_يدوياً", False)
+            # العمود «الكمية» يبقى **المحسوب دائماً** ولو عُدِّل السطر، فالرقمان
+            # يُقرآن معاً ولا يحلّ أحدهما محلّ الآخر بصمت (ق-٨٢)
+            if manual:
+                qty_text = self._fmt(row.get("الكمية_المحسوبة", row["الكمية"]))
+            key = key_of(row["المادة"], row["الوحدة"])
+            cells = [name, row["الوحدة"], qty_text, None, price_text, cost_text]
             for c, text in enumerate(cells):
+                if c == self.EDIT_COLUMN:
+                    self.materials.setItem(
+                        r, c, self._edit_cell(key, self.material_overrides.get(key)))
+                    continue
                 item = QTableWidgetItem(text)
                 if c:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -733,27 +902,47 @@ class MainWindow(QMainWindow):
                     item.setForeground(QColor("#b45309"))
                 elif row["كمية_فقط"]:
                     item.setForeground(QColor("#6b7280"))
+                if manual:
+                    item.setBackground(QColor("#fff7ed"))
                 self.materials.setItem(r, c, item)
             self.materials.setItem(r, self.UNAVAILABLE_COLUMN, self._mark(row))
         self.materials.blockSignals(False)
 
         labour = result["أجور_العمل"]
+        self.labour.blockSignals(True)
         self.labour.setRowCount(len(labour))
         for r, line in enumerate(labour):
-            qty = line.qty
-            qty_text = f"{qty:,.0f}" if qty % 1 == 0 else f"{qty:,.2f}"
+            shown = line.computed_qty if line.manual else line.qty
+            qty_text = f"{shown:,.0f}" if shown % 1 == 0 else f"{shown:,.2f}"
             rate_text = "— بلا أجر —" if line.rate_missing else f"{line.rate:,.0f}"
             cost_text = "—" if line.rate_missing else f"{line.cost:,.0f}"
-            cells = [line.name, f"{qty_text} {line.unit}", rate_text, cost_text]
+            key = key_of(line.name, line.unit)
+            cells = [line.name, f"{qty_text} {line.unit}", None, rate_text, cost_text]
             tip = self._rate_reason(line)
             for c, text in enumerate(cells):
+                if c == self.LABOUR_EDIT_COLUMN:
+                    # البند الذي تبع تعديل مادته تظهر كميته الفعلية هنا أيضاً،
+                    # وإلا قُرئ سطرٌ كميته 2,475 وكلفته على 3,000 (ق-٨٢)
+                    shown_edit = self.labour_overrides.get(
+                        key, line.qty if line.manual else None)
+                    self.labour.setItem(r, c, self._edit_cell(
+                        key, shown_edit,
+                        blocked=("بندان بهذا الاسم وسعران مختلفان — التعديل ملتبس، "
+                                 "فعدّل مُدخَلات المقطع بدله (ق-٨٢)."
+                                 if key in blocked_labour else ""),
+                    ))
+                    continue
                 item = QTableWidgetItem(text)
                 if c:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if tip:
                     item.setToolTip(tip)
+                if line.manual:
+                    item.setBackground(QColor("#fff7ed"))
                 self.labour.setItem(r, c, item)
+        self.labour.blockSignals(False)
 
+        self._refresh_manual_bar()
         self._refresh_warning()
 
         self._show_breakdown()

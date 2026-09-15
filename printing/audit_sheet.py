@@ -59,9 +59,11 @@ def _labour_table(lines: list) -> str:
                              attrs=' class="grp"'))
         for line in members:
             index += 1
+            manual = (f' <span class="src">✎ يدوي — المحسوب '
+                      f'{_fmt_qty(line.computed_qty)}</span>') if line.manual else ""
             rows.append(_row(
                 f'<td align="center">{index}</td>',
-                f'<td align="right">{_esc(line.name)}</td>',
+                f'<td align="right">{_esc(line.name)}{manual}</td>',
                 f'<td align="center">{_fmt_qty(line.qty)} {_esc(line.unit)}</td>',
                 # الأجر المفقود يُطبع نصّاً لا صفراً — الصفر يوهم بأن البند مجّاني
                 f'<td align="center">'
@@ -75,6 +77,21 @@ def _labour_table(lines: list) -> str:
                 f'<td colspan="4" align="right">مجموع {_esc(name)}</td>',
                 f'<td align="center">{subtotal:,.0f}</td>', attrs=' class="sub"'))
     return "\n".join(rows)
+
+
+def _manual_line(result: dict) -> str:
+    """سطرٌ يسمّي ما عُدِّل يدوياً — على ورقة التدقيق وحدها (ق-٨٢).
+
+    **ورقة التدقيق هي موضع هذا السطر**، لأن غرضها أن يعرف المدقّق من أين جاء كل
+    رقم. أما النموذجان الرسميان فشكلهما معتمَد ولا يُزاد عليه بلا طلب (ق-٠).
+    """
+    manual = result.get("تعديلات_يدوية") or {}
+    if not manual.get("العدد"):
+        return ""
+    names = "، ".join(manual.get("المواد", []) + manual.get("الأجور", []))
+    return (f'<p align="center" class="note">⚠ في هذه الورقة '
+            f'<b>{manual["العدد"]}</b> كمية معدَّلة يدوياً — ليست من حساب '
+            f'البرنامج: {_esc(names)}</p>')
 
 
 def build_html(order: WorkOrder, result: dict) -> str:
@@ -150,6 +167,7 @@ def build_html(order: WorkOrder, result: dict) -> str:
 <p align="center" class="note">أمر عمل رقم {_esc(order.number)} &nbsp;·&nbsp;
    {_fmt_date(order.order_date)} &nbsp;·&nbsp; للمراجعة الداخلية لا للتسليم الرسمي</p>
 <p align="center" class="note">{_price_version_line(result)}</p>
+{_manual_line(result)}
 
 {segments_block}
 <p class="section">أ - المواد وتفصيل مصادر كمياتها</p>
