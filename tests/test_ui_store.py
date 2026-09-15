@@ -15,6 +15,7 @@ from datetime import date  # noqa: E402
 
 from engine import load_catalog  # noqa: E402
 from engine.types import (  # noqa: E402
+    Conversion11kV,
     Equipment,
     Network11kV,
     Network33kV,
@@ -62,6 +63,7 @@ KIND_OF = {
     Equipment: SegmentKind.EQUIPMENT,
     Underground11kV: SegmentKind.UG11,
     Underground33kV: SegmentKind.UG33,
+    Conversion11kV: SegmentKind.CONV11,
 }
 
 

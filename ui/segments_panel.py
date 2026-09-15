@@ -39,6 +39,7 @@ from engine.types import (
 from .panels import (
     Panel11kV,
     Panel33kV,
+    PanelConversion11kV,
     PanelEquipment,
     PanelLV,
     PanelUnderground11kV,
@@ -53,6 +54,7 @@ EDITORS = {
     SegmentKind.EQUIPMENT: PanelEquipment,
     SegmentKind.UG11: PanelUnderground11kV,
     SegmentKind.UG33: PanelUnderground33kV,
+    SegmentKind.CONV11: PanelConversion11kV,
 }
 
 JUNCTION_NOTE = (

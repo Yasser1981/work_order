@@ -18,6 +18,7 @@ from dataclasses import replace
 
 from .equipment import labour_equipment, materials_equipment
 from .lowvoltage import labour_lv, materials_lv
+from .conversion import labour_conversion_11, materials_conversion_11
 from .overhead import (
     aggregate,
     labour_11kv,
@@ -26,6 +27,7 @@ from .overhead import (
     materials_33kv,
 )
 from .types import (
+    Conversion11kV,
     Equipment,
     LabourLine,
     MaterialLine,
@@ -84,6 +86,8 @@ def materials_of(segment: Segment, catalog: dict) -> list[MaterialLine]:
         lines = materials_underground11(content, catalog)
     elif isinstance(content, Underground33kV):
         lines = materials_underground33(content, catalog)
+    elif isinstance(content, Conversion11kV):
+        lines = materials_conversion_11(content)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)
@@ -109,6 +113,8 @@ def labour_of(segment: Segment, catalog: dict) -> list[LabourLine]:
         lines = labour_underground11(content, catalog)
     elif isinstance(content, Underground33kV):
         lines = labour_underground33(content, catalog)
+    elif isinstance(content, Conversion11kV):
+        lines = labour_conversion_11(content, rates)
     else:
         raise TypeError(f"محتوى مقطع غير معروف: {type(content).__name__}")
     return _tag(lines, segment.name)

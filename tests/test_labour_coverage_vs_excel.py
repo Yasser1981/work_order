@@ -27,6 +27,7 @@ from engine.underground import CIVIL_GROUP
 from engine.project import compute_project
 from engine.types import (
     CircuitType,
+    Conversion11kV,
     Equipment,
     LVNetworkType,
     Network11kV,
@@ -116,6 +117,14 @@ DYNAMIC_GROUP = {
     "كلفة الاعمال المدنية للشبكة الأرضية": CIVIL_GROUP,
 }
 
+UNPRICED_YET = {
+    # بندان أنشأهما مقطع التحويل (ق-٨٣) **بلا سعر بطلب المستخدم**: «اتركه فارغاً
+    # حالياً بدون أجور». فلا صفّ لهما في نسخة الأسعار، ويخرجان «بلا أجر» على
+    # قاعدة ق-٩. ويُرفع هذا الاستثناء يوم يُعطى السعر.
+    "تحويل عمود مشبك 11م من مفرد إلى مزدوج",
+    "تحويل عمود مدوّر 11م من مفرد إلى مزدوج",
+}
+
 CANCELLED = {
     "كلفة إعادة ورفع مقرنص مرمري":
         "لا يُضاف — تعرفة الأعمال المدنية مبنية أصلاً على نوع الرصيف (ق-٣٣)",
@@ -146,6 +155,10 @@ def all_labour_the_engine_can_produce() -> set[str]:
         segments.append(Segment("", NetworkLV(
             route_length_m=100, kind=kind, poles_lattice=1,
             poles_round=1, consumers=1)))
+
+    segments.append(Segment("", Conversion11kV(
+        route_length_m=500, existing_lattice=2, existing_round=5,
+        added_lattice=1, added_round=1)))
 
     segments.append(Segment("", Equipment(
         transformers={k: 1 for k in TRANSFORMER_KITS},
@@ -244,7 +257,8 @@ def test_engine_extras_beyond_the_excel_sheet_are_known():
     produced = all_labour_the_engine_can_produce()
     mapped = (set(EXCEL_LABOUR) | set(RENAMED.values()) | set(MERGED.values())
               | {name for names in SPLIT.values() for name in names})
-    extras = {name for name in produced if name not in mapped} - civil_labour_names()
+    extras = ({name for name in produced if name not in mapped}
+              - civil_labour_names() - UNPRICED_YET)
     assert extras == set(), f"بنود أجور جديدة غير مسجَّلة: {extras}"
 
 
@@ -264,6 +278,8 @@ def test_every_produced_labour_item_has_a_row_in_the_catalog():
     for name in sorted(all_labour_the_engine_can_produce()):
         if name in from_tariff:
             continue
+        if name in UNPRICED_YET:
+            continue                      # بلا سعر بطلب المستخدم (ق-٨٣)
         key = RATE_KEYS.get(name, name)
         assert key in rates, f"بند أجر بلا صف في نسخة الأسعار: {name}"
 
@@ -289,7 +305,7 @@ def test_every_labour_unit_comes_from_the_catalog():
     for line in compute_project(project, catalog)["أجور_العمل"]:
         key = RATE_KEYS.get(line.name, line.name)
         if key not in rates:
-            continue                      # الأعمال المدنية: سعرها من جدول التعرفة
+            continue                      # المدنية من جدول التعرفة، والتحويل بلا سعر
         assert line.unit == rates[key]["الوحدة"], (
             f"وحدة «{line.name}» = «{line.unit}» والكتالوج يقول "
             f"«{rates[key]['الوحدة']}»"

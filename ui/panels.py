@@ -37,6 +37,7 @@ from engine.underground import (
     trench_width_m,
     suggest_straight_boxes,
 )
+from engine.conversion import bracket_increment
 from engine.overhead import (
     bracket_need_11,
     bracket_purchase_11,
@@ -48,6 +49,7 @@ from engine.overhead import (
 from engine.types import (
     BracketPattern,
     CircuitType,
+    Conversion11kV,
     Equipment,
     LVNetworkType,
     Network11kV,
@@ -295,6 +297,196 @@ class Panel11kV(_Loadable, QWidget):
 
         self.stay_hint.setText(
             f"واير ستي = {self.stay.value()} × 12 م = <b>{self.stay.value() * 12:,} م</b>"
+        )
+
+
+class PanelConversion11kV(_Loadable, QWidget):
+    """تحويل شبكة 11 ك.ف قائمة من مفردة إلى مزدوجة (ق-٨٣).
+
+    **الفارق الجوهري عن لوحة الشبكة:** الأعمدة هنا **قائمة على الأرض** لا
+    مقترَحة. فالتخمين بالمسافة استرشادٌ يُستعمل حين يتعذّر الكشف الموقعي، ويبقى
+    الرقم قابلاً للتعديل — ولذلك يظهر تحته تنبيه دائم أن العدد مخمَّن.
+    """
+
+    changed = pyqtSignal()
+
+    def __init__(self, catalog: dict) -> None:
+        super().__init__()
+        self.catalog = catalog
+        self._build()
+        self._connect()
+        self.refresh_hints()
+
+    def _build(self) -> None:
+        body, layout = scroll_body()
+
+        box, form = section("المسار والدائرة الجديدة")
+        self.route = number_field(0, 500_000, 1000, suffix="م")
+        self.waste_included = QCheckBox("الطول المُدخل يشمل نسبة الزيادة")
+        self.waste_pct = number_field(0, 100, 10, decimals=1, step=0.5, suffix="%")
+        form.addRow("طول المسار المحوَّل:", self.route)
+        form.addRow("", self.waste_included)
+        form.addRow("نسبة الزيادة:", self.waste_pct)
+        self.wire_hint = HintLabel()
+        form.addRow(self.wire_hint)
+        layout.addWidget(box)
+
+        box, form = section("الأعمدة القائمة على المسار")
+        form.addRow(HintLabel(
+            "هذه أعمدة <b>منصوبة أصلاً</b>: لا تُحتسب أعمدةً ولا كونكريتاً ولا "
+            "تأريضاً، بل <b>فرق</b> البراكيت والعوازل بين المزدوجة والمفردة."
+        ))
+        self.span = number_field(1, 500, 25, suffix="م")
+        self.tension_span = number_field(1, 5000, 125, suffix="م")
+        form.addRow("المسافة بين الأعمدة:", self.span)
+        form.addRow("المسافة بين أعمدة الشد:", self.tension_span)
+        self.estimate_hint = HintLabel()
+        form.addRow(self.estimate_hint)
+        self.adopt = QPushButton("اعتماد العدد المخمَّن  ↓")
+        form.addRow(self.adopt)
+        self.existing_lattice = number_field(0, 100_000, 0)
+        self.existing_round = number_field(0, 100_000, 0)
+        form.addRow("أعمدة مشبكة قائمة:", self.existing_lattice)
+        form.addRow("أعمدة مدوّرة قائمة:", self.existing_round)
+        self.pattern = _combo([BracketPattern.STANDARD, BracketPattern.ALTERNATIVE])
+        form.addRow("نمط البراكيت (للمزدوجة):", self.pattern)
+        self.increment_hint = HintLabel()
+        form.addRow(self.increment_hint)
+        layout.addWidget(box)
+
+        box, form = section("أعمدة الإسناد المضافة  —  شبكة مزدوجة كاملة")
+        form.addRow(HintLabel(
+            "أعمدة جديدة توضع <b>بين القائمة</b> لتقوية المسار. تُدخَل يدوياً، "
+            "ويحسب لها البرنامج كل ما يلزم عمودَ شبكةٍ مزدوجة: البراكيت والعوازل "
+            "والكونكريت والتأريض وأجر النصب."
+        ))
+        self.added_lattice = number_field(0, 10_000, 0)
+        self.added_round = number_field(0, 10_000, 0)
+        self.added_lattice_supply = _combo(
+            [SupplyForm.WITHOUT_ACCESSORIES, SupplyForm.WITH_ACCESSORIES])
+        self.added_round_supply = _combo(
+            [SupplyForm.WITHOUT_ACCESSORIES, SupplyForm.WITH_ACCESSORIES])
+        form.addRow("أعمدة مشبكة مضافة:", self.added_lattice)
+        form.addRow("شكل العمود المشبك:", self.added_lattice_supply)
+        form.addRow("أعمدة مدوّرة مضافة:", self.added_round)
+        form.addRow("شكل العمود المدوّر:", self.added_round_supply)
+        layout.addWidget(box)
+
+        box, form = section("ستي رود")
+        self.stay = number_field(0, 10_000, 0)
+        form.addRow("عدد الأطقم الإضافية:", self.stay)
+        form.addRow(HintLabel(
+            "يدويٌّ بحت ولا يُقترح: التحويل قد يحتاجه وقد لا يحتاجه (بنصّك)."
+        ))
+        layout.addWidget(box)
+
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+
+    def _connect(self) -> None:
+        for w in (self.route, self.waste_pct, self.span, self.tension_span,
+                  self.existing_lattice, self.existing_round, self.added_lattice,
+                  self.added_round, self.stay):
+            w.valueChanged.connect(self._on_change)
+        for w in (self.pattern, self.added_lattice_supply, self.added_round_supply):
+            w.currentIndexChanged.connect(self._on_change)
+        self.waste_included.toggled.connect(self._on_change)
+        self.adopt.clicked.connect(self._adopt_estimate)
+
+    def _on_change(self) -> None:
+        self.refresh_hints()
+        self.changed.emit()
+
+    def _estimate(self):
+        """تخمين أعمدة المسار القائم بالمسافة — المخمِّن نفسه (ق-١٤، ق-٢٠)."""
+        return suggest_poles_11kv(
+            Network11kV(route_length_m=self.route.value(),
+                        span_m=self.span.value(),
+                        tension_span_m=self.tension_span.value()),
+            self.catalog)
+
+    def _adopt_estimate(self) -> None:
+        result = self._estimate()
+        self.existing_lattice.setValue(result.lattice)
+        self.existing_round.setValue(result.round_)
+
+    def _load(self, net: Conversion11kV) -> None:
+        set_number(self.route, net.route_length_m)
+        self.waste_included.setChecked(net.length_includes_waste)
+        set_number(self.waste_pct, net.waste_pct * 100.0)
+        set_number(self.span, net.span_m or self.span.value())
+        set_number(self.tension_span, net.tension_span_m or self.tension_span.value())
+        set_number(self.existing_lattice, net.existing_lattice)
+        set_number(self.existing_round, net.existing_round)
+        _select(self.pattern, net.bracket_pattern)
+        set_number(self.added_lattice, net.added_lattice)
+        set_number(self.added_round, net.added_round)
+        _select(self.added_lattice_supply, net.added_lattice_supply)
+        _select(self.added_round_supply, net.added_round_supply)
+        set_number(self.stay, net.stay_rod_sets)
+
+    def content(self) -> Conversion11kV:
+        return Conversion11kV(
+            route_length_m=self.route.value(),
+            length_includes_waste=self.waste_included.isChecked(),
+            waste_pct=self.waste_pct.value() / 100.0,
+            span_m=self.span.value(),
+            tension_span_m=self.tension_span.value(),
+            existing_lattice=self.existing_lattice.value(),
+            existing_round=self.existing_round.value(),
+            bracket_pattern=self.pattern.currentData(),
+            added_lattice=self.added_lattice.value(),
+            added_round=self.added_round.value(),
+            added_lattice_supply=self.added_lattice_supply.currentData(),
+            added_round_supply=self.added_round_supply.currentData(),
+            stay_rod_sets=self.stay.value(),
+        )
+
+    def refresh_hints(self) -> None:
+        net = self.content()
+        self.waste_pct.setEnabled(not net.length_includes_waste)
+
+        factor = 1.0 if net.length_includes_waste else 1 + net.waste_pct
+        qty = wire_quantity(net.route_length_m, CircuitType.SINGLE,
+                            net.length_includes_waste, net.waste_pct)
+        self.wire_hint.setText(
+            f"سلك الدائرة الجديدة = {net.route_length_m:,.0f} × 3 أطوار × "
+            f"{factor:g} = <b>{qty:,} م</b>  ·  دائرة واحدة تُضاف إلى القائمة."
+        )
+
+        estimate = self._estimate()
+        entered = net.existing_lattice + net.existing_round
+        note = ""
+        if entered and entered != estimate.total:
+            note = (f" &nbsp;·&nbsp; والمُدخَل <b>{entered}</b> — "
+                    "وهو المعتمد في الحساب.")
+        self.estimate_hint.setText(
+            f"<b>تخمينٌ استرشادي</b> بلا كشف موقعي: {estimate.total} عموداً — "
+            f"{estimate.lattice} مشبك و{estimate.round_} مدوّر.{note}<br>"
+            "⚠️ العدد يتبع المسافة المُدخلة، وتغييرها يحرّك الكلفة كثيراً — "
+            "فالكشف الموقعي أدقّ متى أمكن."
+        )
+
+        parts = []
+        for pole, count, label in (
+            (PoleType11.LATTICE, net.existing_lattice, "المشبك"),
+            (PoleType11.ROUND, net.existing_round, "المدوّر"),
+        ):
+            increment = bracket_increment(net.bracket_pattern, pole)
+            detail = " + ".join(f"{n}×{size}م" for size, n in sorted(increment.items()))
+            total = f" = {count * sum(increment.values())}" if count else ""
+            parts.append(f"{label}: {detail} لكل عمود{total}")
+        self.increment_hint.setText(
+            "فرق البراكيت (المزدوجة ناقص المفردة) — "
+            + " &nbsp;·&nbsp; ".join(parts)
+            + "<br>والعوازل: <b>+3 دبوسي</b> لكل عمود، و<b>+6 قرصي و+6 معدات ربط</b> "
+            "لكل مشبك."
         )
 
 

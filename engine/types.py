@@ -167,6 +167,56 @@ class Network11kV:
 
 
 @dataclass
+class Conversion11kV:
+    """تحويل شبكة 11 ك.ف قائمة من مفردة إلى مزدوجة (ق-٨٣).
+
+    **الشبكة قائمة على الأرض**: أعمدتها منصوبة ومؤرَّضة وعليها دائرة واحدة.
+    والمطلوب ما تحتاجه الدائرة **الثانية** وحدها:
+
+    - **الفرق** في البراكيت والعوازل لكل عمود قائم (حاجة المزدوجة ناقص المفردة)
+    - **سلك دائرة كاملة** على طول المسار
+    - **أعمدة إسناد** تُضاف بين القائمة، ولها حاجةُ عمودِ شبكةٍ مزدوجة **كاملة**
+
+    فحقول الأعمدة هنا **قائمة** لا مقترَحة: العدد يُدخَل من كشف موقعي، أو
+    يُخمَّن بالمسافة بين الأعمدة (ق-٨٣) ويبقى قابلاً للتعديل.
+    """
+
+    route_length_m: float = 0.0
+    """طول المسار المحوَّل (م) — تُحسب منه أمتار الدائرة الجديدة."""
+
+    length_includes_waste: bool = False
+    waste_pct: float = 0.10
+
+    span_m: float | None = None
+    """المسافة بين الأعمدة في الشبكة **القائمة** — للتخمين وحده (ق-٨٣)."""
+
+    tension_span_m: float | None = None
+    """المسافة بين أعمدة الشد في الشبكة القائمة — للتخمين وحده."""
+
+    existing_lattice: int = 0
+    existing_round: int = 0
+    """الأعمدة القائمة على المسار بنوعيها. تُدخَل بكشفٍ موقعي أو بالتخمين."""
+
+    bracket_pattern: BracketPattern = BracketPattern.STANDARD
+    """نمط براكيت الشبكة المزدوجة — يغيّر مقاسات البراكيت المطلوبة لا عددها."""
+
+    added_lattice: int = 0
+    added_round: int = 0
+    """أعمدة الإسناد المضافة بين القائمة لتقوية المسار — تُدخَل يدوياً.
+
+    بنصّ المستخدم: «من الصعب اقتراحها من طول المسار، لأن المسار أصلاً يحتوي
+    على أعمدة موجودة».
+    """
+
+    added_lattice_supply: SupplyForm = SupplyForm.WITHOUT_ACCESSORIES
+    added_round_supply: SupplyForm = SupplyForm.WITHOUT_ACCESSORIES
+    """شكل توريد الأعمدة المضافة — يحدّد مادتها وخصم البراكيت المرفق (ق-٦٠)."""
+
+    stay_rod_sets: int = 0
+    """أطقم ستي رود إضافية — **يدوية بحتة، والافتراضي لا شيء** (بنصّ المستخدم)."""
+
+
+@dataclass
 class Network33kV:
     """مدخلات شبكة 33 ك.ف الهوائية."""
 
@@ -314,9 +364,11 @@ class SegmentKind(Enum):
     EQUIPMENT = "تجهيزات"
     UG11 = "شبكة أرضية 11 ك.ف"
     UG33 = "شبكة أرضية 33 ك.ف"
+    CONV11 = "تحويل شبكة 11 ك.ف من مفردة إلى مزدوجة"
 
 
-SegmentContent = "Network11kV | Network33kV | NetworkLV | Equipment"
+SegmentContent = ("Network11kV | Network33kV | NetworkLV | Equipment"
+                  " | Underground11kV | Underground33kV | Conversion11kV")
 
 
 @dataclass
@@ -346,6 +398,8 @@ class Segment:
             return SegmentKind.UG11
         if isinstance(self.content, Underground33kV):
             return SegmentKind.UG33
+        if isinstance(self.content, Conversion11kV):
+            return SegmentKind.CONV11
         raise TypeError(f"محتوى مقطع غير معروف: {type(self.content).__name__}")
 
 
