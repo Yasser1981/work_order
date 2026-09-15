@@ -59,7 +59,9 @@ def test_removing_a_segment_asks_first(window, monkeypatch):
     from PyQt6.QtWidgets import QMessageBox
 
     editor = window.add_segment(SegmentKind.HV11)
-    editor.route.setValue(500)
+    # قيمة **تخالف** ما تبدأ به اللوحة (500 م)، فالمقطع الفارغ يُحذف بلا
+    # سؤال منذ ق-٨٠ — والسؤال محروس هنا للمقطع الممتلئ وحده
+    editor.route.setValue(750)
     window.segments.list.setCurrentRow(0)
 
     asked = {}

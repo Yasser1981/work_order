@@ -31,10 +31,13 @@ def _price_version_line(result: dict) -> str:
     ورقتان بالأرقام نفسها وبنسختَي أسعار مختلفتين ورقتان مختلفتان. بلا هذا السطر
     لا سبيل لمعرفة أيّهما، ولا لإعادة إنتاج الورقة بعد تحديث الأسعار (ق-٤٠).
     """
+    from engine.version import VERSION
+
     version = result.get("نسخة_الأسعار") or ""
+    program = f" &nbsp;·&nbsp; إصدار البرنامج: {VERSION}"     # أثرٌ داخلي (ق-٨٠)
     if not version:
-        return "⚠ نسخة الأسعار غير مسجَّلة في هذه النتيجة"
-    return f"محسوبة بنسخة الأسعار: {_esc(version)}"
+        return "⚠ نسخة الأسعار غير مسجَّلة في هذه النتيجة" + program
+    return f"محسوبة بنسخة الأسعار: {_esc(version)}{program}"
 
 
 def _labour_table(lines: list) -> str:

@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from engine import latest_catalog_version, load_catalog
+from engine.version import VERSION
 from engine.availability import selectable, unavailable_summary
 from engine.underground import CIVIL_GROUP
 from engine.prices import differences
@@ -68,6 +69,13 @@ class MainWindow(QMainWindow):
         self.path: Path | None = None
         """مسار ملف `.wo` المفتوح. None يعني أمر عمل جديد لم يُحفظ بعد."""
         self._rows: list[dict] = []
+        self.dirty = False
+        """هل في أمر العمل تعديل لم يُحفظ بعد؟ (ق-٨٠)
+
+        يُرفع مع أي تغيير في المقاطع أو في لوحة أمر العمل أو في نسخة الأسعار،
+        ويُخفض عند الحفظ والفتح والبدء من جديد — أي عند كل لحظة يصير فيها ما
+        على الشاشة مطابقاً لما على القرص.
+        """
         self.unavailable: set[str] = set()
         """المواد المؤشَّرة «غير متوفرة في المخازن» (ق-٧٦).
 
@@ -87,6 +95,10 @@ class MainWindow(QMainWindow):
         self.segments = SegmentsPanel(self.catalog)
         self.order_panel = OrderPanel()
         self.segments.changed.connect(self.recalculate)
+        # التعديل غير المحفوظ يُرصد من مصدريه معاً — والمقاطع وحدها لا تكفي:
+        # رقم أمر العمل واسم المشروع يُحفظان أيضاً (ق-٨٠)
+        self.segments.changed.connect(self._mark_dirty)
+        self.order_panel.changed.connect(self._mark_dirty)
 
         tabs = QTabWidget()
         tabs.addTab(self.segments, "المقاطع")
@@ -228,11 +240,58 @@ class MainWindow(QMainWindow):
         self.action_update_prices = menu.addAction("تحديث أسعار أمر العمل إلى الأحدث…")
         self.action_update_prices.triggered.connect(self.update_prices)
 
+    def _mark_dirty(self) -> None:
+        """يرفع علم التعديل ويُظهر نجمته في العنوان."""
+        if not self.dirty:
+            self.dirty = True
+            self._refresh_title()
+
+    def _mark_clean(self) -> None:
+        """ما على الشاشة صار مطابقاً لما على القرص."""
+        self.dirty = False
+        self._refresh_title()
+
+    def closeEvent(self, event) -> None:
+        """يمنع الخروج الصامت على عملٍ لم يُحفظ (ق-٨٠).
+
+        بطلب المستخدم: «في حال غلق البرنامج قبل إجراء عملية حفظ تظهر رسالة
+        لتنبيه المستخدم على ضرورة الحفظ قبل الخروج».
+
+        **وثلاثة خيارات لا اثنان:** «حفظ» و«خروج بلا حفظ» و«إلغاء». ولو كان
+        السؤال «أتخرج؟ نعم/لا» لاضطرّ من أراد الحفظ أن يُلغي ثم يبحث عن الأمر
+        بنفسه. والافتراضي «حفظ» — أسلم الثلاثة عند نقرة سهو.
+
+        وإن أُلغي حوار «حفظ باسم» أو فشلت الكتابة **يبقى البرنامج مفتوحاً**:
+        فالخروج حينها يضيّع العمل الذي طُلب حفظه.
+        """
+        if not self.dirty:
+            event.accept()
+            return
+
+        name = self.path.name if self.path else "أمر عمل جديد لم يُحفظ بعد"
+        answer = QMessageBox.question(
+            self, "تعديلات لم تُحفظ",
+            f"في «{name}» تعديلات لم تُحفظ.\n\nأحفظها قبل الخروج؟",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            event.ignore()
+            return
+        if answer == QMessageBox.StandardButton.Save and self.save() is None:
+            event.ignore()               # أُلغي الحفظ أو فشل — لا يُغلَق البرنامج
+            return
+        event.accept()
+
     def _refresh_title(self) -> None:
         """يُظهر اسم الملف ونسخة الأسعار في العنوان — فلا يلتبس أمر عمل بآخر."""
         name = self.path.name if self.path else "أمر عمل جديد (لم يُحفظ)"
+        star = "•  " if self.dirty else ""     # نجمة التعديل غير المحفوظ (ق-٨٠)
         self.setWindowTitle(
-            f"نظام أوامر العمل الكهربائية  —  {name}  —  أسعار {self.version}"
+            f"{star}نظام أوامر العمل الكهربائية {VERSION}  —  {name}"
+            f"  —  أسعار {self.version}"
         )
 
     def order(self) -> WorkOrder:
@@ -269,7 +328,7 @@ class MainWindow(QMainWindow):
         self.catalog = load_catalog(self.version)
         self._retarget_catalog()
         self.recalculate()
-        self._refresh_title()
+        self._mark_clean()
 
     @staticmethod
     def _confirm(title: str, text: str) -> bool:
@@ -284,7 +343,7 @@ class MainWindow(QMainWindow):
         """يكتب ملف `.wo` بلا أي حوار — قابلة للاختبار والاستدعاء الآلي."""
         written = save_order(path, self.order(), self.project(), self.version)
         self.path = written
-        self._refresh_title()
+        self._mark_clean()
         return written
 
     def save(self) -> Path | None:
@@ -328,7 +387,7 @@ class MainWindow(QMainWindow):
         self.unavailable = set(order.unavailable_materials)
         self.path = Path(path)
         self.recalculate()
-        self._refresh_title()
+        self._mark_clean()
 
     def open_order(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "فتح أمر عمل", "", WO_FILTER)
@@ -364,11 +423,16 @@ class MainWindow(QMainWindow):
             self.switch_version(version)
 
     def switch_version(self, version: str) -> None:
-        """ينقل أمر العمل المفتوح إلى نسخة أسعار أخرى ويُعيد الحساب."""
+        """ينقل أمر العمل المفتوح إلى نسخة أسعار أخرى ويُعيد الحساب.
+
+        **ويُعدّ تعديلاً غير محفوظ** (ق-٨٠): اسم النسخة يُحفظ داخل ملف أمر
+        العمل، فتغييره يجعل ما على الشاشة مخالفاً لما على القرص.
+        """
         self.catalog = load_catalog(version)
         self.version = version
         self._retarget_catalog()
         self.recalculate()
+        self._mark_dirty()
         self._refresh_title()
 
     def update_prices(self) -> None:

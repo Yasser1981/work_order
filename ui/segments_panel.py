@@ -63,6 +63,23 @@ JUNCTION_NOTE = (
 )
 
 
+def _items(count: int, noun: str) -> str:
+    """عبارة عربية سليمة لعدد البنود: المفرد والمثنّى والجمع وتمييز الأعداد.
+
+    «3 بند أجور» ركيك، و«بند واحد» و«بندان» و«3 بنود» و«12 بنداً» هي الصواب.
+    والرسالة تُقرأ في لحظة قرارٍ لا رجعة فيه، فركاكتها تصرف الانتباه عن معناها.
+    """
+    if not count:
+        return ""
+    if count == 1:
+        return f"بند {noun} واحد"
+    if count == 2:
+        return f"بندان من {noun}"
+    if count <= 10:
+        return f"{count} بنود من {noun}"
+    return f"{count} بنداً من {noun}"
+
+
 class SegmentsPanel(QWidget):
     """قائمة مقاطع المشروع ومحرّر المقطع المحدَّد."""
 
@@ -110,7 +127,7 @@ class SegmentsPanel(QWidget):
         self.usage_hint = HintLabel(
             "اختر مقطعاً من القائمة لتحرير معطياته &nbsp;·&nbsp; "
             "غيّر اسمه من الحقل أدناه &nbsp;·&nbsp; "
-            "زرّ <b>حذف</b> يزيله بعد تأكيد &nbsp;·&nbsp; "
+            "زرّ <b>حذف</b> يزيله — بعد تأكيد إن كان فيه مُدخَلات &nbsp;·&nbsp; "
             "<b>▲ ▼</b> تغيّران ترتيبه"
         )
         outer.addWidget(self.usage_hint)
@@ -166,11 +183,15 @@ class SegmentsPanel(QWidget):
 
     # ─────────────────────────────── العمليات ───────────────────────────────
 
+    def _new_editor(self, kind: SegmentKind):
+        """لوحة جديدة من هذا النوع — تُبنى هنا وحدها، فلا تفترق نسختان منها."""
+        return (EDITORS[kind](self.catalog, as_segment=True)
+                if kind is SegmentKind.LV else EDITORS[kind](self.catalog))
+
     def add_segment(self, kind: SegmentKind, name: str | None = None) -> int:
         """يضيف مقطعاً ويعيد فهرسه. اللوحة المناسبة تُبنى مرّة وتبقى."""
         index = len(self._names)
-        editor = EDITORS[kind](self.catalog, as_segment=True) \
-            if kind is SegmentKind.LV else EDITORS[kind](self.catalog)
+        editor = self._new_editor(kind)
         editor.changed.connect(self.changed)
         self.stack.addWidget(editor)
 
@@ -186,16 +207,20 @@ class SegmentsPanel(QWidget):
         self.add_segment(self.kind.currentData())
 
     def _remove_segment(self, confirm: bool = True) -> None:
-        """يحذف المقطع المحدَّد بعد تأكيد المستخدم (ق-٥٧).
+        """يحذف المقطع المحدَّد — بعد تأكيد **إن كان فيه مُدخَلات** (ق-٥٧، ق-٨٠).
 
         الحذف **لا رجعة فيه** — لا تراجع في البرنامج. فمقطع أُدخلت معطياته في
-        دقائق يضيع بنقرة واحدة (وإن كان يمكن استعادته من ملف `.wo` محفوظ). `confirm=False`
-        للاستدعاء الآلي من الاختبارات، فالنوافذ الحاجزة تُعطّلها.
+        دقائق يضيع بنقرة واحدة (وإن كان يمكن استعادته من ملف `.wo` محفوظ).
+        `confirm=False` للاستدعاء الآلي من الاختبارات، فالنوافذ الحاجزة تُعطّلها.
+
+        **والمقطع الفارغ يُحذف بلا سؤال** (ق-٨٠): سؤالٌ عمّا لا شيء فيه يُفقده
+        معناه، فيصير المستخدم ينقر «نعم» بلا قراءة — فلا يقرأه يوم يكون في
+        المقطع عملُ ساعة.
         """
         row = self.list.currentRow()
         if row < 0:
             return
-        if confirm and not self._confirm_removal(row):
+        if confirm and not self.is_empty(row) and not self._confirm_removal(row):
             return
         editor = self.stack.widget(row + 1)
         self.stack.removeWidget(editor)
@@ -208,13 +233,52 @@ class SegmentsPanel(QWidget):
         self._sync_controls()
         self.changed.emit()
 
+    def is_empty(self, row: int) -> bool:
+        """هل المقطع كما وُلد — أي لم يُغيَّر فيه شيء منذ إضافته؟
+
+        **المقارنة بلوحة جديدة من النوع نفسه**، لا بالقيم الافتراضية للكائن في
+        المحرك: بعض الحقول تبدأ في الواجهة بقيمة مقترحة تخالف افتراض المحرك
+        (طول المسار مثلاً يبدأ 500 م). فلو قِيس الفراغ بافتراض المحرك لعُدّ كل
+        مقطع جديد «ممتلئاً» وسُئل عنه بلا داعٍ.
+
+        وبناء لوحة جديدة للمقارنة **يجعل القاعدة تتبع الواجهة تلقائياً**: أي
+        حقل يُضاف أو تتغيّر قيمته المقترحة يدخل الفحص بلا تعديل هنا.
+        """
+        fresh = self._new_editor(self._kinds[row])
+        try:
+            return self.editor(row).content() == fresh.content()
+        finally:
+            fresh.deleteLater()
+
+    def _filled_summary(self, row: int) -> str:
+        """وصفٌ لما سيُفقد: عدد بنود المواد والأجور التي يولّدها هذا المقطع.
+
+        «تُفقَد معطياته» عبارة عامّة لا تُقدِّر الخسارة. أما «فيه 12 بند مواد
+        و4 بنود أجور» فرقمٌ يجعل القرار على بيّنة.
+        """
+        from engine.project import labour_of, materials_of
+        from engine.types import Segment
+
+        try:
+            segment = Segment(self._names[row], self.editor(row).content())
+            materials = len(materials_of(segment, self.catalog))
+            labour = len(labour_of(segment, self.catalog))
+        except Exception:                 # لا يمنع حوارَ التأكيد خللٌ في العدّ
+            return ""
+        if not (materials or labour):
+            return ""
+        parts = [_items(materials, "المواد"), _items(labour, "الأجور")]
+        return "فيه " + " و".join(part for part in parts if part) + "."
+
     def _confirm_removal(self, row: int) -> bool:
         """يسأل قبل الحذف ويسمّي المقطع — لئلا يُحذف غير المقصود."""
+        summary = self._filled_summary(row)
         answer = QMessageBox.question(
             self,
             "تأكيد الحذف",
             f"حذف «{self._names[row]}»؟\n\n"
-            "تُفقَد معطياته كلها ولا يمكن التراجع.",
+            + (f"{summary}\n" if summary else "")
+            + "تُفقَد معطياته كلها ولا يمكن التراجع.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,          # الافتراضي «لا» — نقرة سهوٍ لا تحذف
         )

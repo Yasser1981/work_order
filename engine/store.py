@@ -40,6 +40,7 @@ from pathlib import Path
 from . import equipment as _equipment_module
 from . import types as _types_module
 from . import workorder as _workorder_module
+from .version import VERSION as PROGRAM_VERSION
 
 FILE_KIND = "أمر عمل — نظام أوامر العمل الكهربائية"
 """بصمة تُكتب في رأس الملف ويُتحقَّق منها عند الفتح، فلا يُفتح ملف غريب بصمت."""
@@ -153,10 +154,16 @@ def decode(data):
 
 
 def document(order, project, price_version: str) -> dict:
-    """يبني بنية الملف الكاملة — دالة نقيّة قابلة للاختبار بلا قرص."""
+    """يبني بنية الملف الكاملة — دالة نقيّة قابلة للاختبار بلا قرص.
+
+    **ويُسجَّل فيها إصدار البرنامج الذي كتب الملف** (ق-٨٠): حقلٌ للأثر لا
+    يقرأه الفتح ولا يؤثر في شيء، لكنه يجيب عن سؤالٍ يُطرح عند مراجعة ملف
+    قديم: «بأي إصدار أُنتج هذا؟».
+    """
     return {
         "نوع_الملف": FILE_KIND,
         "إصدار_الصيغة": FORMAT_VERSION,
+        "إصدار_البرنامج": PROGRAM_VERSION,
         "نسخة_الأسعار": price_version,
         "أمر_العمل": encode(order),
         "المشروع": encode(project),
