@@ -1,55 +1,66 @@
 # -*- coding: utf-8 -*-
-"""تحويل شبكة 11 ك.ف قائمة من مفردة إلى مزدوجة (ق-٨٣).
+"""تحويل شبكة 11 ك.ف قائمة من مفردة إلى مزدوجة (ق-٨٣، وعُدّل بـق-٨٤).
 
 بنصّ المستخدم: «هناك شبكة كهربائية 11 ك.ف منصوبة أصلاً، وتكون شبكة مفردة، يراد
 تحويلها إلى شبكة مزدوجة».
 
 ## المبدأ: **الفرق يُشتقّ ولا يُكتَب**
 
-لا رقم في هذا الملف يقول «براكيتان لكل عمود». بل:
+لا رقم في هذا الملف يقول «براكيتان لكل عمود» ولا «ثلاثة عوازل». بل:
 
-> **المطلوب لكل عمود قائم = حاجته في المزدوجة − حاجته في المفردة**
+> **ما يزيده العمود القائم = مولّد الشبكة المزدوجة − مولّد الشبكة المفردة**
 
-تُقرأ من جداول `overhead` نفسها التي اعتُمدت في ق-٥ و ق-٢١. فلو تغيّرت قاعدة
-براكيت يوماً **تبعها التحويل تلقائياً**، ولم يبقَ رقمان لقاعدة واحدة.
+يُطرح `materials_11kv` من نفسه بعمودٍ واحد ومسارٍ صفر. فلو تغيّرت قاعدة براكيت
+أو عازل يوماً **تبعها التحويل تلقائياً**، ولم يبقَ رقمان لقاعدة واحدة يفترقان.
 
-**وقد صدّق المستخدم الفرق المشتقّ**: المدوّر +2 (بمقاسين في النمط القياسي،
-ومقاسٍ واحد في البديل)، والمشبك **+4** لا +2 — وهو ما نبّهتُ عليه فأقرّه.
+**وثمرةٌ ثانية للطرح:** ما لا يتغيّر بتغيّر الدائرة — العمود نفسه، والكونكريت،
+والتأريض، والستي رود — **فرقُه صفرٌ فيسقط من تلقائه**. فامتناعُ الكونكريت عن
+عمودٍ قائمٍ ليس سطراً نسيَه أحدٌ أو تذكّره، بل نتيجةُ الطرح.
+
+**وقد صدّق المستخدم الفرق المشتقّ**: المدوّر +2 براكيت (بمقاسين في النمط
+القياسي، ومقاسٍ واحد في البديل)، والمشبك **+4** لا +2 — وهو ما نبّهتُ عليه
+فأقرّه.
+
+## الاستثناء الوحيد: احتياط التاج (ق-٨٤)
+
+رقمان **مكتوبان** هنا لأنهما لا يُشتقّان من جدول: العازل القائم على رأس العمود
+(**التاج**) يُنقل مكانه عند التحويل، وبنصّ المستخدم «قد يُهمل أو يتلف عند تغيير
+مكانه». فهي **بدلُ تالفٍ لا حاجةُ دائرةٍ جديدة** — واقعُ ميدانٍ لا قاعدةُ تصميم،
+ولذلك لا يعرفه المولّد ولا يُطلب منه أن يعرفه.
+
+فيُكتب باسمه وسببه ومقداره في مكان واحد: `CROWN_SPARE`.
 
 ## ثلاثة مصادر للمواد، لكلٍّ قاعدته
 
 | المصدر | القاعدة |
 |---|---|
-| **الأعمدة القائمة** | الفرق وحده: براكيت وعوازل. لا عمود ولا كونكريت ولا تأريض |
+| **الأعمدة القائمة** | الفرق وحده + احتياط التاج |
 | **الدائرة الجديدة** | المسار × 3 أطوار × دائرة واحدة × معامل الزيادة |
-| **أعمدة الإسناد المضافة** | حاجةُ عمودِ شبكةٍ مزدوجةٍ **كاملة** — ولذلك تُولَّد بمولّد الشبكة نفسه |
+| **أعمدة الإسناد المضافة** | حاجةُ عمودِ شبكةٍ مزدوجةٍ **كاملة** |
 
 **ولماذا الأعمدة المضافة بالحاجة الكاملة:** العمود الجديد يحمل الدائرتين معاً،
 فليس «تحويلاً» بل عمود شبكة مزدوجة. ويُولَّد باستدعاء `materials_11kv` نفسها
 بمسارٍ صفر، فتأتي معه البراكيت والعوازل والكونكريت والتأريض بقواعدها المعتمدة
-بلا أن تُكتب هنا ثانية.
+بلا أن تُكتب هنا ثانية. **ولا احتياط تاجٍ له**: عوازله كلها جديدة.
 
-## الأجور
+## الأجور: التسليك ونصب المضاف — ولا شيء غيرهما (ق-٨٤)
 
-- **التسليك** بند قائم مُسعَّر، وكميته أمتار الدائرة الجديدة.
-- **نصب الأعمدة المضافة** بند قائم مُسعَّر.
-- **تحويل العمود القائم** (تركيب البراكيت والعوازل عليه) — **بلا سعر بعد**،
-  بنصّ المستخدم: «اتركه فارغاً حالياً بدون أجور». فيخرج بنداً ظاهراً بلا أجر
-  على قاعدة ق-٩: الفراغ يعني «غير مُسعَّر» لا صفراً، فيبقى العمل مرئياً في
-  الكشف ويُنبَّه عليه، ومتى أُدخل سعره في نسخة الأسعار امتلأ وحده.
+بنصّ المستخدم: «أجر التحويل بدون أجور، عدا أجور المواد طبعاً. بالنسبة للعمل،
+يؤخذ أجر التسليك فقط، وبالتأكيد أجر الأعمدة الإضافية».
 
-**والسعر يُقرأ بـ`.get` لا بالفهرسة**، فلا ينهار الحساب على نسخة أسعار قديمة
-لا تعرف هذين البندين (ق-٨٣).
+فـ**تركيب البراكيت والعوازل على العمود القائم لا أجر له أصلاً** — لا «أجرٌ
+ينتظر تسعيراً». وهذا يُبطل ما كان في ق-٨٣ من إخراجه بنداً بلا سعر على قاعدة
+ق-٩: **فق-٩ لموضعٍ يُستحقّ فيه أجرٌ ولم يُسعَّر بعد**، وهذا موضعٌ لا يُستحقّ
+فيه أجر. وبقاؤه بنداً بلا سعر كان يُبقي تحذيراً أصفر لا ينطفئ أبداً، ويوهم
+المدقّق أن في الكشف نقصاً.
+
+**وأثر العمل القائم لا يضيع** بزوال بنده: أسطر المواد تسمّي الأعمدة القائمة
+بعددها ونوعها في خانة المصدر، فيقرأ المدقّق من أين جاء كل براكيت وكل عازل.
 """
 
 from __future__ import annotations
 
 from .overhead import (
-    CONVERSION_LATTICE_RATE,
-    CONVERSION_ROUND_RATE,
-    M_BRACKET_12,
-    M_BRACKET_14,
-    M_AL_FITTINGS_11,
     M_DISC_INSULATOR_11,
     M_PIN_INSULATOR_11,
     M_WIRE_11,
@@ -61,6 +72,7 @@ from .overhead import (
     wire_quantity,
 )
 from .types import (
+    BracketPattern,
     CircuitType,
     Conversion11kV,
     LabourLine,
@@ -69,23 +81,60 @@ from .types import (
     PoleType11,
 )
 
-PIN_PER_POLE_PER_CIRCUIT = 3
-"""عازل دبوسي لكل عمود لكل دائرة — ثلاثة أطوار (مقروء من مولّد الشبكة)."""
+CROWN_SPARE: dict[PoleType11, dict[tuple[str, str], int]] = {
+    PoleType11.ROUND: {M_PIN_INSULATOR_11: 1},
+    PoleType11.LATTICE: {M_DISC_INSULATOR_11: 2},
+}
+"""احتياط التاج: بدلُ العازل القائم على رأس العمود إذا تلف عند نقله (ق-٨٤).
 
-DISC_PER_LATTICE_PER_CIRCUIT = 6
-"""عازل قرصي ومعدات ربط لكل عمود مشبك لكل دائرة (للشدّ)."""
+**الرقم الوحيد المكتوب في هذا الملف**، لأنه بدلُ تالفٍ لا حاجةُ دائرةٍ جديدة —
+فلا يعرفه مولّد الشبكة. بنصّ المستخدم: المدوّر **+1 دبوسي** والمشبك **+2 قرصي**،
+«فوق الأرقام التي ذكرتَها».
+"""
 
 
-def bracket_increment(pattern, pole: PoleType11) -> dict[str, int]:
+def bracket_increment(pattern: BracketPattern, pole: PoleType11) -> dict[str, int]:
     """الفرق في البراكيت لعمود قائم واحد: المزدوجة ناقص المفردة.
 
     **لا يُكتب الفرق رقماً** بل يُطرح من الجدولين، فيبقى تابعاً لهما أبداً.
+    وتقرأه اللوحة لتعرض التفصيل بالمقاسات، وحارسٌ يلزمه بموافقة `pole_increment`
+    فلا يفترق الشرحُ عن الحساب.
     """
     single = bracket_need_11(CircuitType.SINGLE, pattern, pole)
     double = bracket_need_11(CircuitType.DOUBLE, pattern, pole)
     increment = {size: double.get(size, 0) - single.get(size, 0)
                  for size in set(single) | set(double)}
     return {size: count for size, count in increment.items() if count > 0}
+
+
+def _one_pole(circuit: CircuitType, pattern: BracketPattern,
+              pole: PoleType11) -> dict[tuple[str, str], float]:
+    """مواد عمودٍ واحدٍ بمسارٍ صفر، مجموعةً بالاسم والوحدة."""
+    net = Network11kV(
+        route_length_m=0,
+        circuit=circuit,
+        bracket_pattern=pattern,
+        poles_lattice=1 if pole is PoleType11.LATTICE else 0,
+        poles_round=1 if pole is PoleType11.ROUND else 0,
+    )
+    totals: dict[tuple[str, str], float] = {}
+    for line in materials_11kv(net):
+        key = (line.name, line.unit)
+        totals[key] = totals.get(key, 0) + line.qty
+    return totals
+
+
+def pole_increment(pattern: BracketPattern,
+                   pole: PoleType11) -> dict[tuple[str, str], float]:
+    """كل ما يزيده تحويل **عمودٍ قائمٍ واحد** من مفرد إلى مزدوج.
+
+    المولّد مطروحٌ من نفسه. فما لا يتغيّر بتغيّر الدائرة — العمود والكونكريت
+    والتأريض — فرقُه صفرٌ **فيسقط من تلقائه** لا بسطرٍ يستثنيه.
+    """
+    single = _one_pole(CircuitType.SINGLE, pattern, pole)
+    double = _one_pole(CircuitType.DOUBLE, pattern, pole)
+    return {key: qty - single.get(key, 0)
+            for key, qty in double.items() if qty - single.get(key, 0) > 0}
 
 
 def _added_network(net: Conversion11kV) -> Network11kV:
@@ -120,39 +169,33 @@ def materials_conversion_11(net: Conversion11kV) -> list[MaterialLine]:
             f"الدائرة الجديدة: {net.route_length_m:,.0f} م × 3 أطوار × "
             f"{factor:g} زيادة"))
 
-    # ٢. فرق البراكيت على الأعمدة القائمة
-    sizes = {"1.2": M_BRACKET_12, "1.4": M_BRACKET_14}
+    # ٢. الأعمدة القائمة — الفرق المشتقّ، ومعه احتياط التاج وحده مكتوباً
     for pole, count, label in (
         (PoleType11.LATTICE, net.existing_lattice, "أعمدة مشبكة قائمة"),
         (PoleType11.ROUND, net.existing_round, "أعمدة مدوّرة قائمة"),
     ):
         if not count:
             continue
-        for size, per_pole in bracket_increment(net.bracket_pattern, pole).items():
-            lines.append(MaterialLine(
-                *sizes[size], per_pole * count,
-                f"{label}: {count} × {per_pole} (فرق المزدوجة عن المفردة)"))
+        spares = CROWN_SPARE[pole]
+        for key, per_pole in pole_increment(net.bracket_pattern, pole).items():
+            spare = spares.get(key, 0)
+            if spare:
+                source = (f"{label}: {count} × ({per_pole:g} فرق المزدوجة عن المفردة"
+                          f" + {spare} بدل تاج)")
+            else:
+                source = f"{label}: {count} × {per_pole:g} (فرق المزدوجة عن المفردة)"
+            lines.append(MaterialLine(*key, (per_pole + spare) * count, source))
 
-    # ٣. فرق العوازل على الأعمدة القائمة — دائرة واحدة إضافية
-    existing = net.existing_lattice + net.existing_round
-    if existing:
-        lines.append(MaterialLine(
-            *M_PIN_INSULATOR_11, existing * PIN_PER_POLE_PER_CIRCUIT,
-            f"أعمدة قائمة: {existing} × {PIN_PER_POLE_PER_CIRCUIT} (دائرة إضافية)"))
-    if net.existing_lattice:
-        for material in (M_DISC_INSULATOR_11, M_AL_FITTINGS_11):
-            lines.append(MaterialLine(
-                *material, net.existing_lattice * DISC_PER_LATTICE_PER_CIRCUIT,
-                f"أعمدة مشبكة قائمة: {net.existing_lattice} × "
-                f"{DISC_PER_LATTICE_PER_CIRCUIT} (دائرة إضافية)"))
-
-    # ٤. أعمدة الإسناد المضافة — بحاجة عمود الشبكة المزدوجة كاملة
+    # ٣. أعمدة الإسناد المضافة — بحاجة عمود الشبكة المزدوجة كاملة
     lines += materials_11kv(_added_network(net))
     return lines
 
 
 def labour_conversion_11(net: Conversion11kV, rates: dict) -> list[LabourLine]:
-    """أجور التحويل: التسليك، ونصب المضاف، وتحويل الأعمدة القائمة (بلا سعر بعد)."""
+    """أجور التحويل: التسليك ونصب الأعمدة المضافة — **ولا شيء غيرهما** (ق-٨٤).
+
+    فتركيب البراكيت والعوازل على العمود القائم لا أجر له بنصّ المستخدم.
+    """
     out: list[LabourLine] = []
 
     qty = wire_quantity(net.route_length_m, CircuitType.SINGLE,
@@ -161,18 +204,6 @@ def labour_conversion_11(net: Conversion11kV, rates: dict) -> list[LabourLine]:
         entry = rates[WIRING_11_RATE]
         out.append(LabourLine(WIRING_11_LABEL, entry["الوحدة"], qty, entry["السعر"],
                               source="تسليك الدائرة الجديدة", driver=M_WIRE_11))
-
-    # تحويل الأعمدة القائمة: بندان — العمل يختلف كثيراً بين النوعين
-    # (المشبك 4 براكيت و6 عوازل قرصية، والمدوّر 2 براكيت)
-    for name, count, label in (
-        (CONVERSION_LATTICE_RATE, net.existing_lattice, "عمود مشبك قائم"),
-        (CONVERSION_ROUND_RATE, net.existing_round, "عمود مدوّر قائم"),
-    ):
-        if not count:
-            continue
-        entry = rates.get(name) or {}
-        out.append(LabourLine(name, entry.get("الوحدة", "عدد"), count,
-                              entry.get("السعر"), source=f"{label}: {count}"))
 
     out += labour_11kv(_added_network(net), rates)
     return out
