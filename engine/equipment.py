@@ -399,8 +399,10 @@ def labour_equipment(eq: Equipment, rates: dict) -> list[LabourLine]:
     بند أجر لكل (جهد × موقع): أجر النصب يتبع الموقع (ق-٦٧).
     القفيص بلا أجر مستقل: يُركَّب مع العمود.
     """
+    # «نصب المحولة» يجمع كل السعات والجهود، ولكل سعة مادتها — فلا مادة واحدة
+    # تقوده (ق-٨١)
     transformers = sum(eq.transformers.values())
-    items = [("نصب المحولة", transformers, "عدد المحولات بكل السعات والجهود")]
+    items = [("نصب المحولة", transformers, "عدد المحولات بكل السعات والجهود", None)]
 
     counts = {
         (IsolatorVoltage.KV11, IsolatorPosition.MID_NETWORK): eq.onload_11_mid,
@@ -413,11 +415,13 @@ def labour_equipment(eq: Equipment, rates: dict) -> list[LabourLine]:
             items.append((
                 isolator_labour_name(voltage, position), count,
                 f"فاصل {voltage.value} {position.value}: {count}",
+                ISOLATOR_PARTS[voltage]["isolator"],
             ))
 
     out = []
-    for label, count, source in items:
+    for label, count, source, driver in items:
         if count:
             entry = rates[label]
-            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"], source))
+            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"], source,
+                                  driver=driver))
     return out

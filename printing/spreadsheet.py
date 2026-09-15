@@ -38,6 +38,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from engine.links import material_drivers
 from engine.workorder import WorkOrder
 
 from .iso_form import SIGNATURES
@@ -62,6 +63,37 @@ EQUIPMENT_COLUMNS = ["ت", "نوع الآلية", "الرقم", "عدد الأي
 
 SIDE = 8
 """أول عمود في الكتلة الجانبية (H). والعمود G فاصل — نظير خلية الفصل في ق-٦٩."""
+
+BANNER_NEXT_ROW = 6
+"""أول صفّ بعد الترويسة العلوية (أربعة أسطر وفاصل)."""
+
+HEADER_BLOCK_ROWS = 7
+"""ارتفاع كتلة الترويسة (ستّة صفوف وفاصل)."""
+
+MATERIALS_FIRST_ROW = BANNER_NEXT_ROW + HEADER_BLOCK_ROWS + 2
+"""أول صفّ مادة: بعد الترويسة، وعنوان الجدول، وصفّ العناوين.
+
+**يُحسب هنا مرّة واحدة** لأن ثلاثة أشياء تحتاجه قبل أن تُبنى الورقة: سطر
+الكلفة في الترويسة، وصفّ المجموع، **وكميات الأجور التي تشير إلى المواد**
+(ق-٨١). ويحرسه `assert` في `_build_order_sheet` فلا ينزلق بلا أن يسقط شيء.
+"""
+
+
+def material_rows(result: dict) -> dict[tuple[str, str], int]:
+    """(اسم المادة، وحدتها) ← رقم صفّها في ورقة أمر العمل.
+
+    تُحسب **قبل** بناء الورقة، لأن ورقة الأجور تُبنى أولاً وتحتاج أن تشير إلى
+    صفوف المواد (ق-٨١).
+    """
+    return {
+        (material["المادة"], material["الوحدة"]): MATERIALS_FIRST_ROW + index
+        for index, material in enumerate(printed_materials(result))
+    }
+
+
+def printed_materials(result: dict) -> list[dict]:
+    """المواد التي تُكتب في الورقة — بالترتيب نفسه في كل موضع."""
+    return [material for material in result["المواد"] if material["الكمية"] > 0]
 
 
 def _sheet(workbook: Workbook, title: str):
@@ -112,7 +144,7 @@ def _banner(sheet, order: WorkOrder, last_column: int) -> int:
         cell = sheet.cell(row, 1, text)
         cell.font = Font(bold=size >= 14, size=size)
         cell.alignment = Alignment(horizontal=align)
-    return 6                      # الصفّ 5 فاصل (ق-٦٩)
+    return BANNER_NEXT_ROW        # الصفّ 5 فاصل (ق-٦٩)
 
 
 def _cost_formula(materials_total_row: int, labour_total_row: int) -> str:
@@ -163,7 +195,7 @@ def _header_block(sheet, order: WorkOrder, row: int, cost: str) -> int:
     ), start=1):
         label(row + offset, 1, text)
         value(row + offset, 2, 6, content)
-    return row + 7                # صفّ فاصل بعد الكتلة (ق-٦٩)
+    return row + HEADER_BLOCK_ROWS    # صفّ فاصل بعد الكتلة (ق-٦٩)
 
 
 # ──────────────────────────── الجداول ────────────────────────────
@@ -176,7 +208,7 @@ def _materials_block(sheet, result: dict, row: int) -> tuple[int, int]:
 
     first = row + 2
     at = first
-    materials = [m for m in result["المواد"] if m["الكمية"] > 0]
+    materials = printed_materials(result)
     for index, material in enumerate(materials, start=1):
         sheet.cell(at, 1, index).alignment = _CENTRE
         sheet.cell(at, 2, material["المادة"]).alignment = _RIGHT
@@ -268,9 +300,8 @@ def _build_order_sheet(sheet, order: WorkOrder, result: dict,
     row = _banner(sheet, order, last_column=SIDE + len(STAFF_COLUMNS) - 1)
 
     # عدد المواد يحدّد صفّ المجموع، وسطر الكلفة يشير إليه — فيُحسب أولاً
-    counted = len([m for m in result["المواد"] if m["الكمية"] > 0])
-    header_rows = 6 + 1                       # ستّة صفوف وفاصل
-    materials_total_row = row + header_rows + 2 + counted
+    counted = len(printed_materials(result))
+    materials_total_row = MATERIALS_FIRST_ROW + counted
 
     row = _header_block(sheet, order, row,
                         _cost_formula(materials_total_row, labour_total_row))
@@ -290,17 +321,28 @@ def _build_order_sheet(sheet, order: WorkOrder, result: dict,
 
 
 def _build_labour_sheet(sheet, result: dict) -> int:
-    """ورقة الأجور بمعادلاتها. تعيد صفّ المجموع ليشير إليه سطر الكلفة."""
+    """ورقة الأجور بمعادلاتها. تعيد صفّ المجموع ليشير إليه سطر الكلفة.
+
+    **وكمية البند تشير إلى كمية مادته** حين تقودها مادة (ق-٨١): فتعديل أمتار
+    السلك في ورقة أمر العمل يُحدّث كمية التسليك هنا وأجره ومجموعه. ولولا ذلك
+    لخرجت ورقةٌ نصفها معدَّل ونصفها قديم — وهي العلّة التي أبلغ عنها المستخدم.
+    """
     _widths(sheet, {1: 6, 2: 18, 3: 46, 4: 12, 5: 14, 6: 16, 7: 18})
     _table_head(sheet, 1, 1,
                 ["ت", "الباب", "الفقرة", "الكمية", "الوحدة", "السعر", "الكلفة"])
+
+    links = material_drivers(result)
+    rows = material_rows(result)
 
     row = 2
     for index, line in enumerate(result["أجور_العمل"], start=1):
         sheet.cell(row, 1, index).alignment = _CENTRE
         sheet.cell(row, 2, line.group or "الأعمال الكهربائية").alignment = _RIGHT
         sheet.cell(row, 3, line.name).alignment = _RIGHT
-        sheet.cell(row, 4, line.qty).alignment = _CENTRE
+        driver = links.get(index - 1)
+        quantity = (f"='{ORDER_SHEET}'!D{rows[driver]}"
+                    if driver in rows else line.qty)
+        sheet.cell(row, 4, quantity).alignment = _CENTRE
         sheet.cell(row, 5, line.unit).alignment = _CENTRE
         sheet.cell(row, 6, line.rate or 0).number_format = _MONEY
         sheet.cell(row, 7, f"=D{row}*F{row}").number_format = _MONEY

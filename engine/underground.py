@@ -400,16 +400,19 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
     qty = cable_quantity(net)
     if qty:
         entry = rates["كلفة مد قابلو 3×150 ملم²"]
-        out.append(LabourLine("كلفة مد قابلو 3×150 ملم²", entry["الوحدة"], qty, entry["السعر"]))
+        out.append(LabourLine("كلفة مد قابلو 3×150 ملم²", entry["الوحدة"], qty,
+                              entry["السعر"], driver=M_CABLE_11))
 
     if net.straight_boxes:
         entry = rates["كلفة نصب صندوق مستقيم 3×150 ملم²"]
         out.append(
-            LabourLine(
-                "كلفة نصب صندوق مستقيم 3×150 ملم²", entry["الوحدة"], net.straight_boxes, entry["السعر"]
-            )
+            LabourLine("كلفة نصب صندوق مستقيم 3×150 ملم²", entry["الوحدة"],
+                       net.straight_boxes, entry["السعر"],
+                       driver=M_BOX_STRAIGHT_11)
         )
 
+    # صندوق النهاية: بندُ أجرٍ واحد ومادتان (داخلي وخارجي)، فلا مادة **واحدة**
+    # تقوده — ويبقى بلا `driver` (ق-٨١)
     end_total = net.end_boxes_internal + net.end_boxes_external
     if end_total:
         entry = rates["كلفة نصب صندوق نهاية 3×150 ملم²"]
@@ -531,16 +534,19 @@ def labour_underground33(net: Underground33kV, catalog: dict) -> list[LabourLine
     qty = cable_quantity_33(net)
     if qty:
         entry = rates["كلفة مد قابلو 1×400 ملم²"]
-        out.append(LabourLine("كلفة مد قابلو 1×400 ملم²", entry["الوحدة"], qty, entry["السعر"]))
+        out.append(LabourLine("كلفة مد قابلو 1×400 ملم²", entry["الوحدة"], qty,
+                              entry["السعر"], driver=M_CABLE_33))
 
     if net.straight_boxes:
         entry = rates["كلفة نصب صندوق مستقيم 1×400 ملم²"]
         out.append(
-            LabourLine(
-                "كلفة نصب صندوق مستقيم 1×400 ملم²", entry["الوحدة"], net.straight_boxes, entry["السعر"]
-            )
+            LabourLine("كلفة نصب صندوق مستقيم 1×400 ملم²", entry["الوحدة"],
+                       net.straight_boxes, entry["السعر"],
+                       driver=M_BOX_STRAIGHT_33)
         )
 
+    # صندوق النهاية: بندُ أجرٍ واحد ومادتان (داخلي وخارجي)، فلا مادة **واحدة**
+    # تقوده — ويبقى بلا `driver` (ق-٨١)
     end_total = net.end_boxes_internal + net.end_boxes_external
     if end_total:
         entry = rates["كلفة نصب صندوق نهاية 1×400 ملم²"]

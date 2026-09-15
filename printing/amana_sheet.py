@@ -26,6 +26,7 @@ from __future__ import annotations
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from engine.availability import unavailable_summary
+from engine.links import material_drivers
 from engine.workorder import WorkOrder
 
 from .amana_form import (
@@ -121,21 +122,35 @@ def _materials(sheet, result: dict, order: WorkOrder, row: int) -> dict:
     total_row = at
     _summary(sheet, at, "الكلفة التخمينية الكلية للمواد",
              f"=SUM(F{first}:F{first + len(materials) - 1})" if materials else 0)
-    return {"غير_المتوفرة": unavailable_row, "المجموع": total_row, "التالي": at + 2}
+    return {
+        "غير_المتوفرة": unavailable_row,
+        "المجموع": total_row,
+        "التالي": at + 2,
+        # (اسم، وحدة) ← صفّها، ليشير إليها أجرُها بمعادلة (ق-٨١)
+        "صفوف": {(m["المادة"], m["الوحدة"]): first + i
+                 for i, m in enumerate(materials)},
+    }
 
 
-def _labour(sheet, title: str, lines: list, row: int, total_label: str) -> dict:
-    """جدول أجور (مدني أو كهربائي). يعيد صفّ مجموعه والصفّ التالي."""
+def _labour(sheet, title: str, lines: list, row: int, total_label: str,
+            links: dict | None = None) -> dict:
+    """جدول أجور (مدني أو كهربائي). يعيد صفّ مجموعه والصفّ التالي.
+
+    **وكمية البند تشير إلى كمية مادته** حين تقودها مادة (ق-٨١) — فتعديل كمية
+    السلك في جدول المواد أعلاه يُحدّث كمية التسليك وأجره ومجموع الأعمال.
+    """
     # رأس العمود الثاني هو عنوان الجدول — كما في المطبوع تماماً
     _table_head(sheet, row, 1, [COLUMNS[0], title] + COLUMNS[2:])
 
+    links = links or {}
     first = row + 1
     at = first
     for index, line in enumerate(lines, start=1):
         sheet.cell(at, 1, index).alignment = _CENTRE
         sheet.cell(at, 2, printed_labour_name(line.name)).alignment = _RIGHT
         sheet.cell(at, 3, printed_unit(line.unit)).alignment = _CENTRE
-        sheet.cell(at, 4, line.qty).alignment = _CENTRE
+        driver = links.get(id(line))
+        sheet.cell(at, 4, f"=D{driver}" if driver else line.qty).alignment = _CENTRE
         sheet.cell(at, 5, line.rate or 0).number_format = _MONEY
         sheet.cell(at, 6, f"=D{at}*E{at}").number_format = _MONEY
         _boxed(sheet, at, 1, LAST)
@@ -180,10 +195,19 @@ def build_workbook(order: WorkOrder, result: dict) -> Workbook:
 
     places = _materials(sheet, result, order, row=4)
     civil, electrical = split_labour(result)
+
+    # بند الأجر ← صفّ مادته في هذه الورقة. المفتاح `id(line)` لأن الاسم قد
+    # يتكرّر بسعرين (ق-٢٤)، وهوية الكائن لا تلتبس.
+    links = {
+        id(result["أجور_العمل"][index]): places["صفوف"][key]
+        for index, key in material_drivers(result).items()
+        if key in places["صفوف"]
+    }
     civil_at = _labour(sheet, "الأعمال المدنية", civil, places["التالي"],
-                       "مجموع اجور عمل الاعمال المدنية")
+                       "مجموع اجور عمل الاعمال المدنية", links)
     electrical_at = _labour(sheet, "الأعمال الكهربائية", electrical,
-                            civil_at["التالي"], "مجموع اجور عمل الاعمال الكهربائية")
+                            civil_at["التالي"], "مجموع اجور عمل الاعمال الكهربائية",
+                            links)
 
     labour = f"(F{civil_at['المجموع']}+F{electrical_at['المجموع']})"
     row = electrical_at["التالي"]

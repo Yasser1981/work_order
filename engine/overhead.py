@@ -563,15 +563,21 @@ def labour_11kv(net: Network11kV, rates: dict) -> list[LabourLine]:
     )
     if qty:
         entry = rates[WIRING_11_RATE]
-        out.append(LabourLine(WIRING_11_LABEL, entry["الوحدة"], qty, entry["السعر"]))
-    for label, count in (
-        ("نصب عمود مشبك 11م", net.poles_lattice),
-        ("نصب عمود مدور 11م", net.poles_round),
-        ("نصب طاقم ستي", net.stay_rod_sets),
+        out.append(LabourLine(WIRING_11_LABEL, entry["الوحدة"], qty, entry["السعر"],
+                              driver=M_WIRE_11))
+    # المادة التي تقود أجر النصب هي **العمود بشكل توريده** (ق-٨١): العمود
+    # «مع الملحقات» مادة غير العمود العاري، وأجر النصب واحد فيهما
+    for label, count, driver in (
+        ("نصب عمود مشبك 11م", net.poles_lattice,
+         POLE_11_NAMES[(PoleType11.LATTICE, net.lattice_supply)]),
+        ("نصب عمود مدور 11م", net.poles_round,
+         POLE_11_NAMES[(PoleType11.ROUND, net.round_supply)]),
+        ("نصب طاقم ستي", net.stay_rod_sets, M_STAY_SET),
     ):
         if count:
             entry = rates[label]
-            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"]))
+            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"],
+                                  driver=driver))
     return out
 
 
@@ -586,7 +592,7 @@ def labour_33kv(net: Network33kV, rates: dict) -> list[LabourLine]:
     if qty:
         out.append(
             LabourLine(WIRING_33_LABEL, rates[WIRING_33_RATE]["الوحدة"], qty,
-                       rates[WIRING_33_RATE]["السعر"])
+                       rates[WIRING_33_RATE]["السعر"], driver=M_WIRE_33)
         )
     for label, count in (
         ("نصب عمود مشبك تعليق 14م", net.poles_suspension),
@@ -599,7 +605,8 @@ def labour_33kv(net: Network33kV, rates: dict) -> list[LabourLine]:
     if net.stay_rod_sets:
         out.append(
             LabourLine("نصب طاقم ستي", rates["نصب طاقم ستي"]["الوحدة"],
-                       net.stay_rod_sets, rates["نصب طاقم ستي"]["السعر"])
+                       net.stay_rod_sets, rates["نصب طاقم ستي"]["السعر"],
+                       driver=M_STAY_SET)
         )
     return out
 

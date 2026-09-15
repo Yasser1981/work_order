@@ -226,14 +226,17 @@ def labour_lv(net: NetworkLV, rates: dict) -> list[LabourLine]:
         bare = net.kind is LVNetworkType.BARE_WIRES
         label = WIRING_BARE_LABEL if bare else WIRING_BUNDLED_LABEL
         entry = rates[WIRING_BARE_RATE if bare else WIRING_BUNDLED_RATE]
-        out.append(LabourLine(label, entry["الوحدة"], qty, entry["السعر"]))
+        out.append(LabourLine(label, entry["الوحدة"], qty, entry["السعر"],
+                              driver=M_WIRE_LV if bare else M_BUNDLED_CABLE))
 
-    for label, count in (
-        ("نصب عمود مشبك 9م", net.poles_lattice),
-        ("نصب عمود مدور 9م", net.poles_round),
-        ("ربط المستهلكين", net.consumers),
+    # «ربط المستهلكين» بلا مادة تقوده — عددُ المستهلكين مُدخَلٌ لا مادة (ق-٨١)
+    for label, count, driver in (
+        ("نصب عمود مشبك 9م", net.poles_lattice, M_POLE_9_LATTICE),
+        ("نصب عمود مدور 9م", net.poles_round, M_POLE_9_ROUND),
+        ("ربط المستهلكين", net.consumers, None),
     ):
         if count:
             entry = rates[label]
-            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"]))
+            out.append(LabourLine(label, entry["الوحدة"], count, entry["السعر"],
+                                  driver=driver))
     return out
