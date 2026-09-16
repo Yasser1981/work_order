@@ -61,6 +61,26 @@ QPushButton#print { font-weight: 600; padding: 8px 20px; }
 """
 
 
+def _price_text(value) -> str:
+    """سعرٌ للعرض في حوار التحديث. **يقبل ما ليس رقماً**."""
+    return "غير مُسعَّر" if value is None else f"{value:,.0f}"
+
+
+def _diff_line(d: dict) -> str:
+    """سطرٌ واحد في حوار «تحديث أسعار أمر العمل».
+
+    **البندُ المضاف أو المحذوف لا سعرَ له يُعرض**: `differences` تضع فيه «—» لا
+    رقماً، فتنسيقه رقماً يرفع `ValueError` ويُسقط الحوار كلّه. وهذه ليست حالة
+    نادرة: كل نسخة أسعار تُضاف فيها مادة جديدة تُنتجها — وق-٨٥ أضاف ثلاثاً،
+    فصار كل أمر عمل قديم يتعذّر تحديثه.
+    """
+    if d["الحالة"] == "أُضيف":
+        return f"• {d['الاسم']}: بندٌ جديد في نسخة الأسعار"
+    if d["الحالة"] == "حُذف":
+        return f"• {d['الاسم']}: حُذف من نسخة الأسعار"
+    return f"• {d['الاسم']}: {_price_text(d['قبل'])} ← {_price_text(d['بعد'])}"
+
+
 class MainWindow(QMainWindow):
     def __init__(self, catalog: dict, version: str | None = None) -> None:
         super().__init__()
@@ -500,12 +520,8 @@ class MainWindow(QMainWindow):
         after = compute_project(self.project(), newer)["الكلفة_الكلية"]
         change = after - before
         sign = "+" if change > 0 else ""
-        detail = "\n".join(
-            f"• {d['الاسم']}: "
-            f"{'غير مُسعَّر' if d['قبل'] is None else format(d['قبل'], ',.0f')}"
-            f" ← {'غير مُسعَّر' if d['بعد'] is None else format(d['بعد'], ',.0f')}"
-            for d in diff[:10]
-        ) or "• لا فرق في الأسعار بين النسختين"
+        detail = "\n".join(_diff_line(d) for d in diff[:10]) \
+            or "• لا فرق في الأسعار بين النسختين"
         more = f"\n… و{len(diff) - 10} غيرها" if len(diff) > 10 else ""
 
         if not self._confirm(

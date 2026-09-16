@@ -267,3 +267,56 @@ def test_the_count_reads_as_proper_arabic(count, expected):
     from ui.segments_panel import _items
 
     assert _items(count, "المواد") == expected
+
+
+# ═════════ حوار تحديث الأسعار: بندٌ أُضيف لا يُسقط الحوار (ق-٨٦) ═════════
+
+
+def test_an_added_material_does_not_crash_the_update_dialog():
+    """**حارس انهيار:** `differences` تضع «—» لا رقماً للبند المضاف.
+
+    فتنسيقه رقماً يرفع ValueError ويُسقط حوار «تحديث أسعار أمر العمل» كلّه —
+    فيتعذّر على المستخدم تحديث أي أمر عمل قديم. وليست حالةً نادرة: **كل نسخة
+    أسعار تُضاف فيها مادة جديدة تُنتجها** (ق-٨٥ أضاف ثلاثاً).
+    """
+    from ui.main_window import _diff_line
+
+    line = _diff_line({"الاسم": "قابلو 1×240 ملم²", "قبل": None, "بعد": "—",
+                       "الحالة": "أُضيف"})
+    assert "قابلو 1×240 ملم²" in line and "بندٌ جديد" in line
+
+
+def test_a_removed_material_does_not_crash_it_either():
+    from ui.main_window import _diff_line
+
+    line = _diff_line({"الاسم": "مادة قديمة", "قبل": "—", "بعد": None,
+                       "الحالة": "حُذف"})
+    assert "حُذف" in line
+
+
+def test_a_changed_price_still_shows_both_numbers():
+    from ui.main_window import _diff_line
+
+    line = _diff_line({"الاسم": "ترمنل 150 ملم²", "قبل": 6000, "بعد": 7000,
+                       "الحالة": "تغيّر"})
+    assert "6,000" in line and "7,000" in line
+
+
+def test_an_unpriced_item_reads_as_unpriced_not_as_zero():
+    """ق-٩: الفراغ «غير مُسعَّر» لا صفر — وفي الحوار أيضاً."""
+    from ui.main_window import _diff_line
+
+    line = _diff_line({"الاسم": "بند", "قبل": None, "بعد": 5000, "الحالة": "تغيّر"})
+    assert "غير مُسعَّر" in line and "0" not in line.split("غير مُسعَّر")[0]
+
+
+def test_the_real_catalog_jump_builds_every_line_without_raising(tmp_path):
+    """**الحارس الواقعي:** الانتقال الفعلي من 2026-08 إلى الأحدث، سطراً سطراً."""
+    from engine import latest_catalog_version, load_catalog
+    from engine.prices import differences
+    from ui.main_window import _diff_line
+
+    diff = differences(load_catalog("2026-08"), load_catalog(latest_catalog_version()))
+    assert diff, "لا فرق بين النسختين — الحارس بلا معنى"
+    for d in diff:
+        assert _diff_line(d).startswith("• ")
