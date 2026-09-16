@@ -44,7 +44,15 @@ def test_in_development_both_folders_are_the_repository_data():
 
 
 def test_development_catalog_loads_and_is_the_real_one():
-    assert load_catalog()["نسخة"] == "2026-08"
+    """نسخةٌ حقيقية كاملة، **وهي أحدث الموجودات** — لا نسخة مثبَّتة بالاسم.
+
+    كان الاسم مثبَّتاً هنا («2026-08»)، فكان كل تحديث أسعار يُسقط الاختبار وهو
+    لا يحرس شيئاً: غرضه أن يتأكّد أن التطوير يقرأ نسخةً حقيقية لا جذعاً فارغاً،
+    لا أن يمنع إصدار نسخةٍ جديدة — وإصدارها هو أصل ق-٦٢.
+    """
+    catalog = load_catalog()
+    assert catalog["نسخة"] == paths.latest_catalog_version()
+    assert catalog["المواد"] and catalog["أجور_العمل"]
 
 
 # ═══════════════════ وضع الملف التنفيذي ═══════════════════

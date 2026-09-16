@@ -719,7 +719,9 @@ def test_civil_works_cost_is_route_length_not_cable_quantity_33(catalog):
 
 def test_materials_match_the_prices_from_the_original_file(catalog):
     prices = catalog["المواد"]
-    assert prices["قابلو 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 85000
+    # قابلو 1×400: كان 85,000 في الملف الأصلي، **ورفعه المستخدم إلى 92,000
+    # في ق-٨٥**. والثلاثة بعده ما زالت على سعر الملف الأصلي.
+    assert prices["قابلو 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 92000
     assert prices["صندوق مستقيم 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 285000
     assert prices["صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 136000
     assert prices["صندوق نهاية خارجي 1×400 ملم² جهد 33 ك.ف"]["السعر"] == 157000
