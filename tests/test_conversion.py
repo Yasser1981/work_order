@@ -125,15 +125,26 @@ def test_the_existing_poles_bring_exactly_the_bracket_difference():
 
 
 def test_the_insulator_increment_is_one_circuit_plus_the_crown_spare(catalog):
-    """بنصّ المستخدم (ق-٨٤): **4** دبوسي للمدوّر القائم و**8** قرصي للمشبك القائم.
+    """بنصّ المستخدم (ق-٨٤): **4** دبوسي لكل عمود قائم، و**8** قرصي للمشبك.
 
     الدائرة الإضافية تعطي 3 و6، **ويُزاد عليها بدل التاج** — فالعازل على رأس
     العمود يُنقل مكانه «وقد يُهمل أو يتلف». ومعدات الربط 6 بلا زيادة.
     """
     got = quantities(Conversion11kV(existing_lattice=9, existing_round=32))
-    assert got["عازل دبوسي مع السبندل"] == 32 * 4 + 9 * 3
+    assert got["عازل دبوسي مع السبندل"] == 32 * 4 + 9 * 4
     assert got["عازل قرصي مع الملحقات"] == 9 * 8
     assert got["معدات ربط ألمنيوم – ألمنيوم"] == 9 * 6
+
+
+def test_the_crown_pin_spare_is_for_both_pole_types(catalog):
+    """**لكل عمودٍ تاجٌ يُنقل** — أقرّه المستخدم نصّاً: «واحد لكل عمود مشبك».
+
+    فلو خُصّ المدوّر به لنقص المشبك عازلاً في كل عمود، وهي 9 عوازل في مثال
+    الكيلومتر الواحد.
+    """
+    for kind in ("existing_lattice", "existing_round"):
+        got = quantities(Conversion11kV(**{kind: 10}))
+        assert got["عازل دبوسي مع السبندل"] == 10 * 4, kind
 
 
 def test_the_crown_spare_is_a_replacement_not_a_circuit_need(catalog):
@@ -145,9 +156,10 @@ def test_the_crown_spare_is_a_replacement_not_a_circuit_need(catalog):
     from engine.conversion import CROWN_SPARE
     from engine.overhead import M_DISC_INSULATOR_11, M_PIN_INSULATOR_11
 
-    derived = pole_increment(BracketPattern.STANDARD, PoleType11.ROUND)
-    assert derived[M_PIN_INSULATOR_11] == 3          # من المولّد وحده
-    assert CROWN_SPARE[PoleType11.ROUND][M_PIN_INSULATOR_11] == 1
+    for pole in PoleType11:
+        derived = pole_increment(BracketPattern.STANDARD, pole)
+        assert derived[M_PIN_INSULATOR_11] == 3      # من المولّد وحده
+        assert CROWN_SPARE[pole][M_PIN_INSULATOR_11] == 1
     assert CROWN_SPARE[PoleType11.LATTICE][M_DISC_INSULATOR_11] == 2
 
 
