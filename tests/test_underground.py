@@ -9,13 +9,20 @@ import pytest
 
 from engine import load_catalog
 from engine.project import compute_project
-from engine.types import Project, Segment, SidewalkType, Underground11kV
+from engine.types import (
+    CrossingKind,
+    Project,
+    Segment,
+    SidewalkType,
+    StreetCrossing,
+    Underground11kV,
+)
 from engine.underground import (
     cable_quantity,
     CIVIL_GROUP,
     civil_tariff_parts,
     civil_works_rate,
-    street_crossing_pipes,
+    crossing_pipes,
     materials_underground11,
     resolve_drum_length,
     suggest_straight_boxes,
@@ -395,7 +402,7 @@ def test_the_crossing_rate_is_per_feeder_per_metre(catalog):
     line = next(l for l in result["أجور_العمل"] if "الرئيسية" in l.name)
     assert line.qty == 30                       # 10 م × 3 مغذيات
     assert line.cost == 6_000_000
-    assert line.source == "شارع 10 م × 3 مغذيات"
+    assert line.source == "1 شارع × 10 م × 3 مغذيات"    # «1 شارع» منذ ق-٨٧
 
 
 def test_one_feeder_keeps_the_old_result(catalog):
@@ -410,16 +417,20 @@ def test_one_feeder_keeps_the_old_result(catalog):
     assert line.qty == 30 and line.cost == 3_000_000
 
 
+def _one(length, feeders=1, count=1):
+    return crossing_pipes(StreetCrossing(CrossingKind.SECONDARY, count, length, feeders))
+
+
 def test_the_pipe_count_divides_the_street_length_by_six(catalog):
-    """⌈طول الشارع ÷ 6⌉ لكل مغذٍّ، + أنبوب احتياط (ق-٤٥، ق-٤٦، ق-٤٨)."""
+    """⌈عرض الشارع ÷ 6⌉ لكل مغذٍّ، + أنبوب احتياط (ق-٤٥، ق-٤٦، ق-٤٨)."""
     for length, pipes in ((6, 1), (7, 2), (10, 2), (12, 2), (13, 3), (24, 4)):
-        assert street_crossing_pipes(length, 1, "عبور")[0].qty == pipes + 1, length
+        assert _one(length)[0].qty == pipes + 1, length
 
 
-def test_one_spare_pipe_is_added_once_not_per_feeder(catalog):
-    """الاحتياط **واحد للعبور كلّه** لا لكل مغذٍّ — بصيغة المفرد في نصّك (ق-٤٨)."""
+def test_one_spare_pipe_per_street_not_per_feeder(catalog):
+    """الاحتياط **للشارع** لا لكل مغذٍّ — بصيغة المفرد في نصّك (ق-٤٨، ق-٨٧)."""
     for feeders in (1, 3, 8):
-        line = street_crossing_pipes(12, feeders, "عبور")[0]
+        line = _one(12, feeders)[0]
         assert line.qty == 2 * feeders + 1, feeders
         assert "1 احتياط" in line.source
 

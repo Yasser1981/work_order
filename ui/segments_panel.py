@@ -389,7 +389,7 @@ class SegmentsPanel(QWidget):
 
     def refresh_street_hint(self, catalog: dict) -> None:
         """يُظهر أن التعرفة **لمغذٍّ ولمتر**، وأن الأنبوب لا يتبع المغذيات (ق-٤٥)."""
-        from engine.underground import PIPE_LENGTH_M, SPARE_PIPES
+        from engine.underground import PIPE_LENGTH_M, SPARE_PIPES_PER_STREET as SPARE_PIPES
 
         rates = catalog["أجور_العمل"]
         rows = []

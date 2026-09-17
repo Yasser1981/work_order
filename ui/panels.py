@@ -7,8 +7,11 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QGroupBox,
+    QHBoxLayout,
     QPushButton,
     QScrollArea,
+    QTableWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +31,7 @@ from engine.equipment import (
 from engine.lowvoltage import conductor_quantity, count_poles_lv
 from engine.underground import (
     BOXES_PER_END_SET_33,
+    crossing_pipes,
     cable_count_33,
     cable_quantity,
     cable_quantity_33,
@@ -48,6 +52,7 @@ from engine.overhead import (
 )
 from engine.types import (
     BracketPattern,
+    CrossingKind,
     CircuitType,
     Conversion11kV,
     Equipment,
@@ -56,6 +61,7 @@ from engine.types import (
     Network33kV,
     NetworkLV,
     PoleType11,
+    StreetCrossing,
     SidewalkType,
     SupplyForm,
     Underground11kV,
@@ -1092,6 +1098,139 @@ def _civil_hint_text(sidewalk_type, count, route_length_m, catalog) -> str:
     return "<br>".join(rows)
 
 
+class CrossingsBox(QGroupBox):
+    """محرّر عبور الشوارع داخل مقطعٍ أرضيّ (ق-٨٧).
+
+    **«عدد الشوارع» عمودٌ مستقلّ لا تكرارُ سطر** — وهو ما يجعل تقريب الأنبوب
+    يقع على الشارع الواحد. فخمسة شوارع بعشرة أمتار تحتاج 5×(2+1) أنبوباً لا
+    ⌈50÷6⌉+1، لأن باقي كل قطعة هدرٌ لا يُنقل إلى الشارع التالي.
+    """
+
+    changed = pyqtSignal()
+
+    HEADERS = ["النوع", "عدد الشوارع", "عرض الشارع (م)", "المغذيات العابرة"]
+
+    def __init__(self, catalog: dict) -> None:
+        super().__init__("عبور الشوارع في هذا المقطع")
+        self.catalog = catalog
+        layout = QVBoxLayout(self)
+
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(self.HEADERS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setMinimumHeight(110)
+        layout.addWidget(self.table)
+
+        buttons = QHBoxLayout()
+        self.add = QPushButton("إضافة عبور  +")
+        self.remove = QPushButton("حذف المحدَّد  −")
+        buttons.addWidget(self.add)
+        buttons.addWidget(self.remove)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+        self.hint = HintLabel()
+        layout.addWidget(self.hint)
+
+        self.add.clicked.connect(self._add_row)
+        self.remove.clicked.connect(self._remove_row)
+        self.table.itemSelectionChanged.connect(self._sync)
+        self._sync()
+        self.refresh_hint()
+
+    # ─────────────────────────── بناء السطر ───────────────────────────
+
+    def _add_row(self, crossing: StreetCrossing | None = None) -> None:
+        crossing = crossing if isinstance(crossing, StreetCrossing) else StreetCrossing()
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        kind = _combo(list(CrossingKind))
+        _select(kind, crossing.kind)
+        kind.currentIndexChanged.connect(self._on_change)
+        self.table.setCellWidget(row, 0, kind)
+
+        for column, (low, high, value) in enumerate((
+            (1, 999, crossing.count),
+            (0, 1000, crossing.street_length_m),
+            (1, 99, crossing.feeders),
+        ), start=1):
+            field = number_field(low, high, value)
+            field.valueChanged.connect(self._on_change)
+            self.table.setCellWidget(row, column, field)
+
+        self._sync()
+        self._on_change()
+
+    def _remove_row(self) -> None:
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+            self._sync()
+            self._on_change()
+
+    def _sync(self) -> None:
+        self.remove.setEnabled(self.table.currentRow() >= 0)
+
+    def _on_change(self) -> None:
+        self.refresh_hint()
+        self.changed.emit()
+
+    # ─────────────────────────── المخرجات ───────────────────────────
+
+    def crossings(self) -> list:
+        """العبورات المُدخَلة. **والفارغ يُسقَط** فلا يُنتج سطراً بلا معنى."""
+        out = []
+        for row in range(self.table.rowCount()):
+            crossing = StreetCrossing(
+                kind=self.table.cellWidget(row, 0).currentData(),
+                count=int(self.table.cellWidget(row, 1).value()),
+                street_length_m=self.table.cellWidget(row, 2).value(),
+                feeders=int(self.table.cellWidget(row, 3).value()),
+            )
+            if crossing.street_length_m > 0:
+                out.append(crossing)
+        return out
+
+    def load(self, crossings: list) -> None:
+        self.table.setRowCount(0)
+        for crossing in crossings or []:
+            self._add_row(crossing)
+        self.refresh_hint()
+
+    def refresh_hint(self) -> None:
+        rates = self.catalog["أجور_العمل"]
+        rows, pipes, cost = [], 0, 0.0
+        for crossing in self.crossings():
+            rate = rates[crossing.kind.rate_key]["السعر"]
+            metres = crossing.count * crossing.street_length_m * crossing.feeders
+            cost += metres * rate
+            line = (f"<b>{crossing.kind.value}</b>: {crossing.count} × "
+                    f"{crossing.street_length_m:,.0f} م × {crossing.feeders} مغذٍّ"
+                    f" = {metres:,.0f} م×مغذٍّ × {rate:,.0f} = "
+                    f"<b>{metres * rate:,.0f} د</b>")
+            for material in crossing_pipes(crossing):
+                pipes += material.qty
+                line += (f"<br>&nbsp;&nbsp;– أنبوب 8 انج: <b>{material.qty:,.0f}</b>"
+                         " روطة &nbsp;<i>(كمية بلا كلفة)</i>")
+            if not crossing.kind.has_pipes:
+                line += "<br>&nbsp;&nbsp;<i>حفر مخفي — بلا أنبوب</i>"
+            rows.append(line)
+
+        if not rows:
+            self.hint.setText(
+                "لا عبور في هذا المقطع. والتعرفة <b>لمترٍ ولمغذٍّ</b>، "
+                "<b>وعدد الشوارع عمودٌ مستقلّ</b> — فالأنبوب يُقرَّب لكل شارع على حدة."
+            )
+            return
+        total = f"<br><b>مجموع المقطع: {cost:,.0f} د</b>"
+        if pipes:
+            total += f" &nbsp;·&nbsp; {pipes:,.0f} روطة أنبوب"
+        self.hint.setText("<br>".join(rows) + total)
+
+
+
 class PanelUnderground11kV(_Loadable, QWidget):
     """مدخلات مقطع شبكة أرضية 11 ك.ف — قابلو 3×150 ملم² (ق-٣٠).
 
@@ -1154,6 +1293,9 @@ class PanelUnderground11kV(_Loadable, QWidget):
         form.addRow("صندوق نهاية خارجي (لشبكة هوائية):", self.end_external)
         layout.addWidget(box)
 
+        self.crossings = CrossingsBox(self.catalog)
+        layout.addWidget(self.crossings)
+
         layout.addStretch(1)
 
         scroll = QScrollArea()
@@ -1170,6 +1312,7 @@ class PanelUnderground11kV(_Loadable, QWidget):
         self.sidewalk.currentIndexChanged.connect(self._on_change)
         self.waste_included.toggled.connect(self._on_change)
         self.adopt.clicked.connect(self._adopt_suggestion)
+        self.crossings.changed.connect(self.changed)
 
     def _on_change(self) -> None:
         self.refresh_hints()
@@ -1192,6 +1335,7 @@ class PanelUnderground11kV(_Loadable, QWidget):
         set_number(self.straight_boxes, net.straight_boxes)
         set_number(self.end_internal, net.end_boxes_internal)
         set_number(self.end_external, net.end_boxes_external)
+        self.crossings.load(net.crossings)
 
     def content(self) -> Underground11kV:
         return Underground11kV(
@@ -1204,6 +1348,7 @@ class PanelUnderground11kV(_Loadable, QWidget):
             straight_boxes=self.straight_boxes.value(),
             end_boxes_internal=self.end_internal.value(),
             end_boxes_external=self.end_external.value(),
+            crossings=self.crossings.crossings(),
         )
 
     def refresh_hints(self) -> None:
@@ -1300,6 +1445,9 @@ class PanelUnderground33kV(_Loadable, QWidget):
         form.addRow(self.end_box_hint)
         layout.addWidget(box)
 
+        self.crossings = CrossingsBox(self.catalog)
+        layout.addWidget(self.crossings)
+
         layout.addStretch(1)
 
         scroll = QScrollArea()
@@ -1317,6 +1465,7 @@ class PanelUnderground33kV(_Loadable, QWidget):
             w.currentIndexChanged.connect(self._on_change)
         self.waste_included.toggled.connect(self._on_change)
         self.adopt.clicked.connect(self._adopt_suggestion)
+        self.crossings.changed.connect(self.changed)
 
     def _on_change(self) -> None:
         self.refresh_hints()
@@ -1340,6 +1489,7 @@ class PanelUnderground33kV(_Loadable, QWidget):
         set_number(self.straight_boxes, net.straight_boxes)
         set_number(self.end_internal, net.end_boxes_internal)
         set_number(self.end_external, net.end_boxes_external)
+        self.crossings.load(net.crossings)
 
     def content(self) -> Underground33kV:
         return Underground33kV(
@@ -1352,6 +1502,7 @@ class PanelUnderground33kV(_Loadable, QWidget):
             straight_boxes=self.straight_boxes.value(),
             end_boxes_internal=self.end_internal.value(),
             end_boxes_external=self.end_external.value(),
+            crossings=self.crossings.crossings(),
         )
 
     def refresh_hints(self) -> None:

@@ -27,6 +27,8 @@ from .overhead import (
     materials_33kv,
 )
 from .types import (
+    CrossingKind,
+    StreetCrossing,
     Conversion11kV,
     Equipment,
     LabourLine,
@@ -41,7 +43,8 @@ from .types import (
 )
 from .underground import (
     CIVIL_GROUP,
-    street_crossing_pipes,
+    crossings_labour,
+    crossings_materials,
     labour_underground11,
     labour_underground33,
     materials_underground11,
@@ -157,33 +160,29 @@ def compute_project(project: Project, catalog: dict) -> dict:
         raw += materials_of(segment, catalog)
         labour_raw += labour_of(segment, catalog)
 
-    # عبور الشوارع: إجمالي واحد للمشروع كله، لا لكل مقطع (بطلب المستخدم، ق-٣٠).
-    # وهما **ضمن الأعمال المدنية** بنصّ المستخدم، فيحملان وسمها (ق-٣٨).
-    # والتعرفة **لمغذٍّ واحد ولمتر واحد**، فتُضرب بالطول وبعدد المغذيات (ق-٤٥).
-    # والأنبوب **للفرعية وحدها** — الرئيسية حفر مخفي بلا أنبوب (ق-٤٦)
-    for length_field, feeders_field, label, has_pipes in (
+    # ═══ عبور الشوارع على مستوى المشروع — **الطريق القديم** (ق-٨٧) ═══
+    #
+    # صار العبور يُدخَل داخل المقاطع الأرضية (ق-٨٧). وهذه الحقول باقية لأن
+    # **أوامر العمل المحفوظة قبل ق-٨٧ تحملها**، وقد شرط المستخدم ألّا تتغيّر
+    # كلفتها (ق-٠). فتُقرأ وتُحسب كما كانت بالضبط.
+    #
+    # **وتمرّ بالصيغة الجديدة نفسها** لا بنسخةٍ ثانية منها: العبور القديم
+    # **شارعٌ واحد** (`count=1`)، فتعطيه الصيغة ما كانت تعطيه حرفاً بحرف —
+    # ⌈الطول÷6⌉ × المغذيات + احتياط واحد. فلا تفترق صيغتان لقاعدة واحدة يوماً،
+    # وحارسٌ يثبّت التطابق.
+    for length_field, feeders_field, kind in (
         ("street_crossing_secondary_m", "street_crossing_secondary_feeders",
-         "عبور الشوارع الفرعية", True),
-        ("street_crossing_main_m", "street_crossing_main_feeders",
-         "عبور الشوارع الرئيسية – حفر مخفي", False),
+         CrossingKind.SECONDARY),
+        ("street_crossing_main_m", "street_crossing_main_feeders", CrossingKind.MAIN),
     ):
-        length = getattr(project, length_field)
-        feeders = getattr(project, feeders_field)
-        if not (length and feeders):
-            continue
-        entry = rates[label]
-        labour_raw.append(
-            LabourLine(
-                label,
-                entry["الوحدة"],
-                length * feeders,
-                entry["السعر"],
-                source=f"شارع {length:,.0f} م × {feeders} مغذيات",
-                group=CIVIL_GROUP,
-            )
+        legacy = StreetCrossing(
+            kind=kind,
+            count=1,
+            street_length_m=getattr(project, length_field),
+            feeders=getattr(project, feeders_field),
         )
-        if has_pipes:
-            raw += street_crossing_pipes(length, feeders, label)
+        labour_raw += crossings_labour([legacy], rates)
+        raw += crossings_materials([legacy])
 
     totals = aggregate(raw)
 

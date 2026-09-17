@@ -37,9 +37,11 @@ import math
 from .overhead import _roundup
 from .types import (
     CircuitType,
+    CrossingKind,
     LabourLine,
     MaterialLine,
     SidewalkType,
+    StreetCrossing,
     Underground11kV,
     Underground33kV,
 )
@@ -245,41 +247,76 @@ M_CROSSING_PIPE = ("أنبوب 8 انج 10 بار", "روطة")
 PIPE_LENGTH_M = 6
 """طول الأنبوب الواحد (م) — «الروطة» الواحدة (ق-٤٥)."""
 
-SPARE_PIPES = 1
-"""أنبوب احتياط واحد يُضاف إلى المجموع (ق-٤٨).
+SPARE_PIPES_PER_STREET = 1
+"""أنبوب احتياط **لكل شارع معبور** (ق-٨٧، معدِّلاً ق-٤٨).
 
-**واحد للعبور كلّه لا لكل مغذٍّ** — كما أملاه المستخدم بصيغة المفرد. غرضه أن
-يبقى في الموقع بديلٌ لأنبوب يُكسَر أثناء التركيب، فلا يتوقّف العمل."""
+بنصّ المستخدم: «أنبوب احتياط لكل شارع، كل عبور شارع يحتاج أنبوب احتياط
+مستقبلاً قد يتمّ استغلاله». فالغرض ليس بديلاً لأنبوبٍ يُكسر أثناء التركيب
+وحسب، بل **أنبوبٌ فارغ يبقى في الشارع** لمغذٍّ يُمدّ لاحقاً بلا إعادة حفر.
+
+**وهذا يعدّل ق-٤٨** الذي كان «واحداً للعبور كلّه» بصيغة المفرد. ولم يكن التعديل
+مؤثِّراً حينها لأن البرنامج لم يكن يعرف إلا عبوراً واحداً للمشروع كلّه — فصار
+الفرق ظاهراً حين صار العبور مقسَّماً على الشوارع.
+"""
 
 
-def street_crossing_pipes(
-    street_length_m: float, feeder_count: int, label: str
-) -> list[MaterialLine]:
-    """أنابيب عبور الشارع — **للشوارع الفرعية وحدها** (ق-٤٦).
+def crossing_pipes(crossing: StreetCrossing) -> list[MaterialLine]:
+    """أنابيب عبورٍ واحد — **للشوارع الفرعية وحدها** (ق-٤٦).
 
     ```
-    العدد = ⌈طول الشارع ÷ 6⌉ × عدد المغذيات العابرة + 1 احتياط
+    العدد = عدد الشوارع × (⌈عرض الشارع ÷ 6⌉ × المغذيات + 1 احتياط)
     ```
 
-    **لكل مغذٍّ أنبوبه الخاص** بتصحيح المستخدم في ق-٤٦ — كان لا يُضرب بعددهم
-    في ق-٤٥ فصُحّح. **ويُضاف أنبوب احتياط واحد** للعبور كلّه (ق-٤٨).
+    **والتقريب على الشارع الواحد لا على مجموع الشوارع** (ق-٨٧): الأنبوب يُقطع
+    لكل شارع على حدة، وباقي القطعة هدرٌ لا يُنقل إلى الشارع التالي. فخمسة شوارع
+    بعشرة أمتار تحتاج 5×2 أنبوباً لا ⌈50÷6⌉ = 9.
 
-    **والطول هنا طول الشارع المعبور، لا طول المسار.**
-
-    **ولا أنبوب للشوارع الرئيسية** — عبورها «حفر مخفي»، والأنبوب يُحسب للفرعية
-    فقط بنصّ المستخدم. فالمناداة على هذه الدالة مسؤولية المستدعي.
+    **ولكل مغذٍّ أنبوبه الخاص** بتصحيح المستخدم في ق-٤٦.
     """
-    if street_length_m <= 0 or feeder_count <= 0:
+    if not crossing.kind.has_pipes:
         return []
-    per_feeder = _roundup(street_length_m / PIPE_LENGTH_M)
+    if crossing.street_length_m <= 0 or crossing.feeders <= 0 or crossing.count <= 0:
+        return []
+    per_street = (_roundup(crossing.street_length_m / PIPE_LENGTH_M) * crossing.feeders
+                  + SPARE_PIPES_PER_STREET)
     return [
         MaterialLine(
             *M_CROSSING_PIPE,
-            per_feeder * feeder_count + SPARE_PIPES,
-            f"{label}: ⌈شارع {street_length_m:,.0f} م ÷ {PIPE_LENGTH_M} م⌉"
-            f" × {feeder_count} مغذيات + {SPARE_PIPES} احتياط",
+            per_street * crossing.count,
+            f"{crossing.kind.rate_key}: {crossing.count} شارع × "
+            f"(⌈{crossing.street_length_m:,.0f} م ÷ {PIPE_LENGTH_M}⌉ × "
+            f"{crossing.feeders} مغذيات + {SPARE_PIPES_PER_STREET} احتياط)",
         )
     ]
+
+
+def crossing_labour(crossing: StreetCrossing, rates: dict) -> list[LabourLine]:
+    """أجر عبورٍ واحد. التعرفة **لمترٍ ولمغذٍّ** فتُضرب بالثلاثة (ق-٤٥)."""
+    if crossing.street_length_m <= 0 or crossing.feeders <= 0 or crossing.count <= 0:
+        return []
+    key = crossing.kind.rate_key
+    entry = rates[key]
+    return [
+        LabourLine(
+            key,
+            entry["الوحدة"],
+            crossing.count * crossing.street_length_m * crossing.feeders,
+            entry["السعر"],
+            source=f"{crossing.count} شارع × {crossing.street_length_m:,.0f} م × "
+                   f"{crossing.feeders} مغذيات",
+            group=CIVIL_GROUP,
+        )
+    ]
+
+
+def crossings_materials(crossings: list) -> list[MaterialLine]:
+    """أنابيب عبورات مقطعٍ كامل."""
+    return [line for crossing in crossings for line in crossing_pipes(crossing)]
+
+
+def crossings_labour(crossings: list, rates: dict) -> list[LabourLine]:
+    """أجور عبورات مقطعٍ كامل."""
+    return [line for crossing in crossings for line in crossing_labour(crossing, rates)]
 
 
 def trench_materials(
@@ -389,6 +426,7 @@ def materials_underground11(net: Underground11kV, catalog: dict) -> list[Materia
 
     lines += trench_materials(net.route_length_m, net.feeder_count, catalog)
 
+    lines += crossings_materials(net.crossings)      # ق-٨٧
     return lines
 
 
@@ -425,6 +463,7 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
             net.sidewalk_type, net.feeder_count, net.route_length_m, catalog
         )
 
+    out += crossings_labour(net.crossings, rates)     # ق-٨٧
     return out
 
 
@@ -523,6 +562,7 @@ def materials_underground33(net: Underground33kV, catalog: dict) -> list[Materia
     # تماماً (ق-٣١): المغذي الواحد بكابلاته الثلاثة مغذٍّ واحد في الخندق.
     lines += trench_materials(net.route_length_m, net.circuit.circuits, catalog)
 
+    lines += crossings_materials(net.crossings)      # ق-٨٧
     return lines
 
 
@@ -561,4 +601,5 @@ def labour_underground33(net: Underground33kV, catalog: dict) -> list[LabourLine
             net.sidewalk_type, net.circuit.circuits, net.route_length_m, catalog
         )
 
+    out += crossings_labour(net.crossings, rates)     # ق-٨٧
     return out

@@ -27,7 +27,7 @@ from engine.types import (
 from engine.underground import (
     materials_underground11,
     materials_underground33,
-    street_crossing_pipes,
+    crossing_pipes,
 )
 
 EXCEL_MATERIALS = [
@@ -190,9 +190,10 @@ def all_materials_the_engine_can_produce() -> set[tuple[str, str]]:
         for line in materials_underground33(ug33, catalog):
             produced.add((line.name, line.unit))
 
-    # عبور الشوارع بند على مستوى المشروع لا داخل مقطع (ق-٣٠)، وأنبوبه مادة
-    # لا يولّدها أي مقطع — فلولا هذا السطر لفات الحارسَ (ق-٤٥)
-    for line in street_crossing_pipes(30, 1, "عبور الشوارع الفرعية"):
+    # أنبوب العبور مادة لا تظهر إلا بوجود عبور في مقطع أرضي (ق-٨٧) — أو في
+    # الحقول القديمة على مستوى المشروع. فلولا هذا السطر لفات الحارسَ (ق-٤٥)
+    from engine.types import CrossingKind, StreetCrossing
+    for line in crossing_pipes(StreetCrossing(CrossingKind.SECONDARY, 1, 30, 1)):
         produced.add((line.name, line.unit))
 
     return produced

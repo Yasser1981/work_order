@@ -451,6 +451,44 @@ class SidewalkType(Enum):
     TERRAZZO = "مقرنص"
 
 
+class CrossingKind(Enum):
+    """نوع الشارع المعبور — يحدّد التعرفة وهل للعبور أنابيب (ق-٤٥، ق-٤٦)."""
+
+    SECONDARY = "فرعي"
+    MAIN = "رئيسي"
+
+    @property
+    def rate_key(self) -> str:
+        """مفتاح تعرفته في نسخة الأسعار."""
+        return ("عبور الشوارع الفرعية" if self is CrossingKind.SECONDARY
+                else "عبور الشوارع الرئيسية – حفر مخفي")
+
+    @property
+    def has_pipes(self) -> bool:
+        """**الأنبوب للفرعي وحده** — والرئيسي حفرٌ مخفيّ بلا أنبوب (ق-٤٦)."""
+        return self is CrossingKind.SECONDARY
+
+
+@dataclass
+class StreetCrossing:
+    """عبور شوارع من نوعٍ واحد داخل مقطعٍ أرضيّ (ق-٨٧).
+
+    **«عدد الشوارع» حقلٌ مستقلّ لا تكرارُ إدخال** — وهو الذي يجعل تقريب الأنبوب
+    يقع على **الشارع الواحد**. فخمسة شوارع بعشرة أمتار ليست شارعاً بخمسين:
+    الأنبوب يُقطع لكل شارع على حدة، والباقي هدرٌ لا يُنقل إلى الشارع التالي.
+    """
+
+    kind: CrossingKind = CrossingKind.SECONDARY
+    count: int = 1
+    """عدد الشوارع المعبورة بهذه المواصفة."""
+
+    street_length_m: float = 0.0
+    """عرض الشارع الواحد المعبور — **لا طول المسار**."""
+
+    feeders: int = 1
+    """عدد المغذيات العابرة في كل شارع. التعرفة لمتر ولمغذٍّ (ق-٤٥)."""
+
+
 @dataclass
 class Underground11kV:
     """مدخلات مقطع شبكة أرضية 11 ك.ف — قابلو 3×150 ملم² (ق-٣٠).
@@ -483,6 +521,15 @@ class Underground11kV:
 
     end_boxes_external: int = 0
     """صندوق نهاية خارجي — يدوي بحت، يربط نهاية القابلو بشبكة هوائية."""
+
+    crossings: list = field(default_factory=list)
+    """عبور الشوارع في هذا المقطع — قائمة `StreetCrossing` (ق-٨٧).
+
+    **على المقاطع الأرضية وحدها** بنصّ المستخدم: «المقاطع الأرضية فقط مشمولة
+    بهذا الأمر». فالحقل غير موجودٍ أصلاً في المقاطع الهوائية، ولا يحتاج حارساً
+    يمنعه — الحالة الممتنعة لا تُمثَّل.
+    """
+
 
 
 @dataclass
@@ -522,3 +569,6 @@ class Underground33kV:
 
     end_boxes_external: int = 0
     """صندوق نهاية خارجي — يدوي بحت."""
+
+    crossings: list = field(default_factory=list)
+    """عبور الشوارع في هذا المقطع — قائمة `StreetCrossing` (ق-٨٧)."""
