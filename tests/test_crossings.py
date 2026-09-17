@@ -233,3 +233,95 @@ def test_only_underground_segments_can_carry_crossings():
         assert not hasattr(kind(), "crossings"), kind.__name__
     for kind in (Underground11kV, Underground33kV):
         assert kind().crossings == []
+
+
+# ═════════ ٨. ترحيل الملفات القديمة عند الفتح (ق-٨٨) ═════════
+
+
+def test_an_old_file_keeps_its_crossing_cost_when_opened(catalog, tmp_path, qapp):
+    """**حارس الصمت:** بعد زوال حقول المشروع من الواجهة، ملفٌ قديم يحمل عبوراً
+    كان يفقده عند الفتح **وتنزل كلفته بلا أن ينبّه شيء**. فيُنقل إلى مقطعه.
+    """
+    from engine.store import save
+    from engine.workorder import WorkOrder
+    from ui.main_window import MainWindow
+
+    path = tmp_path / "قديم.wo"
+    old = Project("قديم", [Segment("المسار", ug(length=500))],
+                  street_crossing_secondary_m=30,
+                  street_crossing_secondary_feeders=2,
+                  street_crossing_main_m=10, street_crossing_main_feeders=1)
+    before = compute_project(old, catalog)["الكلفة_الكلية"]
+    # النسخة نفسها، وإلا بدّل الفتحُ الأسعار فبدا الفرق فرقَ ترحيل
+    save(path, WorkOrder(project_name="قديم"), old, catalog["نسخة"])
+
+    window = MainWindow(catalog)
+    window.load_from(path)
+    assert window.result["الكلفة_الكلية"] == before          # **لم تتغيّر**
+
+    crossings = window.project().segments[0].content.crossings
+    assert {c.kind for c in crossings} == {SEC, MAIN}
+    assert all(c.count == 1 for c in crossings)
+
+
+def test_the_migration_is_reported_and_not_silent(catalog):
+    """لا يقع النقل بلا علم المستخدم — والدالّة تصف ما نقلته."""
+    from ui.main_window import migrate_project_crossings
+
+    project = Project("م", [Segment("أ", ug())],
+                      street_crossing_secondary_m=30,
+                      street_crossing_secondary_feeders=2)
+    moved = migrate_project_crossings(project)
+    assert len(moved) == 1 and "30" in moved[0] and "«أ»" in moved[0]
+
+
+def test_a_file_with_no_crossing_reports_nothing(catalog):
+    from ui.main_window import migrate_project_crossings
+
+    assert migrate_project_crossings(Project("م", [Segment("أ", ug())])) == []
+
+
+def test_a_crossing_with_no_underground_segment_is_named_not_swallowed(catalog):
+    """لا موضع ينقَل إليه — **فيُبلَّغ صراحةً** بدل أن يُسقط بصمت."""
+    from engine.types import Network11kV
+    from ui.main_window import migrate_project_crossings
+
+    project = Project("م", [Segment("هوائي", Network11kV(route_length_m=500))],
+                      street_crossing_secondary_m=30,
+                      street_crossing_secondary_feeders=2)
+    moved = migrate_project_crossings(project)
+    assert len(moved) == 1 and "ولا مقطع أرضيّ" in moved[0]
+
+
+def test_the_migrated_crossing_lands_in_the_first_underground_segment(catalog):
+    from engine.types import Network11kV
+    from ui.main_window import migrate_project_crossings
+
+    project = Project("م", [
+        Segment("هوائي", Network11kV(route_length_m=100)),
+        Segment("أرضي أول", ug()),
+        Segment("أرضي ثانٍ", ug()),
+    ], street_crossing_main_m=20, street_crossing_main_feeders=1)
+    migrate_project_crossings(project)
+    assert len(project.segments[1].content.crossings) == 1
+    assert project.segments[2].content.crossings == []
+
+
+def test_the_migration_leaves_the_project_self_consistent(catalog):
+    """**حارس الازدواج:** بعد النقل يجب أن يُصفَّر الحقل القديم.
+
+    وإلا حُسب العبور مرّتين لمن يمرّر المشروع المُرحَّل إلى المحرك مباشرةً —
+    والواجهة تنجو بالمصادفة وحدها، لأنها تُعيد بناء المشروع من مقاطعها.
+    فالحارس على الدالّة لا على الواجهة.
+    """
+    from ui.main_window import migrate_project_crossings
+
+    project = Project("م", [Segment("أ", ug(length=500))],
+                      street_crossing_secondary_m=30,
+                      street_crossing_secondary_feeders=2,
+                      street_crossing_main_m=10, street_crossing_main_feeders=1)
+    before = compute_project(project, catalog)["الكلفة_الكلية"]
+    migrate_project_crossings(project)
+    assert compute_project(project, catalog)["الكلفة_الكلية"] == before
+    assert project.street_crossing_secondary_m == 0
+    assert project.street_crossing_main_m == 0

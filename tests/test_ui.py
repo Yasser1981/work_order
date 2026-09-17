@@ -623,32 +623,50 @@ def test_warning_renders_as_rich_text_not_raw_markup(window):
     assert window.warning.textFormat() == Qt.TextFormat.RichText
 
 
-def test_street_crossing_feeders_reach_the_engine(window):
-    """حقول المغذيات موصولة فعلاً — التعرفة لمغذٍّ ولمتر (ق-٤٥)."""
-    window.segments.street_main.setValue(10)
-    window.segments.street_main_feeders.setValue(3)
+def _crossing(panel, kind, count, length, feeders):
+    """يُدخل عبوراً في جدول المقطع الأرضي — كما يفعل المستخدم بزرّ الإضافة."""
+    from engine.types import StreetCrossing
+
+    panel.crossings._add_row(StreetCrossing(kind, count, length, feeders))
+
+
+def test_street_crossing_feeders_reach_the_engine(window, pug11):
+    """حقول المغذيات موصولة فعلاً — التعرفة لمغذٍّ ولمتر (ق-٤٥، ق-٨٧)."""
+    from engine.types import CrossingKind
+
+    _crossing(pug11, CrossingKind.MAIN, 1, 10, 3)
     line = next(l for l in window.result["أجور_العمل"] if "الرئيسية" in l.name)
     assert line.qty == 30 and line.cost == 6_000_000
     # ولا أنبوب للرئيسية — حفر مخفي (ق-٤٦)
     assert not any("أنبوب" in m["المادة"] for m in window.result["المواد"])
 
-    window.segments.street_secondary.setValue(10)
-    window.segments.street_secondary_feeders.setValue(3)
+    _crossing(pug11, CrossingKind.SECONDARY, 1, 10, 3)
     quantities = {m["المادة"]: m["الكمية"] for m in window.result["المواد"]}
     assert quantities["أنبوب 8 انج 10 بار"] == 7       # ⌈10÷6⌉ × 3 مغذيات + احتياط
 
 
-def test_the_street_hint_shows_the_multiplication_and_the_pipes(window):
-    window.segments.street_secondary.setValue(24)
-    window.segments.street_secondary_feeders.setValue(2)
-    text = window.segments.street_hint.text()
-    assert "24 م × 2 مغذيات × 100,000 = <b>4,800,000 د</b>" in text
-    assert "⌈24 ÷ 6⌉ × 2 + 1 احتياط = <b>9</b>" in text
+def test_the_crossing_hint_shows_the_multiplication_and_the_pipes(window, pug11):
+    from engine.types import CrossingKind
+
+    _crossing(pug11, CrossingKind.SECONDARY, 1, 24, 2)
+    text = pug11.crossings.hint.text()
+    assert "1 × 24 م × 2 مغذٍّ = 48 م×مغذٍّ × 100,000 = <b>4,800,000 د</b>" in text
+    assert "<b>9</b> روطة" in text
 
 
-def test_the_pipe_is_quantity_only_and_raises_no_warning(window):
+def test_the_hint_counts_the_streets_separately(window, pug11):
+    """**جوهر ق-٨٧ في اللوحة:** خمسة شوارع بعشرة أمتار = 15 روطة لا 10."""
+    from engine.types import CrossingKind
+
+    _crossing(pug11, CrossingKind.SECONDARY, 5, 10, 1)
+    assert "<b>15</b> روطة" in pug11.crossings.hint.text()
+
+
+def test_the_pipe_is_quantity_only_and_raises_no_warning(window, pug11):
     """كلفة الأنبوب ضمن أجر العبور — كمية بلا كلفة، ولا تحذير أصفر (ق-٤٦)."""
-    window.segments.street_secondary.setValue(10)
+    from engine.types import CrossingKind
+
+    _crossing(pug11, CrossingKind.SECONDARY, 1, 10, 1)
     row = next(m for m in window.result["المواد"] if "أنبوب" in m["المادة"])
     assert row["كمية_فقط"] is True and row["الكلفة"] == 0
     assert not window.result["أسعار_مفقودة"]
@@ -873,10 +891,19 @@ def test_ug11_civil_rate_extends_beyond_the_table_with_no_warning(window, pug11)
     assert "المجموع: 43,000 د/م" in text
 
 
-def test_street_crossings_are_project_wide_fields_not_per_segment(window, pug11):
-    """حقلا عبور الشوارع في لوحة المقاطع نفسها — لا داخل محرّر أي مقطع."""
-    window.segments.street_secondary.setValue(50)
-    window.segments.street_main.setValue(20)
+def test_crossings_live_inside_the_underground_segment(window, pug11):
+    """**قلبُ ق-٨٧:** العبور داخل محرّر المقطع الأرضي، لا في لوحة المقاطع.
+
+    وحقول المشروع القديمة **زالت من الواجهة** بإذن المستخدم — فلا موضعان
+    للإدخال ولا كلفةٌ تُحسب من حقلٍ لا يراه أحد.
+    """
+    from engine.types import CrossingKind
+
+    assert not hasattr(window.segments, "street_secondary")
+    assert not hasattr(window.segments, "street_crossings")
+
+    _crossing(pug11, CrossingKind.SECONDARY, 2, 50, 1)
+    _crossing(pug11, CrossingKind.MAIN, 1, 20, 1)
     names = {l.name for l in window.result["أجور_العمل"]}
     assert "عبور الشوارع الفرعية" in names
     assert "عبور الشوارع الرئيسية – حفر مخفي" in names
@@ -1204,10 +1231,11 @@ def test_an_electrical_row_carries_no_such_tip(stocked):
     assert not any(tips)
 
 
-def test_a_crossing_row_explains_why_its_quantity_is_multiplied(window):
+def test_a_crossing_row_explains_why_its_quantity_is_multiplied(window, pug11):
     """وحدة العبور «متر × مغذٍّ» — والسبب يُشرَح في البرنامج لا في المطبوع (ق-٧٧)."""
-    window.segments.street_secondary.setValue(12)
-    window.segments.street_secondary_feeders.setValue(2)
+    from engine.types import CrossingKind
+
+    _crossing(pug11, CrossingKind.SECONDARY, 1, 12, 2)
 
     tips = [window.labour.item(r, 0).toolTip() for r in range(window.labour.rowCount())]
     crossing = [tip for tip in tips if "عدد المغذيات" in tip]

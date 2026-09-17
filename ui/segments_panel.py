@@ -154,20 +154,6 @@ class SegmentsPanel(QWidget):
         self.note = HintLabel(JUNCTION_NOTE)
         outer.addWidget(self.note)
 
-        # عبور الشوارع: رقم إجمالي للمشروع كله لا لكل مقطع (بطلب المستخدم، ق-٣٠)
-        box, form = section("عبور الشوارع  —  إجمالي للمشروع كله")
-        self.street_secondary = number_field(0, 100_000, 0, suffix="م")
-        self.street_secondary_feeders = number_field(1, 100, 1)
-        self.street_main = number_field(0, 100_000, 0, suffix="م")
-        self.street_main_feeders = number_field(1, 100, 1)
-        form.addRow("طول عبور الشوارع الفرعية:", self.street_secondary)
-        form.addRow("عدد المغذيات العابرة (فرعية):", self.street_secondary_feeders)
-        form.addRow("طول عبور الشوارع الرئيسية (حفر مخفي):", self.street_main)
-        form.addRow("عدد المغذيات العابرة (رئيسية):", self.street_main_feeders)
-        self.street_hint = HintLabel()
-        form.addRow(self.street_hint)
-        outer.addWidget(box)
-
         self._sync_controls()
 
     def _connect(self) -> None:
@@ -175,11 +161,6 @@ class SegmentsPanel(QWidget):
         self.remove.clicked.connect(self._remove_segment)
         self.up.clicked.connect(lambda: self._move(-1))
         self.down.clicked.connect(lambda: self._move(+1))
-        for widget in (
-            self.street_secondary, self.street_secondary_feeders,
-            self.street_main, self.street_main_feeders,
-        ):
-            widget.valueChanged.connect(self.changed)
         self.list.currentRowChanged.connect(self._on_selection)
         self.name.textEdited.connect(self._rename_current)
 
@@ -334,11 +315,6 @@ class SegmentsPanel(QWidget):
             for segment in project.segments:
                 row = self.add_segment(segment.kind, segment.name)
                 self.editor(row).load(segment.content)
-            set_number(self.street_secondary, project.street_crossing_secondary_m)
-            set_number(self.street_secondary_feeders,
-                       project.street_crossing_secondary_feeders)
-            set_number(self.street_main, project.street_crossing_main_m)
-            set_number(self.street_main_feeders, project.street_crossing_main_feeders)
             self.list.setCurrentRow(0 if self._names else -1)
         finally:
             self.blockSignals(False)
@@ -378,46 +354,3 @@ class SegmentsPanel(QWidget):
             for row in range(len(self._names))
         ]
 
-    def street_crossings(self) -> dict:
-        """أطوال عبور الشوارع وأعداد مغذياتها — للمشروع كله (ق-٣٠، ق-٤٥)."""
-        return {
-            "street_crossing_secondary_m": self.street_secondary.value(),
-            "street_crossing_secondary_feeders": self.street_secondary_feeders.value(),
-            "street_crossing_main_m": self.street_main.value(),
-            "street_crossing_main_feeders": self.street_main_feeders.value(),
-        }
-
-    def refresh_street_hint(self, catalog: dict) -> None:
-        """يُظهر أن التعرفة **لمغذٍّ ولمتر**، وأن الأنبوب لا يتبع المغذيات (ق-٤٥)."""
-        from engine.underground import PIPE_LENGTH_M, SPARE_PIPES_PER_STREET as SPARE_PIPES
-
-        rates = catalog["أجور_العمل"]
-        rows = []
-        for length, feeders, label, has_pipes in (
-            (self.street_secondary.value(), self.street_secondary_feeders.value(),
-             "عبور الشوارع الفرعية", True),
-            (self.street_main.value(), self.street_main_feeders.value(),
-             "عبور الشوارع الرئيسية – حفر مخفي", False),
-        ):
-            if not (length and feeders):
-                continue
-            rate = rates[label]["السعر"]
-            row = (
-                f"<b>{label}</b>: {length:,.0f} م × {feeders} مغذيات"
-                f" × {rate:,.0f} = <b>{length * feeders * rate:,.0f} د</b>"
-            )
-            if has_pipes:
-                per_feeder = math.ceil(round(length / PIPE_LENGTH_M, 9))
-                row += (
-                    f"<br>&nbsp;&nbsp;– أنبوب 8 انج: ⌈{length:,.0f} ÷ {PIPE_LENGTH_M}⌉"
-                    f" × {feeders} + {SPARE_PIPES} احتياط ="
-                    f" <b>{per_feeder * feeders + SPARE_PIPES}</b>"
-                    " &nbsp;<i>(كمية بلا كلفة)</i>"
-                )
-            else:
-                row += "<br>&nbsp;&nbsp;<i>حفر مخفي — بلا أنبوب</i>"
-            rows.append(row)
-        self.street_hint.setText(
-            "<br>".join(rows)
-            or "التعرفة <b>لمغذٍّ واحد ولمتر واحد</b> — تُضرب بالطول وبعدد المغذيات."
-        )

@@ -33,7 +33,14 @@ from engine.prices import differences
 from engine.project import compute_project
 from engine.store import EXTENSION, LoadError, load as load_order, save as save_order
 from engine.workorder import WorkOrder
-from engine.types import Project, SegmentKind
+from engine.types import (
+    CrossingKind,
+    Project,
+    SegmentKind,
+    StreetCrossing,
+    Underground11kV,
+    Underground33kV,
+)
 import printing
 from printing.amana_form import printed_labour_name, printed_unit
 
@@ -59,6 +66,42 @@ QLabel#pane   { font-size: 16px; font-weight: 700; padding: 2px 2px 4px 2px; }
 QPushButton   { padding: 6px 14px; border-radius: 5px; }
 QPushButton#print { font-weight: 600; padding: 8px 20px; }
 """
+
+
+def migrate_project_crossings(project) -> list[str]:
+    """ينقل عبور الشوارع من حقول المشروع القديمة إلى أول مقطعٍ أرضي (ق-٨٨).
+
+    **ولماذا هذا لازمٌ لا تجميل:** بعد أن زالت حقول المشروع من الواجهة (بإذن
+    المستخدم)، صار ملفٌ قديم يحمل عبوراً **يفقده عند الفتح وتنزل كلفته بصمت** —
+    لأن الواجهة تبني المشروع من مقاطعها وحدها. والصمت هو الخطر، لا العبور.
+
+    **والنقل لا يغيّر رقماً**: العبور القديم شارعٌ واحد (`count=1`)، وهي الحالة
+    التي تعطي فيها صيغة ق-٨٧ ما كانت تعطيه صيغة ق-٤٥ حرفاً بحرف — وحارسٌ يثبّته.
+
+    يعيد وصفاً لما نُقل (أو لما تعذّر نقله) ليُعرَض على المستخدم، فلا يقع شيء
+    بلا علمه. والقائمة الفارغة تعني أن الملف لا عبور فيه.
+    """
+    moved: list[str] = []
+    target = next((s for s in project.segments
+                   if isinstance(s.content, (Underground11kV, Underground33kV))), None)
+    for length_field, feeders_field, kind in (
+        ("street_crossing_secondary_m", "street_crossing_secondary_feeders",
+         CrossingKind.SECONDARY),
+        ("street_crossing_main_m", "street_crossing_main_feeders", CrossingKind.MAIN),
+    ):
+        length = getattr(project, length_field)
+        feeders = getattr(project, feeders_field)
+        if not (length and feeders):
+            continue
+        where = f"«{target.name}»" if target else "— ولا مقطع أرضيّ في الملف"
+        moved.append(f"{kind.value}: {length:,.0f} م × {feeders} مغذيات ← {where}")
+        if target is None:
+            continue
+        target.content.crossings = list(target.content.crossings) + [
+            StreetCrossing(kind=kind, count=1, street_length_m=length, feeders=feeders)
+        ]
+        setattr(project, length_field, 0.0)
+    return moved
 
 
 def _price_text(value) -> str:
@@ -369,7 +412,6 @@ class MainWindow(QMainWindow):
         return Project(
             self.order_panel.project_name.text(),
             self.segments.segments(),
-            **self.segments.street_crossings(),
         )
 
     def new_order(self) -> None:
@@ -443,6 +485,7 @@ class MainWindow(QMainWindow):
             self.catalog = load_catalog(version)      # يرفع خطأً إن غابت النسخة
             self.version = version
             self._retarget_catalog()
+        moved = migrate_project_crossings(project)
         self.segments.load(project)
         self.order_panel.load(order)
         self.unavailable = set(order.unavailable_materials)
@@ -451,6 +494,26 @@ class MainWindow(QMainWindow):
         self.path = Path(path)
         self.recalculate()
         self._mark_clean()
+        self.migrated_crossings = moved
+        """ما نُقل من عبور المشروع عند آخر فتح — يعرضه `open_order` (ق-٨٨).
+
+        **ولا تعرضه هذه الدالّة**: عقدها أنها بلا أي حوار، فتبقى قابلة للاختبار
+        وللاستدعاء الآلي — والنوافذ الحاجزة تعطّل كليهما.
+        """
+
+    def _report_migrated_crossings(self) -> None:
+        """يعرض ما نُقل من عبور المشروع عند الفتح — إن كان ثمّة ما نُقل."""
+        moved = getattr(self, "migrated_crossings", [])
+        if moved:
+            QMessageBox.information(
+                self, "عبور الشوارع نُقل إلى مقطعه",
+                "هذا الملف يحمل عبور شوارع على مستوى المشروع، وهو موضعٌ لم يعد "
+                "في الواجهة (ق-٨٨):\n\n• " + "\n• ".join(moved)
+                + "\n\nوالكلفة لم تتغيّر. راجعه في جدول العبور داخل المقطع."
+                + ("" if "ولا مقطع" not in " ".join(moved) else
+                   "\n\n⚠️ ولا مقطع أرضيّ في هذا الملف، فلم يُنقل العبور ولم "
+                   "يعد يُحتسب. أضف مقطعاً أرضياً وأدخله فيه.")
+            )
 
     def open_order(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "فتح أمر عمل", "", WO_FILTER)
@@ -458,6 +521,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.load_from(path)
+            self._report_migrated_crossings()
         # الأخصّ أولاً: FileNotFoundError فرعٌ من OSError، فلو تأخّر لصار فرعاً
         # ميتاً لا يُبلَغ منه شيء — وهذه أكثر حالة يقع فيها من يعمل على أكثر من
         # حاسبة، إذ تُنشأ نسخة الأسعار على حاسبة ويُفتح أمر العمل على غيرها.
@@ -868,9 +932,7 @@ class MainWindow(QMainWindow):
         project = Project(
             self.order_panel.project_name.text(),
             self.segments.segments(),
-            **self.segments.street_crossings(),
         )
-        self.segments.refresh_street_hint(self.catalog)
         # **المحرك أولاً، ثم طبقة التعديل اليدوي فوقه** (ق-٨٢): `compute_project`
         # لا يعرف بالتعديلات شيئاً، فإلغاؤها يعيد رقمه كما هو.
         computed = compute_project(project, self.catalog)
