@@ -303,9 +303,48 @@ def test_11kv_cable_head_adds_the_arrester_and_halves_the_cable():
         "مانعة صواعق 11 KV": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب نحاس تأريض 1.5 متر مع القفيص": 1,
-        "قابلو نحاس 1×50 ملم²": 15,
+        "قابلو نحاس 1×50 ملم²": 12,         # **12 للـ11 ك.ف** بنصّ المستخدم (ق-٨٩)
         "ترمنل 50 ملم²": 1,
     }
+
+
+def test_the_arrester_earth_cable_follows_the_voltage():
+    """بنصّ المستخدم (ق-٨٩): **12 م للـ11 ك.ف و15 م للـ33**.
+
+    وكان الرقم واحداً (15) للجهدين — كُتب للـ11 ثم استُعمل للـ33 كما هو بلا أن
+    يُسأل عنه، فصحّح المستخدم الأصغر حين عُرض عليه.
+    """
+    from engine.equipment import ARRESTER_EARTH_CABLE_M, IsolatorVoltage
+
+    assert ARRESTER_EARTH_CABLE_M[IsolatorVoltage.KV11] == 12
+    assert ARRESTER_EARTH_CABLE_M[IsolatorVoltage.KV33] == 15
+
+    kv11 = {l.name: l.qty for l in materials_equipment(Equipment(onload_11_head=1))}
+    kv33 = {l.name: l.qty for l in materials_equipment(Equipment(isolator_33_head=1))}
+    assert kv11["قابلو نحاس 1×50 ملم²"] == 12
+    assert kv33["قابلو نحاس 1×50 ملم²"] == 15
+
+
+def test_the_arrester_terminal_is_one_in_both_voltages():
+    """ترمنلٌ واحد لا يتبع الجهد — أقرّه المستخدم (ق-٨٩).
+
+    والقابلو له طرفان، لكن طرفه عند القضيب يُربط بالقفيص المرفق معه.
+    """
+    for equipment in (Equipment(onload_11_head=1), Equipment(isolator_33_head=1)):
+        quantities = {l.name: l.qty for l in materials_equipment(equipment)}
+        assert quantities["ترمنل 50 ملم²"] == 1
+
+
+def test_the_arrester_cable_is_independent_of_the_isolator_cable():
+    """**حارس الفصل:** طول قابلو التأريض لا يُقرأ من طول قابلو الفاصل.
+
+    ذاك موصِّل قدرة بين الفاصل والشبكة، وهذا موصِّل تأريض بين المانعة وقضيبها.
+    ولو رُبطا لتحرّك أحدهما بتحريك الآخر بلا سبب — وقد ظنّ التوثيقُ يوماً أنهما
+    مرتبطان لأنهما تصادفا على 15.
+    """
+    from engine.equipment import ARRESTER_EARTH_CABLE_M, CABLE_HEAD_M, IsolatorVoltage
+
+    assert ARRESTER_EARTH_CABLE_M[IsolatorVoltage.KV11] != CABLE_HEAD_M
 
 
 def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():

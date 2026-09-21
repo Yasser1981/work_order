@@ -227,14 +227,6 @@ BRACKETS_21_PER_ISOLATOR = 1
 لا مادة غيره لهذا الغرض (ت-٩ حُسم في ق-٤١). أجر تركيبه داخل أجر نصب الفاصل،
 وسعره 110,000 (ق-٣٦)."""
 
-ARRESTER_ASSEMBLY_EXTRAS = [
-    (M_ARRESTER_BASE, 1),
-    (M_EARTH_ROD, 1),
-    (M_CU_CABLE_50, 15),
-    (M_EARTH_TERMINAL, 1),
-]
-"""ما يرافق مانعة الصواعق: قاعدتها وتأريضها. لا معنى لمانعة بلا أرضي."""
-
 
 class IsolatorVoltage(Enum):
     KV11 = "11 ك.ف"
@@ -281,6 +273,43 @@ ISOLATOR_PARTS = {
 }
 
 
+ARRESTER_EARTH_CABLE_M = {
+    IsolatorVoltage.KV11: 12,
+    IsolatorVoltage.KV33: 15,
+}
+"""طول قابلو تأريض مانعة الصواعق (م) — **يتبع الجهد** (ق-٨٩).
+
+بنصّ المستخدم: «مانعة الصواعق جهد 11 ك.ف تحتاج قابلو نحاس 1×50 ملم طول 12 م،
+وفي حالة 33 ك.ف يكون طول القابلو 15 م».
+
+**وكان الرقم واحداً للجهدين (15)** — كُتب للـ11 ثم استُعمل للـ33 كما هو، بلا أن
+يُسأل عنه. فعُرض على المستخدم في ق-٨٩ فصحّح الأصغر.
+
+**ولا علاقة له بطول قابلو الفاصل** وإن تصادف تساويهما يوماً: ذاك موصِّل قدرة
+بين الفاصل والشبكة، وهذا موصِّل تأريض بين المانعة وقضيبها. **ولو رُبطا لتحرّك
+أحدهما بتحريك الآخر بلا سبب.**
+"""
+
+ARRESTER_EARTH_TERMINALS = 1
+"""ترمنل 50 ملم² لمانعة الصواعق — **واحد، ولا يتبع الجهد** (أقرّه المستخدم ق-٨٩).
+
+والقابلو له طرفان، لكن طرفه عند القضيب يُربط بالقفيص المرفق معه
+(«قضيب نحاس تأريض 1.5 متر **مع القفيص**») فلا يحتاج ترمنلاً."""
+
+
+def arrester_assembly(voltage: IsolatorVoltage) -> list[tuple[tuple[str, str], float]]:
+    """ما يرافق مانعة الصواعق: قاعدتها وتأريضها. لا معنى لمانعة بلا أرضي.
+
+    **والقابلو وحده يتبع الجهد** — القاعدة والقضيب والترمنل سواء في الجهدين.
+    """
+    return [
+        (M_ARRESTER_BASE, 1),
+        (M_EARTH_ROD, 1),
+        (M_CU_CABLE_50, ARRESTER_EARTH_CABLE_M[voltage]),
+        (M_EARTH_TERMINAL, ARRESTER_EARTH_TERMINALS),
+    ]
+
+
 def isolator_kit(
     voltage: IsolatorVoltage, position: IsolatorPosition
 ) -> list[tuple[tuple[str, str], float]]:
@@ -296,7 +325,7 @@ def isolator_kit(
         kit.append((parts["fittings"], position.fittings))
     if position.needs_arrester:
         kit.append((parts["arrester"], 1))
-        kit.extend(ARRESTER_ASSEMBLY_EXTRAS)
+        kit.extend(arrester_assembly(voltage))
     return kit
 
 
