@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from .lowvoltage import RATE_KEYS as _LOW_VOLTAGE
 from .overhead import RATE_KEYS as _OVERHEAD
+from .underground import RATE_KEYS as _UNDERGROUND
 
-RATE_KEYS: dict[str, str] = {**_OVERHEAD, **_LOW_VOLTAGE}
+RATE_KEYS: dict[str, str] = {**_OVERHEAD, **_LOW_VOLTAGE, **_UNDERGROUND}
 """الاسم المعروض ← مفتاح سعره في الكتالوج، لكل بند يختلف فيه الاثنان."""
 
 

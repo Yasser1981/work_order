@@ -22,6 +22,7 @@ from engine.underground import (
     CIVIL_GROUP,
     civil_tariff_parts,
     civil_works_rate,
+    END_BOX_33_RATE,
     crossing_pipes,
     materials_underground11,
     resolve_drum_length,
@@ -820,11 +821,63 @@ def test_cable_laying_labour_uses_the_cable_quantity_33(catalog):
 
 
 def test_end_boxes_share_one_labour_line_33(catalog):
+    """بندُ أجرٍ واحد للداخلي والخارجي معاً — **وكميته صناديق لا سيتات** (ق-٩٠)."""
     net = Underground33kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
     result = compute_project(Project(segments=[Segment("م", net)]), catalog)
     boxes = [l for l in result["أجور_العمل"] if l.name == "كلفة نصب صندوق نهاية 1×400 ملم²"]
-    assert len(boxes) == 1 and boxes[0].qty == 5
-    assert boxes[0].rate == 225000
+    assert len(boxes) == 1 and boxes[0].qty == 5 * 3
+    assert boxes[0].rate == 75_000
+
+
+def test_the_end_box_labour_quantity_equals_the_material_quantity_33(catalog):
+    """**جوهر ق-٩٠:** الجدولان يقولان الرقم نفسه للعمل نفسه.
+
+    كانت المادة تُضرب في ثلاثة والأجر لا يُضرب، فيقرأ المدقّق «15» في جدول
+    المواد و«5» في جدول الأجور — والعمل واحد.
+    """
+    net = Underground33kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    materials = sum(row["الكمية"] for row in result["المواد"]
+                    if "صندوق نهاية" in row["المادة"])
+    labour = next(l.qty for l in result["أجور_العمل"]
+                  if l.name == "كلفة نصب صندوق نهاية 1×400 ملم²")
+    assert materials == labour == 15
+
+
+def test_the_rewording_did_not_move_a_single_dinar(catalog):
+    """**حارس الحياد:** 3 صناديق × 75,000 = سيتٌ واحد × 225,000 بالضبط.
+
+    فالتصحيح في الوضوح لا في الكلفة — ولو تحرّك مبلغ لكان التصحيح تسعيراً
+    جديداً لا توضيحاً، ولوجب عرضه على المستخدم بوصفه كذلك.
+    """
+    net = Underground33kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    line = next(l for l in result["أجور_العمل"]
+                if l.name == "كلفة نصب صندوق نهاية 1×400 ملم²")
+    assert line.cost == 5 * 225_000 == 1_125_000
+
+
+def test_the_end_box_now_matches_the_straight_box_rule_33(catalog):
+    """وصار البندان على قاعدةٍ واحدة: كميةُ الأجر = كميةُ المادة، بوحدة «عدد»."""
+    net = Underground33kV(route_length_m=1, straight_boxes=4, end_boxes_internal=1)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    quantities = {row["المادة"]: row["الكمية"] for row in result["المواد"]}
+    labour = {l.name: l.qty for l in result["أجور_العمل"]}
+    assert quantities["صندوق مستقيم 1×400 ملم² جهد 33 ك.ف"] == \
+        labour["كلفة نصب صندوق مستقيم 1×400 ملم²"] == 4
+    assert quantities["صندوق نهاية داخلي 1×400 ملم² جهد 33 ك.ف"] == \
+        labour["كلفة نصب صندوق نهاية 1×400 ملم²"] == 3
+
+
+def test_the_11kv_end_box_is_untouched(catalog):
+    """**11 ك.ف لا يُمسّ:** قابلوه ثلاثي القلب فنهايته صندوقٌ واحد، لا ثلاثة."""
+    from engine.types import Underground11kV
+
+    net = Underground11kV(route_length_m=1, end_boxes_internal=2, end_boxes_external=3)
+    result = compute_project(Project(segments=[Segment("م", net)]), catalog)
+    line = next(l for l in result["أجور_العمل"]
+                if l.name == "كلفة نصب صندوق نهاية 3×150 ملم²")
+    assert line.qty == 5 and line.rate == 125_000
 
 
 def test_33kv_and_11kv_labour_rates_are_independent(catalog):
@@ -832,7 +885,7 @@ def test_33kv_and_11kv_labour_rates_are_independent(catalog):
     rates = catalog["أجور_العمل"]
     assert rates["كلفة مد قابلو 3×150 ملم²"]["السعر"] != rates["كلفة مد قابلو 1×400 ملم²"]["السعر"]
     assert rates["كلفة نصب صندوق نهاية 3×150 ملم²"]["السعر"] != \
-        rates["كلفة نصب صندوق نهاية 1×400 ملم²"]["السعر"]
+        rates[END_BOX_33_RATE]["السعر"]        # مفتاحٌ جديد منذ ق-٩٠
 
 
 # ─────────────────── التكامل ───────────────────
@@ -864,3 +917,24 @@ def test_every_33kv_material_is_priced_or_flagged(catalog):
     for line in materials_underground33(net, catalog):
         assert line.name in prices, f"مادة بلا صف في نسخة الأسعار: {line.name}"
         assert prices[line.name]["الوحدة"] == line.unit
+
+
+def test_a_stale_price_version_reports_the_end_box_instead_of_tripling_it(catalog):
+    """**حارس الصمت (ق-٩٠):** معنى الكمية تغيّر، فتغيّر المفتاح معه.
+
+    ولولا تغييرُه لقرأ أمرُ عملٍ قديمٌ مرساهُ نسخةَ أيلول **السعرَ القديم
+    (225,000 للسيت) بالكمية الجديدة (صناديق)**، فتصير كلفة الأجر ثلاثة أضعافها
+    **بصمت**. وبالمفتاح الجديد يخرج البند بلا أجر مع تحذيرٍ ظاهر (ق-٩).
+    """
+    stale = {k: v for k, v in catalog["أجور_العمل"].items() if k != END_BOX_33_RATE}
+    stale["كلفة نصب صندوق نهاية 1×400 ملم²"] = {"الوحدة": "عدد", "السعر": 225_000}
+    old_catalog = {**catalog, "أجور_العمل": stale}
+
+    net = Underground33kV(route_length_m=1, end_boxes_internal=2)
+    result = compute_project(Project(segments=[Segment("م", net)]), old_catalog)
+    line = next(l for l in result["أجور_العمل"] if "صندوق نهاية" in l.name)
+
+    assert line.rate_missing is True            # يُبلَّغ ولا يُحتسب خطأً
+    assert line.cost == 0
+    assert line.name in result["أجور_مفقودة"]
+    assert line.qty == 2 * 3                    # والكمية صحيحة، ينقصها سعرها
