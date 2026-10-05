@@ -14,7 +14,7 @@ from datetime import date  # noqa: E402
 import printing  # noqa: E402
 from engine import load_catalog  # noqa: E402
 from engine.equipment import TRANSFORMER_KITS  # noqa: E402
-from engine.links import material_drivers, unlinked_drivers  # noqa: E402
+from engine.links import driver_keys, material_drivers, unlinked_drivers  # noqa: E402
 from engine.project import compute_project  # noqa: E402
 from engine.types import (  # noqa: E402
     Equipment,
@@ -84,14 +84,14 @@ def test_every_declared_driver_names_a_material_that_really_exists():
         result = compute(content)
         names = {(m["المادة"], m["الوحدة"]) for m in result["المواد"]}
         for line in result["أجور_العمل"]:
-            if line.driver:
-                assert line.driver in names, (
-                    f"«{line.name}» يعلن مادةً غير موجودة: {line.driver}")
+            for key in driver_keys(line):
+                assert key in names, (
+                    f"«{line.name}» يعلن مادةً غير موجودة: {key}")
 
 
 def test_the_declared_drivers_mostly_link_in_a_real_project(result):
     """الإعلان ليس حبراً على ورق: أكثر البنود المعلنة تُربط فعلاً."""
-    declared = [line for line in result["أجور_العمل"] if line.driver]
+    declared = [line for line in result["أجور_العمل"] if driver_keys(line)]
     assert len(material_drivers(result)) == len(declared) > 4
 
 
@@ -110,12 +110,30 @@ def test_a_shared_material_between_two_labour_items_is_not_linked():
     assert all("الكمية" in why for why in reasons.values())
 
 
-def test_an_item_with_two_source_materials_declares_no_driver():
-    """صندوق النهاية: داخلي وخارجي في بندِ أجرٍ واحد — فلا مادة واحدة تقوده."""
+def test_an_item_with_two_source_materials_declares_them_both(result_unused=None):
+    """صندوق النهاية: داخلي وخارجي في بندِ أجرٍ واحد — **فيُعلنهما معاً** (ق-٩١).
+
+    كان يُعلن `driver` فارغاً فتبقى كميته رقماً جامداً في الإكسل. وصار يُعلن
+    `drivers` بالمادتين، فتصير المعادلة **جمعَ خليّتيهما**.
+    """
     result = compute(Underground11kV(route_length_m=300, feeder_count=1,
                                      end_boxes_internal=2, end_boxes_external=3))
     ends = [l for l in result["أجور_العمل"] if "صندوق نهاية" in l.name]
-    assert ends and all(line.driver is None for line in ends)
+    assert ends
+    for line in ends:
+        assert line.driver is None                  # ليست مادةً واحدة
+        assert len(driver_keys(line)) == 2          # بل اثنتان
+    linked = material_drivers(result)
+    assert any(len(keys) == 2 for keys in linked.values())
+
+
+def test_the_sum_of_the_two_materials_is_what_links_it():
+    """**شرط الربط معمَّمٌ لا مخفَّف:** المجموع يساوي الكمية، وإلا فلا ربط."""
+    result = compute(Underground11kV(route_length_m=300, feeder_count=1,
+                                     end_boxes_internal=2, end_boxes_external=3))
+    line = next(l for l in result["أجور_العمل"] if "صندوق نهاية" in l.name)
+    quantities = {(m["المادة"], m["الوحدة"]): m["الكمية"] for m in result["المواد"]}
+    assert sum(quantities[key] for key in driver_keys(line)) == line.qty == 5
 
 
 def test_a_chance_match_in_numbers_never_creates_a_link():
@@ -161,8 +179,12 @@ def test_the_iso_labour_quantity_points_at_its_material_row(order, result, tmp_p
         assert formula.startswith(f"='{ORDER_SHEET}'!D")
         target = int(formula.rsplit("D", 1)[1])
         line = lines[row - 2]
-        assert order_sheet.cell(target, 2).value == line.driver[0]
-        assert order_sheet.cell(target, 4).value == line.qty     # لا يتغيّر رقم
+        names = [order_sheet.cell(int(part.rsplit("D", 1)[1]), 2).value
+                 for part in formula.lstrip("=").split("+")]
+        assert names == [key[0] for key in driver_keys(line)]
+        total = sum(order_sheet.cell(int(part.rsplit("D", 1)[1]), 4).value
+                    for part in formula.lstrip("=").split("+"))
+        assert total == line.qty                                 # لا يتغيّر رقم
 
 
 def test_the_amana_labour_quantity_points_at_its_material_row(order, result, tmp_path):
@@ -173,15 +195,16 @@ def test_the_amana_labour_quantity_points_at_its_material_row(order, result, tmp
     sheet = openpyxl.load_workbook(path)[SHEET]
 
     expected = {printed_labour_name(line.name): line
-                for line in result["أجور_العمل"] if line.driver}
+                for line in result["أجور_العمل"] if driver_keys(line)}
     formulas = _linked(sheet)
     assert formulas
 
     for row, formula in formulas.items():
         line = expected[sheet.cell(row, 2).value]
-        target = int(formula.lstrip("=D"))
-        assert sheet.cell(target, 2).value == line.driver[0]
-        assert sheet.cell(target, 4).value == line.qty
+        targets = [int(part.lstrip("=D")) for part in formula.lstrip("=").split("+")]
+        assert [sheet.cell(t, 2).value for t in targets] == \
+            [key[0] for key in driver_keys(line)]
+        assert sum(sheet.cell(t, 4).value for t in targets) == line.qty
 
 
 def test_the_unlinked_quantities_stay_plain_numbers(order, tmp_path):
@@ -204,5 +227,68 @@ def test_the_numbers_themselves_did_not_change(order, result, tmp_path):
     for index, line in enumerate(result["أجور_العمل"]):
         value = labour.cell(index + 2, 4).value
         if isinstance(value, str):
-            value = order_sheet.cell(int(value.rsplit("D", 1)[1]), 4).value
+            value = sum(order_sheet.cell(int(part.rsplit("D", 1)[1]), 4).value
+                        for part in value.lstrip("=").split("+"))
         assert value == line.qty
+
+
+def test_only_the_present_end_box_material_is_declared():
+    """**ما لا يُولَّد لا يُعلَن** (ق-٩١): مقطعٌ بنهاياتٍ داخلية وحدها.
+
+    ولو أُعلنت المادتان دائماً لسقط الربط كلّه في هذه الحالة — ولسقط معه حارسُ
+    «كل مادة مُعلَنة موجودة» الذي يمسك الأخطاء المطبعية.
+    """
+    for internal, external, expected in ((2, 0, 1), (0, 3, 1), (2, 3, 2)):
+        result = compute(Underground11kV(route_length_m=300, feeder_count=1,
+                                         end_boxes_internal=internal,
+                                         end_boxes_external=external))
+        line = next(l for l in result["أجور_العمل"] if "صندوق نهاية" in l.name)
+        assert len(driver_keys(line)) == expected, (internal, external)
+        assert len(material_drivers(result)) >= 1
+        quantities = {(m["المادة"], m["الوحدة"]): m["الكمية"] for m in result["المواد"]}
+        assert sum(quantities[k] for k in driver_keys(line)) == line.qty
+
+
+def test_the_33kv_end_box_links_on_the_tripled_quantity():
+    """و33 ك.ف يربط على الكمية المضروبة في ثلاثة (ق-٩٠) — لا على السيتات."""
+    from engine.types import Underground33kV
+
+    result = compute(Underground33kV(route_length_m=300, end_boxes_internal=2,
+                                     end_boxes_external=3))
+    line = next(l for l in result["أجور_العمل"] if "صندوق نهاية" in l.name)
+    quantities = {(m["المادة"], m["الوحدة"]): m["الكمية"] for m in result["المواد"]}
+    assert sum(quantities[k] for k in driver_keys(line)) == line.qty == 15
+
+
+def test_editing_one_end_box_in_the_program_carries_the_labour_with_it():
+    """والتعديل اليدوي يتبع المجموع أيضاً، لا المادة المعدَّلة وحدها (ق-٩١)."""
+    from engine.overrides import apply as apply_overrides
+
+    result = compute(Underground11kV(route_length_m=300, feeder_count=1,
+                                     end_boxes_internal=2, end_boxes_external=3))
+    from engine.overrides import key_of
+
+    edited = apply_overrides(
+        result, {key_of("صندوق نهاية داخلي 3×150 ملم² جهد 11 ك.ف", "عدد"): 6}, {})
+    line = next(l for l in edited["أجور_العمل"] if "صندوق نهاية" in l.name)
+    assert line.qty == 6 + 3            # المعدَّل + غير المعدَّل
+    assert line.manual is True
+
+
+def test_a_missing_declared_material_blocks_the_link_entirely():
+    """**حارس الكلّ لا البعض:** مادةٌ مُعلَنة غائبة ← لا ربط، لا ربطٌ ناقص.
+
+    ولو قُبل الربط بوجود بعضِ المُعلَنات لأشارت المعادلة إلى الحاضر وحده،
+    فتقرأ الورقة **جزءاً من الكمية** رقماً صحيح المظهر وخاطئاً. والرقم الجامد
+    الصحيح خيرٌ من معادلةٍ حيّةٍ ناقصة.
+    """
+    from engine.types import LabourLine
+
+    present = ("مادة حاضرة", "عدد")
+    absent = ("مادة غائبة", "عدد")
+    result = {
+        "المواد": [{"المادة": present[0], "الوحدة": present[1], "الكمية": 5}],
+        "أجور_العمل": [LabourLine("بند", "عدد", 5, 100, drivers=(present, absent))],
+    }
+    assert material_drivers(result) == {}
+    assert dict(unlinked_drivers(result))["بند"].startswith("لا مادة")

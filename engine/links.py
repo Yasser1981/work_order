@@ -33,18 +33,39 @@
 from __future__ import annotations
 
 
-def material_drivers(result: dict) -> dict[int, tuple[str, str]]:
-    """فهرس بند الأجر ← مفتاح المادة التي تقوده، **حين يصحّ الربط**.
+def driver_keys(line) -> tuple:
+    """مفاتيحُ الموادّ التي يُعلن هذا البند أنها تقود كميته — صفرٌ أو أكثر.
+
+    يوحّد الحقلين: `driver` لمادةٍ واحدة و`drivers` لعدّة مواد (ق-٩١). فيقرأ
+    مَن بعده مفاتيحَ في كل الحالات، ولا يعرف أيّ الحقلين كُتب.
+    """
+    if line.drivers:
+        return tuple(line.drivers)
+    return (line.driver,) if line.driver else ()
+
+
+def material_drivers(result: dict) -> dict[int, tuple]:
+    """فهرس بند الأجر ← **مفاتيح** المواد التي تقوده، حين يصحّ الربط.
 
     المفتاح (اسم، وحدة) لا رقم سطر: أرقام السطور تخصّ كل ورقة على حدة، والمفتاح
     واحد في كل مكان.
+
+    **والقيمة تُبّةٌ دائماً** ولو كانت مادةً واحدة (ق-٩١) — فيكتب القارئ معادلة
+    جمعٍ بلا أن يفرّق بين حالةٍ وحالة.
+
+    **ولا يصحّ الربط إلا بتطابق المجموع:** مجموعُ كميات الموادّ المُعلَنة يساوي
+    كمية البند. وهو تعميمُ شرط ق-٨١ لا تخفيفُه: المادة الواحدة حالةٌ خاصّة من
+    المجموع. فلو نقصت مادةٌ من النتيجة أو اختلف رقمٌ، بقيت الكمية جامدة ولم
+    يتغيّر رقمٌ بلا أمر (ق-٠).
     """
     materials = {(row["المادة"], row["الوحدة"]): row for row in result["المواد"]}
-    links: dict[int, tuple[str, str]] = {}
+    links: dict[int, tuple] = {}
     for index, line in enumerate(result["أجور_العمل"]):
-        material = materials.get(line.driver) if line.driver else None
-        if material is not None and material["الكمية"] == line.qty:
-            links[index] = line.driver
+        keys = driver_keys(line)
+        rows = [materials.get(key) for key in keys]
+        if keys and all(row is not None for row in rows):
+            if sum(row["الكمية"] for row in rows) == line.qty:
+                links[index] = keys
     return links
 
 
@@ -57,12 +78,15 @@ def unlinked_drivers(result: dict) -> list[tuple[str, str]]:
     materials = {(row["المادة"], row["الوحدة"]): row for row in result["المواد"]}
     out = []
     for line in result["أجور_العمل"]:
-        if not line.driver:
+        keys = driver_keys(line)
+        if not keys:
             continue
-        material = materials.get(line.driver)
-        if material is None:
-            out.append((line.name, f"لا مادة باسم «{line.driver[0]}» في هذه النتيجة"))
-        elif material["الكمية"] != line.qty:
+        missing = [key for key in keys if key not in materials]
+        if missing:
             out.append((line.name,
-                        f"الكمية {line.qty:g} والمادة {material['الكمية']:g}"))
+                        f"لا مادة باسم «{missing[0][0]}» في هذه النتيجة"))
+            continue
+        total = sum(materials[key]["الكمية"] for key in keys)
+        if total != line.qty:
+            out.append((line.name, f"الكمية {line.qty:g} والمادة {total:g}"))
     return out

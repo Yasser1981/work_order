@@ -382,6 +382,24 @@ def trench_materials(
     ]
 
 
+
+def _end_box_drivers(net, internal, external) -> tuple:
+    """مفاتيحُ موادّ صندوق النهاية **الموجودةِ فعلاً** في هذا المقطع (ق-٩١).
+
+    **ولماذا لا تُعلَن المادتان دائماً:** مقطعٌ فيه نهاياتٌ داخلية وحدها لا
+    يولّد مادةَ الخارجي أصلاً، فإعلانُها يجعل الربط يسقط كلّه — ويُسقط معه
+    حارسَ «كل مادة مُعلَنة موجودة»، وهو حارسٌ يمسك الأخطاء المطبعية.
+
+    فتُعلَن الموجودة وحدها: الداخلي وحده، أو الخارجي وحده، أو كلاهما.
+    """
+    keys = []
+    if net.end_boxes_internal:
+        keys.append(internal)
+    if net.end_boxes_external:
+        keys.append(external)
+    return tuple(keys)
+
+
 def materials_underground11(net: Underground11kV, catalog: dict) -> list[MaterialLine]:
     """يولّد أسطر مواد مقطع الشبكة الأرضية 11 ك.ف."""
     lines: list[MaterialLine] = []
@@ -449,13 +467,16 @@ def labour_underground11(net: Underground11kV, catalog: dict) -> list[LabourLine
                        driver=M_BOX_STRAIGHT_11)
         )
 
-    # صندوق النهاية: بندُ أجرٍ واحد ومادتان (داخلي وخارجي)، فلا مادة **واحدة**
-    # تقوده — ويبقى بلا `driver` (ق-٨١)
+    # صندوق النهاية: بندُ أجرٍ واحد ومادتان (داخلي وخارجي). فلا مادة **واحدة**
+    # تقوده، ويُعلن `drivers` بهما معاً فتصير كميته في الإكسل مجموعَ خليّتيهما
+    # (ق-٩١، معمِّماً ق-٨١)
     end_total = net.end_boxes_internal + net.end_boxes_external
     if end_total:
         entry = rates["كلفة نصب صندوق نهاية 3×150 ملم²"]
         out.append(
-            LabourLine("كلفة نصب صندوق نهاية 3×150 ملم²", entry["الوحدة"], end_total, entry["السعر"])
+            LabourLine("كلفة نصب صندوق نهاية 3×150 ملم²", entry["الوحدة"],
+                       end_total, entry["السعر"],
+                       drivers=_end_box_drivers(net, M_BOX_END_INTERNAL_11, M_BOX_END_EXTERNAL_11))
         )
 
     if net.route_length_m > 0:
@@ -608,8 +629,9 @@ def labour_underground33(net: Underground33kV, catalog: dict) -> list[LabourLine
                        driver=M_BOX_STRAIGHT_33)
         )
 
-    # صندوق النهاية: بندُ أجرٍ واحد ومادتان (داخلي وخارجي)، فلا مادة **واحدة**
-    # تقوده — ويبقى بلا `driver` (ق-٨١)
+    # صندوق النهاية: بندُ أجرٍ واحد ومادتان (داخلي وخارجي). فلا مادة **واحدة**
+    # تقوده، ويُعلن `drivers` بهما معاً فتصير كميته في الإكسل مجموعَ خليّتيهما
+    # (ق-٩١، معمِّماً ق-٨١)
     end_total = net.end_boxes_internal + net.end_boxes_external
     if end_total:
         # **الكمية صناديق لا سيتات** (ق-٩٠): كانت الكمية عدد السيتات وسعرها سعر
@@ -619,7 +641,8 @@ def labour_underground33(net: Underground33kV, catalog: dict) -> list[LabourLine
         entry = rates.get(END_BOX_33_RATE) or {}
         out.append(
             LabourLine(END_BOX_33_LABEL, entry.get("الوحدة", "عدد"),
-                       end_total * BOXES_PER_END_SET_33, entry.get("السعر"))
+                       end_total * BOXES_PER_END_SET_33, entry.get("السعر"),
+                       drivers=_end_box_drivers(net, M_BOX_END_INTERNAL_33, M_BOX_END_EXTERNAL_33))
         )
 
     if net.route_length_m > 0:

@@ -101,14 +101,20 @@ def apply(result: dict, materials: dict | None = None,
 
     # ٢. الأجور: تعديلٌ صريح، وإلا ما انتقل إليها من مادتها (ق-٨١)
     links = material_drivers(result)
+    computed_materials = {(row["المادة"], row["الوحدة"]): row["الكمية"]
+                          for row in result["المواد"]}
     lines = []
     for index, line in enumerate(result["أجور_العمل"]):
         key = key_of(line.name, line.unit)
         wanted = None if key in blocked else labour.get(key)
         if wanted is None:
-            driven = links.get(index)
-            if driven in changed_materials:
-                wanted = changed_materials[driven]
+            # **المجموع لا المفتاح الواحد** (ق-٩١): بندٌ تقوده مادتان — كصندوق
+            # النهاية — كميتُه مجموعُهما. فيُؤخذ المعدَّل حيث عُدِّل والمحسوب
+            # حيث لم يُعدَّل، ولا يكفي أن تتغيّر إحداهما لتُهمَل الأخرى.
+            driven = links.get(index) or ()
+            if any(key in changed_materials for key in driven):
+                wanted = sum(changed_materials.get(key, computed_materials[key])
+                             for key in driven)
         if wanted is None or wanted == line.qty:
             lines.append(line)
             continue

@@ -339,9 +339,15 @@ def _build_labour_sheet(sheet, result: dict) -> int:
         sheet.cell(row, 1, index).alignment = _CENTRE
         sheet.cell(row, 2, line.group or "الأعمال الكهربائية").alignment = _RIGHT
         sheet.cell(row, 3, line.name).alignment = _RIGHT
-        driver = links.get(index - 1)
-        quantity = (f"='{ORDER_SHEET}'!D{rows[driver]}"
-                    if driver in rows else line.qty)
+        keys = links.get(index - 1) or ()
+        # **معادلةُ جمعٍ لا إشارةٌ واحدة** (ق-٩١): بندُ أجرٍ تقوده مادتان —
+        # كصندوق النهاية — كميتُه مجموعُ خليّتيهما، فيتبعهما تعديلُ أيّهما.
+        quantity = (
+            "+".join(f"'{ORDER_SHEET}'!D{rows[key]}" for key in keys)
+            if keys and all(key in rows for key in keys) else line.qty
+        )
+        if isinstance(quantity, str):
+            quantity = "=" + quantity
         sheet.cell(row, 4, quantity).alignment = _CENTRE
         sheet.cell(row, 5, line.unit).alignment = _CENTRE
         sheet.cell(row, 6, line.rate or 0).number_format = _MONEY

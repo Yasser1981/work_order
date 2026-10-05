@@ -149,8 +149,10 @@ def _labour(sheet, title: str, lines: list, row: int, total_label: str,
         sheet.cell(at, 1, index).alignment = _CENTRE
         sheet.cell(at, 2, printed_labour_name(line.name)).alignment = _RIGHT
         sheet.cell(at, 3, printed_unit(line.unit)).alignment = _CENTRE
-        driver = links.get(id(line))
-        sheet.cell(at, 4, f"=D{driver}" if driver else line.qty).alignment = _CENTRE
+        places_of = links.get(id(line)) or ()
+        sheet.cell(at, 4,
+                   "=" + "+".join(f"D{row}" for row in places_of)
+                   if places_of else line.qty).alignment = _CENTRE
         sheet.cell(at, 5, line.rate or 0).number_format = _MONEY
         sheet.cell(at, 6, f"=D{at}*E{at}").number_format = _MONEY
         _boxed(sheet, at, 1, LAST)
@@ -199,9 +201,9 @@ def build_workbook(order: WorkOrder, result: dict) -> Workbook:
     # بند الأجر ← صفّ مادته في هذه الورقة. المفتاح `id(line)` لأن الاسم قد
     # يتكرّر بسعرين (ق-٢٤)، وهوية الكائن لا تلتبس.
     links = {
-        id(result["أجور_العمل"][index]): places["صفوف"][key]
-        for index, key in material_drivers(result).items()
-        if key in places["صفوف"]
+        id(result["أجور_العمل"][index]): [places["صفوف"][key] for key in keys]
+        for index, keys in material_drivers(result).items()
+        if all(key in places["صفوف"] for key in keys)
     }
     civil_at = _labour(sheet, "الأعمال المدنية", civil, places["التالي"],
                        "مجموع اجور عمل الاعمال المدنية", links)
