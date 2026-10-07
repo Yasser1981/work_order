@@ -356,7 +356,8 @@ def test_33kv_mid_network_uses_the_185_cable_and_no_arrester():
         "ترمنل 185 ملم²": 6,
         "قاعدة فاصل هوائي – براكيت جنل 2.1م": 1,
         # 210 ملم² لا العادية — السلك المتّصل 210/35 (ق-٣٧)
-        "معدات ربط ألمنيوم – نحاس 210 ملم²": 6,
+        # و**12** لا 6: معدتان لكل طور في 33 ك.ف (ق-٩٢) × 3 أطوار × جهتين
+        "معدات ربط ألمنيوم – نحاس 210 ملم²": 12,
     }
 
 
@@ -368,7 +369,7 @@ def test_33kv_cable_head_matches_the_original_file_except_the_cable():
         "قابلو 1×185 ملم²": 15,
         "ترمنل 185 ملم²": 6,
         "قاعدة فاصل هوائي – براكيت جنل 2.1م": 1,
-        "معدات ربط ألمنيوم – نحاس 210 ملم²": 3,
+        "معدات ربط ألمنيوم – نحاس 210 ملم²": 6,    # 3 أطوار × جهة × 2 (ق-٩٢)
         "مانعة صواعق 33 ك.ف": 1,
         "قاعدة مانعة صواعق مع الملحقات": 1,
         "قضيب نحاس تأريض 1.5 متر مع القفيص": 1,
@@ -545,3 +546,64 @@ def test_transformer_cost_is_the_heaviest_single_line(catalog):
     # قابلو نحاس 1×150 (80 م × 2,000) + ترمنل 150 (24 × 1,000).
     assert result["كلفة_المواد"] == 22_818_000
     assert result["كلفة_العمل"] == 350_000
+
+
+# ═════════ معدات الربط: أطوار × جهات × معدات لكل طور (ق-٩٢) ═════════
+
+
+def test_the_33kv_isolator_takes_two_fittings_per_phase():
+    """بنصّ المستخدم (ق-٩٢): «في شبكة 33 ك.ف يتم نصب معدتين وليست واحدة».
+
+    فالـ33 ضِعف الـ11 في كل موقع — والـ11 لم يُمسّ.
+    """
+    from engine.equipment import FITTINGS_PER_PHASE, ISOLATOR_PARTS
+
+    assert FITTINGS_PER_PHASE["11 ك.ف"] == 1
+    assert FITTINGS_PER_PHASE["33 ك.ف"] == 2
+
+    expected = {(IsolatorVoltage.KV11, IsolatorPosition.MID_NETWORK): 6,
+                (IsolatorVoltage.KV11, IsolatorPosition.CABLE_HEAD): 3,
+                (IsolatorVoltage.KV33, IsolatorPosition.MID_NETWORK): 12,
+                (IsolatorVoltage.KV33, IsolatorPosition.CABLE_HEAD): 6}
+    for (voltage, position), count in expected.items():
+        kit = dict(isolator_kit(voltage, position))
+        assert kit[ISOLATOR_PARTS[voltage]["fittings"]] == count, (voltage, position)
+
+
+def test_the_fitting_count_is_a_product_not_four_written_numbers():
+    """**العدد مضروبٌ لا مكتوب:** أطوار × جهات × معدات لكل طور (ق-٩٢).
+
+    فلو كُتبت الأربعة أرقام مصمتةً لافترق أحدها يوماً عن قاعدته.
+    """
+    from engine.equipment import (FITTINGS_PER_PHASE, ISOLATOR_PARTS,
+                                  PHASES_PER_ISOLATOR)
+
+    for voltage in IsolatorVoltage:
+        for position in IsolatorPosition:
+            kit = dict(isolator_kit(voltage, position))
+            assert kit[ISOLATOR_PARTS[voltage]["fittings"]] == (
+                PHASES_PER_ISOLATOR * position.sides
+                * FITTINGS_PER_PHASE[voltage.value])
+
+
+def test_the_11kv_fittings_were_not_touched():
+    """الـ11 ك.ف على حاله: 6 في المنتصف و3 على رأس القابلو (ق-٥٠)."""
+    assert dict(isolator_kit(IsolatorVoltage.KV11, IsolatorPosition.MID_NETWORK))[
+        ("معدات ربط ألمنيوم – نحاس", "عدد")] == 6
+    assert dict(isolator_kit(IsolatorVoltage.KV11, IsolatorPosition.CABLE_HEAD))[
+        ("معدات ربط ألمنيوم – نحاس", "عدد")] == 3
+
+
+def test_the_cage_and_the_stay_set_are_measured_in_sets():
+    """بطلب المستخدم (ق-٩٢): الوحدة «سيت» في المواد والعمل معاً.
+
+    القفيص والطقم مجموعتا قطعٍ لا قطعةٌ واحدة — فـ«سيت» أصدق من «عدد».
+    """
+    from engine import load_catalog
+    from engine.equipment import M_LATTICE_CAGE
+
+    catalog = load_catalog()
+    assert M_LATTICE_CAGE[1] == "سيت"
+    assert catalog["المواد"]["قفيص عمود مشبك"]["الوحدة"] == "سيت"
+    assert catalog["المواد"]["طقم ستي رود"]["الوحدة"] == "سيت"
+    assert catalog["أجور_العمل"]["نصب طاقم ستي"]["الوحدة"] == "سيت"
